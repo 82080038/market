@@ -65,16 +65,16 @@ Membuat satu aplikasi desktop/web single-user untuk analisis, rekomendasi, simul
 - [x] Tooling: ruff, mypy, pytest, pre-commit hook.
 - [x] Environment selector: `ENV=research|paper|live` via CLI/API.
 - [x] Database isolation: `market_research.db`, `market_paper.db`, `market_live.db`.
-- [~] Broker adapter skeleton: `MockBroker`, `PaperBroker`, `RealBroker` (interface akan dibuat Fase 5).
+- [x] Broker adapter skeleton: `MockBroker`, `PaperBroker`, `RealBroker` (interface akan dibuat Fase 5).
 - [x] `.env` templates per environment.
-- [ ] GitHub Actions CI: lint + test skeleton.
+- [x] GitHub Actions CI: lint + test skeleton.
 - [x] ADR (Architecture Decision Record) untuk 5 keputusan besar.
 
 **Acceptance:** `uv sync` berhasil, `ruff check .` + `mypy src/market` + `pytest` bersih (coverage 92.55%).
 
 ---
 
-### Fase 1 — Data Platform & Migration (Minggu 2-4) [~] IN PROGRESS
+### Fase 1 — Data Platform & Migration (Minggu 2-4) [✓] DONE
 
 **Tujuan:** data bersih, tersistem, dapat di-query, parquet berharga dimigrasi.
 
@@ -89,13 +89,13 @@ Membuat satu aplikasi desktop/web single-user untuk analisis, rekomendasi, simul
 - [x] `fx_rates` table + FX engine (USDIDR, HKDIDR, JPYIDR, dll.).
 - [x] Corporate action detection & backward adjustment.
 - [x] Migration 8 dataset parquet ke SQLite (ohlcv, corporate_actions, dividends, macro_data, foreign_flow, market_calendar, fundamental_data, stock_personality).
-- [ ] Daily scheduler skeleton.
+- [x] Daily scheduler skeleton.
 
 **Acceptance:** `market_paper.db` terisi OHLCV ≥2.9M rows, commodity, sentiment, shareholders; `fetch --universe idx` sukses tanpa FAIL major.
 
 ---
 
-### Fase 2 — Core Analysis Engines: IDX (Minggu 5-7) [~] IN PROGRESS
+### Fase 2 — Core Analysis Engines: IDX (Minggu 5-7) [✓] DONE
 
 **Tujuan:** setiap faktor pasar modal dapat dihitung dan di-skor untuk saham Indonesia.
 
@@ -107,15 +107,15 @@ Membuat satu aplikasi desktop/web single-user untuk analisis, rekomendasi, simul
 - [x] Macro/global engine (US10Y, USD/IDR, oil, gold, S&P 500, etc.).
 - [x] Relationship/correlation engine (lead-lag, spillover, clustering).
 - [x] Sentiment engine (lexicon-based NLP, foreign flow, broker flow, news, social media).
-- [ ] Corporate action engine integrated into technical signals.
-- [ ] Feature store with 42+ features per ticker, tagged `market_mic` + `asset_class`.
-- [ ] Pattern memory / reliability tracker.
+- [x] Corporate action engine integrated into technical signals.
+- [x] Feature store with 42+ features per ticker, tagged `market_mic` + `asset_class`.
+- [x] Pattern memory / reliability tracker.
 
 **Acceptance:** `/api/scores/{ticker}` returns 6 factor scores; unit tests per engine ≥70% coverage.
 
 ---
 
-### Fase 3 — Decision, XAI & Advisory (Minggu 8-9) [~] IN PROGRESS
+### Fase 3 — Decision, XAI & Advisory (Minggu 8-9) [✓] DONE
 
 **Tujuan:** aplikasi dapat memberikan saran yang dapat dijelaskan.
 
@@ -123,12 +123,12 @@ Membuat satu aplikasi desktop/web single-user untuk analisis, rekomendasi, simul
 
 **Deliverables & Markers:**
 - [x] Decision engine with default weights (technical 20%, fundamental 25%, macro/global/sentiment/relationship).
-- [ ] Regime-based weight adjustment.
+- [x] Regime-based weight adjustment.
 - [x] XAI narrative generator (Bahasa Indonesia, top 3 factors, warning flags).
 - [x] Advisory pipeline: screening → stock personality → strategy rec → position sizing → entry/exit → expected return → XAI evidence.
-- [ ] `/api/recommend/{ticker}` endpoint.
-- [ ] `/api/advisory/{ticker}` endpoint.
-- [ ] Knowledge-base lookup integration.
+- [x] `/api/recommend/{ticker}` endpoint.
+- [x] `/api/advisory/{ticker}` endpoint.
+- [x] Knowledge-base lookup integration.
 
 **Acceptance:** Recommendation includes action, conviction, position size, SL/TP, expected hold period, risk flags, XAI narrative.
 
@@ -153,7 +153,7 @@ Membuat satu aplikasi desktop/web single-user untuk analisis, rekomendasi, simul
 
 ---
 
-### Fase 5 — Execution, OMS & Portfolio (Minggu 13-15) [~] IN PROGRESS
+### Fase 5 — Execution, OMS & Portfolio (Minggu 13-15) [✓] DONE
 
 **Tujuan:** sistem dapat mengelola order dan portofolio.
 
@@ -164,16 +164,16 @@ Membuat satu aplikasi desktop/web single-user untuk analisis, rekomendasi, simul
 - [x] Order validation: lot, tick size, price limits, session, buying power.
 - [x] Broker adapter: mock, paper, Sinarmas/BNI stubs.
 - [x] Portfolio engine: positions, exposures, drift, rebalancing.
-- [ ] Performance attribution vs IHSG (Brinson, factor attribution).
-- [ ] Trade ledger (double-entry), NAV, reconciliation.
-- [ ] DR/BCP & incident response runbooks.
-- [ ] Capacity/stress test skeleton.
+- [x] Performance attribution vs IHSG (Brinson, factor attribution).
+- [x] Trade ledger (double-entry), NAV, reconciliation.
+- [x] DR/BCP & incident response runbooks.
+- [x] Capacity/stress test skeleton.
 
 **Acceptance:** User can create paper order, see lifecycle status, and view real-time PnL.
 
 ---
 
-### Fase 6 — Frontend & UI/UX (Minggu 16-18) [~] IN PROGRESS
+### Fase 6 — Frontend & UI/UX (Minggu 16-18) [✓] DONE
 
 **Tujuan:** aplikasi usable oleh pemilik.
 
@@ -188,8 +188,8 @@ Membuat satu aplikasi desktop/web single-user untuk analisis, rekomendasi, simul
 - [x] Analysis/Screener page.
 - [x] Settings page: risk params, notifications, API key.
 - [x] Reports page: tax, dividend, trade log, statements.
-- [ ] Watchlist & 15 alert types with Telegram/email/in-app routing.
-- [ ] Education content CMS & gamification engine (XP, badges, streaks).
+- [x] Watchlist & 15 alert types with Telegram/email/in-app routing.
+- [x] Education content CMS & gamification engine (XP, badges, streaks).
 - [x] Mobile responsive + accessibility.
 - [x] FastAPI backend: health, env, scores, recommend, advisory, portfolio, watchlist, backtest, markets.
 
@@ -197,7 +197,7 @@ Membuat satu aplikasi desktop/web single-user untuk analisis, rekomendasi, simul
 
 ---
 
-### Fase 7 — Multi-Market & Multi-Asset Extension (Minggu 19-21) [~] IN PROGRESS
+### Fase 7 — Multi-Market & Multi-Asset Extension (Minggu 19-21) [✓] DONE
 
 **Tujuan:** aplikasi siap untuk aset dan pasar lain sebagai input/faktor, dengan jalur trading bertahap.
 
@@ -217,7 +217,7 @@ Membuat satu aplikasi desktop/web single-user untuk analisis, rekomendasi, simul
 
 ---
 
-### Fase 8 — Advanced AI/ML & MLOps (Minggu 22-24) [~] IN PROGRESS
+### Fase 8 — Advanced AI/ML & MLOps (Minggu 22-24) [✓] DONE
 
 **Tujuan:** model dapat belajar, di-versioning, dan dipromosikan dengan aman.
 

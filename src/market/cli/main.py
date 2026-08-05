@@ -46,8 +46,32 @@ def cmd_api(args: argparse.Namespace) -> int:
 
 def cmd_scheduler(args: argparse.Namespace) -> int:
     """Start the daily data & analysis scheduler."""
+    from market.scheduler import DailyScheduler
+
     print(f"Starting scheduler for environment: {settings.env}")
-    # Scheduler integration will be wired in Fase 1.
+    scheduler = DailyScheduler()
+
+    if args.scheduler_action == "list":
+        for task in scheduler.tasks:
+            print(
+                f"  {task.task_id}: {task.name} "
+                f"[{task.schedule}] enabled={task.enabled} "
+                f"last={task.last_status.value}",
+            )
+        print(f"Total: {len(scheduler.tasks)} tasks")
+        return 0
+
+    if args.scheduler_action == "run":
+        executions = scheduler.run_all_due()
+        for ex in executions:
+            print(
+                f"  {ex.task_id}: {ex.status.value} "
+                f"({ex.duration_seconds:.1f}s)",
+            )
+        print(f"Executed: {len(executions)} tasks")
+        return 0
+
+    print("Usage: market scheduler [list|run]")
     return 0
 
 
@@ -68,6 +92,12 @@ def main(argv: list[str] | None = None) -> int:
     api_p.set_defaults(func=cmd_api)
 
     scheduler_p = sub.add_parser("scheduler", help="Start daily scheduler")
+    scheduler_p.add_argument(
+        "scheduler_action",
+        nargs="?",
+        default="list",
+        choices=["list", "run"],
+    )
     scheduler_p.set_defaults(func=cmd_scheduler)
 
     args = parser.parse_args(argv)
