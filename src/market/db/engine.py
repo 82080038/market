@@ -14,6 +14,9 @@ if TYPE_CHECKING:
 
     from sqlalchemy.engine import Engine
 
+_engine: Engine | None = None
+_sessionmaker: sessionmaker[Session] | None = None
+
 
 def _make_engine(db_path: str) -> Engine:
     """Create a SQLite WAL engine with pragmas for performance."""
@@ -38,13 +41,19 @@ def _make_engine(db_path: str) -> Engine:
 
 
 def get_engine() -> Engine:
-    """Return the SQLAlchemy engine for the active environment."""
-    return _make_engine(str(settings.resolved_db_path))
+    """Return the singleton SQLAlchemy engine for the active environment."""
+    global _engine
+    if _engine is None:
+        _engine = _make_engine(str(settings.resolved_db_path))
+    return _engine
 
 
 def get_sessionmaker() -> sessionmaker[Session]:
-    """Return a sessionmaker bound to the active engine."""
-    return sessionmaker(bind=get_engine(), expire_on_commit=False)
+    """Return a cached sessionmaker bound to the active engine."""
+    global _sessionmaker
+    if _sessionmaker is None:
+        _sessionmaker = sessionmaker(bind=get_engine(), expire_on_commit=False)
+    return _sessionmaker
 
 
 def get_session() -> Generator[Session, None, None]:
@@ -54,3 +63,15 @@ def get_session() -> Generator[Session, None, None]:
         yield session
     finally:
         session.close()
+
+
+def dispose_engine() -> None:
+    """Dispose the cached engine and reset cached sessionmaker.
+
+    Call this in test teardown or when switching environments.
+    """
+    global _engine, _sessionmaker
+    if _engine is not None:
+        _engine.dispose()
+    _engine = None
+    _sessionmaker = None

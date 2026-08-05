@@ -44,6 +44,8 @@ def isolated_db(tmp_path, monkeypatch):
 
     yield
 
+    from market.db.engine import dispose_engine
+    dispose_engine()
     import gc
     gc.collect()
 
@@ -64,6 +66,10 @@ def _auto_isolated_db(request, tmp_path, monkeypatch):
     from market.db import engine as engine_module
     monkeypatch.setattr(engine_module, "settings", new_settings)
 
+    # Reset cached engine so it picks up new settings
+    from market.db.engine import dispose_engine
+    dispose_engine()
+
     if "isolated_db" in request.keywords:
         test_db = tmp_path / "test_market.db"
         monkeypatch.setenv("DB_PATH", str(test_db))
@@ -73,6 +79,8 @@ def _auto_isolated_db(request, tmp_path, monkeypatch):
         new_settings = Settings()
         monkeypatch.setattr(config_module, "settings", new_settings)
         monkeypatch.setattr(engine_module, "settings", new_settings)
+
+        dispose_engine()
 
         from alembic import command
         from alembic.config import Config as AlembicConfig
@@ -86,6 +94,7 @@ def _auto_isolated_db(request, tmp_path, monkeypatch):
 
     yield
 
+    dispose_engine()
     import gc
     gc.collect()
 
