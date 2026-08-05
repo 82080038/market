@@ -2,9 +2,9 @@
 
 ## Checkpoint Terbaru
 
-- **Waktu:** 2026-08-05
-- **Alasan:** Inisialisasi konfigurasi AI dan audit awal pustaka.
-- **Status:** 92 dokumen Markdown (`00-README.md` s/d `91-komoditas-spesifik-idx.md`) telah di-audit struktural.
+- **Waktu:** 2026-08-05 19:40 WIB
+- **Alasan:** Sync dari GitHub, audit ulang aplikasi, dan update rekomendasi perbaikan.
+- **Status:** GitHub `main` berhasil di-sync via fast-forward; 47 file baru/terupdate termasuk modul AI baru, frontend pages, dan Playwright E2E.
 
 ## Ringkasan Proyek
 
@@ -14,56 +14,59 @@
 
 ## Hasil Audit Singkat
 
-- **Total dokumen:** 92 file Markdown.
-- **Tidak ada link internal markdown yang rusak** (hasil grep menemukan 0 broken link setelah memfilter false-positive di code block).
-- **Marker / TODO nyata tidak ditemukan**; placeholder `Rp XXX` di `78-reporting-export-system.md` adalah template contoh laporan.
+- **Total dokumen:** 94 file Markdown (`00-README.md` s/d `93-lifecycle-environments-real-testing-ai.md`).
+- **Tidak ada link internal markdown yang rusak**.
+- **Marker / TODO nyata tidak ditemukan** di source code.
 - **Aksi yang sudah dilakukan:**
   - Menambahkan baris indeks untuk dokumen `87`–`91` di `00-README.md`.
   - Memperbarui path repository di `00-README.md` ke `/home/petrick/projects/market/pustaka/`.
-  - Membuat konfigurasi AI di root project:
-    - `AGENTS.md` — aturan proyek (root).
-    - `.devin/config.json` — konfigurasi Devin CLI.
-    - `.devin/skills/knowledge-base-curator/SKILL.md` — skill perawatan pustaka.
-    - `.devin/skills/context-checkpoint/SKILL.md` — skill penyimpanan checkpoint context.
-    - `.devin/SESSION_MEMORY.md` — file ini.
-  - Membuat dokumen `92-multi-market-multi-asset-trading-system.md` yang memetakan modul, engine 5W1H, AI/ML, decision engine, advisory engine, OMS, risk, portfolio, roadmap lintas pasar dan lintas instrumen.
-  - Membuat dokumen `93-lifecycle-environments-real-testing-ai.md` yang menganalisis konsep 3 environment (Research/Development, Paper/Staging, Live/Production), promotion gates, CI/CD, model registry alias, monitoring/rollback, dan governance approval workflow berdasarkan sumber industri (AI Fin Hub, CryptoMantiq ADL, RustyBT, FMSB, SME Finance Forum, StackSimplify).
-  - Memperbarui indeks README dan statistik (total dokumen 94, 93 topik) setelah penambahan dokumen 92 dan 93.
-  - Menyusun `MEGAPLAN.md` di `/home/petrick/.windsurf/plans/megaplan-5f958b.md` dan menyalinnya ke `/home/petrick/projects/market/MEGAPLAN.md` setelah disetujui user.
-  - Membuat skill Devin/Cascade `.devin/skills/megaplan-executor/SKILL.md` untuk eksekusi autonomous fase demi fase.
+  - Membuat konfigurasi AI di root project.
+  - Membuat dokumen `92` dan `93` serta skill `.devin/skills/megaplan-executor/SKILL.md`.
 
 ## Status Implementasi Terkini
 
-- **Semua Fase 0-11:** ✅ DONE. 98/98 deliverables complete.
-  - 458 tests pass, coverage 82.68%, ruff + mypy clean.
-  - Latest commit: `a1fd9ae` (2026-08-05).
-  - GitHub: synced to `git@github.com:82080038/market.git` branch `main`.
+- **Sync GitHub:** ✅ Berhasil. Commit `40678fc` diterapkan ke lokal.
+- **Backend Quality:** ✅ 691 tests pass, coverage 83.36%, `ruff check .` clean, `mypy src/market` clean.
+- **Frontend Build:** ✅ `npm run build` sukses (Next.js 15.5.22, 12 halaman).
+- **Frontend Security:** ⚠️ 3 high severity vulnerabilities (postcss & sharp via next). Perlu upgrade bertahap.
+- **Database Status:** ⚠️ Belum diisi.
+  - `data/market_research.db` — ada, tapi 0 tabel.
+  - `data/market_paper.db` — belum ada.
+  - `data/market_live.db` — 21 tabel, tapi semua 0 rows.
+- **CLI Status:**
+  - `market env` → research, DB `data/market_research.db`, broker mock, live_approved False.
+  - `market scheduler list` → 0 tasks (scheduler skeleton, belum diregistrasi task).
+  - `market model list` → 0 models.
+- **Environment File:** ⚠️ `.env` belum dibuat (hanya `.env.example`).
 
-- **Human-Gate Checklist (§6.4) — approved items:**
-  - [x] Migrasi `market_live.db` — 21 tabel berhasil di-migrate.
-  - [x] Install dependency sistem — openpyxl, reportlab ditambahkan.
-  - [x] Tidak ada penghapusan file/data penting — standing rule.
-  - [x] Security config — single-user local, .env + .gitignore sudah ada.
-  - [ ] Broker real activation — form disiapkan di FE settings, perlu approval token.
-  - [ ] Deploy ke cloud/VPS — local-only untuk sekarang.
-  - [ ] Model champion di Live — CLI `market model promote/rollback` siap, perlu eval-gate pass.
+## Human-Gate Checklist (MEGAPLAN §6.4)
 
-- **Modul baru sesi ini:**
-  - `src/market/scheduler.py` — DailyScheduler (task registration, cron-like, execution logging).
-  - `src/market/analysis/extras.py` — CorporateActionEngine, FeatureStore, PatternMemory.
-  - `src/market/analysis/attribution.py` — RegimeWeightAdjuster, BrinsonAttribution, TradeLedger, StressTester.
-  - `src/market/analysis/alerts.py` — AlertManager (15 alert types, 4 channels).
-  - `.github/workflows/ci.yml` — GitHub Actions CI (ruff + mypy + pytest).
-  - `Makefile` — local deployment commands.
-  - CLI: `market api --host --port --reload`, `market model [list|champion|promote|rollback]`.
-  - FE: form Aktivasi Broker Real di settings page.
+- [x] Migrasi `market_live.db` — 21 tabel berhasil di-migrate.
+- [x] Install dependency sistem — openpyxl, reportlab, pyarrow sudah terpasang.
+- [x] Tidak ada penghapusan file/data penting — standing rule.
+- [x] Security config — single-user local, `.env` + `.gitignore` sudah ada.
+- [ ] **Migrate & seed `market_research.db` dan `market_paper.db`** — butuh approval karena menyentuh data lokal.
+- [ ] **Broker real activation** — form disiapkan di FE settings, perlu approval token.
+- [ ] **Deploy ke cloud/VPS** — local-only untuk sekarang.
+- [ ] **Model champion di Live** — CLI `market model promote/rollback` siap, perlu eval-gate pass.
 
 ## Tugas / Next Steps yang Masih Terbuka
 
-1. **Paper trading 30 hari** — jalankan paper trading minimal 30 hari sebelum aktivasi broker real.
-2. **Broker real activation** — setelah paper trading memadai, gunakan form di FE settings + approval token.
-3. **Deploy ke cloud/VPS** — setelah dinyatakan layak live.
-4. **Model champion promotion** — gunakan `market model promote` setelah eval-gate pass (min Sharpe, max drawdown, min win rate).
+### Segera (prioritas tinggi)
+1. **Buat `.env` dari `.env.example`** dan sesuaikan `ENV=paper` untuk paper trading.
+2. **Migrate & seed database `market_research.db`** dan **`market_paper.db`**.
+3. **Migrasi data parquet** ke SQLite (read-only dari `/media/petrick/Parquet/trading_data/`).
+4. **Upgrade frontend dependencies** untuk mengatasi 3 high severity vulnerabilities.
+
+### Sedang (setelah data tersedia)
+5. **Register scheduler tasks** (EOD fetch, feature store, model drift, report generation).
+6. **Wire-up Portfolio & Watchlist API** ke database (saat ini placeholder / in-memory).
+7. **Jalankan paper trading 30 hari** minimum sebelum live gate.
+8. **Latih dan daftarkan model champion** pertama di Paper environment.
+
+### Panjang
+9. **Broker real activation** setelah paper trading memadai.
+10. **Deploy ke cloud/VPS** setelah dinyatakan layak live.
 
 ## Referensi Kunci
 
@@ -74,3 +77,4 @@
 - `pustaka/91-komoditas-spesifik-idx.md` — komoditas IDX.
 - `pustaka/92-multi-market-multi-asset-trading-system.md` — multi-market & multi-asset blueprint.
 - `pustaka/93-lifecycle-environments-real-testing-ai.md` — lifecycle environment & promotion gates.
+- `docs/AUDIT-FINDINGS.md` — laporan audit aplikasi terbaru.

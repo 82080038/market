@@ -424,11 +424,15 @@ AI wajib berhenti dan minta approval jika:
 
 **Total estimasi:** 32 minggu (8 bulan). Dapat dikompresi menjadi 24-28 minggu dengan parallel work, tetapi **tidak disarankan memangkas fase Paper Trading atau eval-gate**.
 
-## 9. Next Steps Segera
+## 9. Next Steps Segera (Status Pasca-Sync)
 
-1. Review dan setujui MEGAPLAN.md.
-2. (Setelah disetujui) salin ke root project: `/home/petrick/projects/market/MEGAPLAN.md`.
-3. (Setelah disetujui) buat skill Devin: `.devin/skills/megaplan-executor/SKILL.md`.
-4. Jalankan Fase 0: bootstrap repo, tooling, environment selector.
-5. Update `.devin/SESSION_MEMORY.md` dengan status "Fase 0 sedang dikerjakan".
-6. Mulai Fase 1: migrasi data parquet.
+Semua fase 0–11 sudah selesai dari sisi kode dan test (691 passed, coverage 83%+). Langkah nyata berikutnya adalah mengisi data, menjadikan aplikasi berjalan end-to-end, dan memulai paper trading:
+
+1. **Persiapan Environment**: buat `.env` dari `.env.example`, pilih `ENV=paper` untuk validasi live-market tanpa uang nyata.
+2. **Database**: migrate & seed `market_research.db` dan `market_paper.db`; isi dari parquet archive (`/media/petrick/Parquet/trading_data/archive/tables/`).
+3. **Scheduler**: daftarkan task harian — EOD fetch, quality check, feature store refresh, drift detection, report generation.
+4. **Frontend Security**: atasi 3 high severity vulnerabilities (postcss/sharp via next).
+5. **Wire-up API**: sambungkan `/api/portfolio`, `/api/watchlist`, dan `/api/backtest/run` ke database, bukan mock/synthetic.
+6. **Paper Trading 30 Hari**: jalankan minimal 30 hari simulasi sebelum membuka human-gate broker real / model champion live.
+7. **Model Champion Pertama**: latih baseline LSTM/LightGBM di Paper environment, daftarkan ke model registry, dan promosikan setelah eval-gate pass.
+8. **Live Gate**: setelah paper period memadai, ajukan approval untuk broker real dan/atau deploy local-only production.
