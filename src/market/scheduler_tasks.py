@@ -63,6 +63,20 @@ def _task_generate_reports() -> None:
     logger.info("Report generation: stub — connect to AdvisoryEngine when ready")
 
 
+def _task_export_parquet() -> None:
+    """Export DB to parquet archive for portable backup.
+
+    Runs after all EOD tasks to ensure parquet snapshot reflects
+    the latest DB state. See pustaka/90 for sync rules.
+    """
+    from market.data.export_to_parquet import export_all
+
+    logger.info("Parquet export: starting")
+    results = export_all()
+    total = sum(results.values())
+    logger.info("Parquet export: %d rows across %d tables", total, len(results))
+
+
 def register_default_tasks(scheduler: DailyScheduler) -> None:
     """Register all built-in tasks on the given scheduler.
 
@@ -103,4 +117,11 @@ def register_default_tasks(scheduler: DailyScheduler) -> None:
         func=_task_generate_reports,
         schedule="daily",
         time_of_day="19:00",
+    )
+    scheduler.register_task(
+        task_id="export_parquet",
+        name="Export DB to parquet backup",
+        func=_task_export_parquet,
+        schedule="daily",
+        time_of_day="19:30",
     )

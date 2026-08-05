@@ -61,6 +61,22 @@ TABLES_TO_EXPORT: list[tuple[str, str, dict[str, str] | None]] = [
     ("corporate_governance", "corporate_governance.parquet", None),
     ("source_health", "source_health.parquet", None),
     ("data_watermark", "data_watermark.parquet", None),
+    # Tables added in migration 0003
+    ("news", "news.parquet", None),
+    ("broker_flow", "broker_flow.parquet", None),
+    ("policy_events", "policy_events.parquet", None),
+    ("external_events", "external_events.parquet", None),
+    ("pattern_analysis", "pattern_analysis.parquet", None),
+    ("trading_suspensions", "trading_suspensions.parquet", None),
+    ("render_log", "render_log.parquet", None),
+    ("valuation_cache", "valuation_cache.parquet", None),
+    ("positions", "positions.parquet", None),
+    ("orders", "orders.parquet", None),
+    ("equity_snapshots", "equity_snapshots.parquet", None),
+    ("daily_risk_metrics", "daily_risk_metrics.parquet", None),
+    ("trade_journal", "trade_journal.parquet", None),
+    ("ai_weights", "ai_weights.parquet", None),
+    ("system_state", "system_state.parquet", None),
 ]
 
 

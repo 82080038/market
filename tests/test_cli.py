@@ -49,7 +49,7 @@ def test_scheduler_list_command(capsys):
     captured = capsys.readouterr()
     assert "fetch_eod" in captured.out
     assert "quality_check" in captured.out
-    assert "Total: 5 tasks" in captured.out
+    assert "Total: 6 tasks" in captured.out
 
 
 def test_scheduler_run_command(capsys):

@@ -999,7 +999,7 @@ sell_cost_pct = sell_fee + levy + slippage  # 0.30043%
 
 ### 13.2 Tabel Extended (D1-D31, Import MySQL)
 
-| # | Tabel | Primary Key | Data |
+| # | Tabel | Primary Key | Data (per 2026-08-06) |
 |---|-------|-------------|------|
 | 17 | `instrument_master` | ticker | 992 tickers (951 aktif: 928 equity + 23 non-equity) |
 | 18 | `fundamental_data` | ticker, date, source | 991 rows |
@@ -1008,18 +1008,18 @@ sell_cost_pct = sell_fee + levy + slippage  # 0.30043%
 | 21 | `broker_flow` | ticker, date, broker, source | 15,830 rows |
 | 22 | `policy_events` | id (auto) | 179 rows |
 | 23 | `dividends` | ticker, ex_date, source | 5,974 rows |
-| 24 | `sector_master` | id (auto) | Master sektor |
-| 25 | `market_calendar` | date | 365 rows |
-| 26 | `fear_greed` | id (auto) | 466 rows |
+| 24 | `sector_master` | id (auto) | 11 rows (IDX long-form only) |
+| 25 | `market_calendar` | date | 9,773 rows (2000-2026) |
+| 26 | `fear_greed` | id (auto) | 1,178 rows |
 | 27 | `external_events` | id (auto) | 119 rows |
 | 28 | `esg_scores` | id (auto) | 164 rows |
-| 29 | `corporate_governance` | id (auto) | GCG scores |
-| 30 | `stock_personality` | id (auto) | 944 rows |
-| 31 | `trade_journal` | id (auto) | Trade log |
-| 32 | `pattern_analysis` | id (auto) | 2,386 rows |
-| 33 | `valuation_cache` | ticker, date, method, source | DCF/relative |
-| 34 | `technical_indicators` | ticker, date, indicator, timeframe, source | 11,136 rows |
-| 35 | `trading_suspensions` | id (auto) | Suspend/delisting |
+| 29 | `corporate_governance` | id (auto) | 208 rows |
+| 30 | `stock_personality` | ticker | 923 rows |
+| 31 | `trade_journal` | id (auto) | 4 rows |
+| 32 | `pattern_analysis` | id (auto) | 2,366 rows |
+| 33 | `valuation_cache` | ticker, date, method, source | 1,226 rows |
+| 34 | `technical_indicators` | ticker, date, indicator, timeframe, source | 9,230 rows |
+| 35 | `trading_suspensions` | id (auto) | 1 row |
 
 ### 13.3 Tabel Extended Storage (14 tabel import MySQL)
 
