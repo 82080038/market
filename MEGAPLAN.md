@@ -173,24 +173,25 @@ Membuat satu aplikasi desktop/web single-user untuk analisis, rekomendasi, simul
 
 ---
 
-### Fase 6 — Frontend & UI/UX (Minggu 16-18)
+### Fase 6 — Frontend & UI/UX (Minggu 16-18) [~] IN PROGRESS
 
 **Tujuan:** aplikasi usable oleh pemilik.
 
 **Dokumen acuan:** `17-aplikasi-retail-pribadi.md`, `32-ui-ux-design-trading-app.md`, `43-mobile-app-architecture.md`, `56-notification-strategy-alert-fatigue.md`, `57-user-onboarding-journey-design.md`, `61-accessibility-a11y-trading-app.md`, `78-reporting-export-system.md`, `79-education-content-management.md`, `80-watchlist-alert-system.md`, `81-gamification-engagement-design.md`.
 
 **Deliverables & Markers:**
-- [ ] Next.js project scaffold (App Router, Tailwind, shadcn/ui, Recharts/Lightweight Charts).
-- [ ] Dashboard page: portfolio summary, watchlist, market status, top movers.
-- [ ] Stock detail page: chart, indicators, scores, recommendation, fundamentals.
-- [ ] Portfolio page: positions, PnL, allocation, history.
-- [ ] Backtest page: config, results, equity curve.
-- [ ] Analysis/Screener page.
-- [ ] Settings page: risk params, notifications, API key.
-- [ ] Reports page: tax, dividend, trade log, statements.
+- [x] Next.js project scaffold (App Router, Tailwind, shadcn/ui, Recharts/Lightweight Charts).
+- [x] Dashboard page: portfolio summary, watchlist, market status, top movers.
+- [x] Stock detail page: chart, indicators, scores, recommendation, fundamentals.
+- [x] Portfolio page: positions, PnL, allocation, history.
+- [x] Backtest page: config, results, equity curve.
+- [x] Analysis/Screener page.
+- [x] Settings page: risk params, notifications, API key.
+- [x] Reports page: tax, dividend, trade log, statements.
 - [ ] Watchlist & 15 alert types with Telegram/email/in-app routing.
 - [ ] Education content CMS & gamification engine (XP, badges, streaks).
-- [ ] Mobile responsive + accessibility.
+- [x] Mobile responsive + accessibility.
+- [x] FastAPI backend: health, env, scores, recommend, advisory, portfolio, watchlist, backtest, markets.
 
 **Acceptance:** All 7+ main pages accessible and data-driven; alerts can be triggered.
 
