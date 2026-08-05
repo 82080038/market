@@ -42,7 +42,20 @@
   - Tests: `tests/test_config.py`, `tests/test_cli.py` — coverage 92.55%.
   - ADR-0001 tentang environment lifecycle.
   - `uv sync --extra dev` berhasil; `ruff`, `mypy`, `pytest` bersih.
-- **Fase 1 — Data Platform & Migration:** akan dikerjakan selanjutnya.
+- **GitHub push:** Proyek pertama kali di-push ke `git@github.com:82080038/market.git` pada branch `main` (commit e80f8fd). Identitas git lokal: `petrick@petrick-pc` / `Petrick`.
+- **Fase 1 — Data Platform & Migration:** [~] IN PROGRESS.
+  - SQLAlchemy models: `market_registry`, `instrument_master`, `ohlcv`, `corporate_actions`, `dividends`, `market_calendar`, `fx_rates`, `scores`, `relationship_matrix`, `source_health`, `audit_log`, `data_watermark`, `fundamental_data`, `macro_data`, `foreign_flow`, `technical_indicators`, `stock_personality`, `sector_master`, `fear_greed`, `watchlist`.
+  - DB engine: `src/market/db/engine.py` (SQLite WAL, session management).
+  - Data contracts: `src/market/data/contracts.py` (NormalizedOHLCV, DataQualityResult, CorporateActionRecord, FXRateRecord).
+  - Yahoo Finance adapter: `src/market/data/yahoo_adapter.py` (fetch_ohlcv, fetch_dividends, fetch_splits, fetch_info).
+  - Rate limiter: `src/market/data/rate_limit.py` (sliding window).
+  - Data quality engine: `src/market/data/validation.py` (4 checks, score 0-100, accept/flag/pause).
+  - Data storage: `src/market/data/storage.py` (save/load OHLCV, scores, source health, audit, watermark).
+  - Acquisition engine: `src/market/data/acquisition.py` (fetch → validate → store orchestration).
+  - Market seed: `src/market/data/seed.py` (8 major exchanges: XIDX, XNYS, XNAS, XHKG, XTSE, XSGX, XLON, XFRA).
+  - Parquet migration: `src/market/data/migrate_parquet.py` (8 datasets: ohlcv, corporate_actions, dividends, macro_data, foreign_flow, market_calendar, fundamental_data, stock_personality).
+  - Tests: 38 passed, coverage 75.75%.
+  - Pending: daily scheduler skeleton, actual parquet migration run.
 
 ## Tugas / Next Steps yang Masih Terbuka
 

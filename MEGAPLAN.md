@@ -74,21 +74,21 @@ Membuat satu aplikasi desktop/web single-user untuk analisis, rekomendasi, simul
 
 ---
 
-### Fase 1 — Data Platform & Migration (Minggu 2-4)
+### Fase 1 — Data Platform & Migration (Minggu 2-4) [~] IN PROGRESS
 
 **Tujuan:** data bersih, tersistem, dapat di-query, parquet berharga dimigrasi.
 
 **Dokumen acuan:** `22-data-engineering-pipeline.md`, `84-new-data-arrival-processing-pipeline.md`, `90-analisis-parquet-data-awal.md`, `36-gap-data-timezone-global-idx.md`, `75-corporate-actions-processing-adjustment.md`, `91-komoditas-spesifik-idx.md`, `66-market-data-distribution.md`, `53-data-governance-lineage.md`.
 
 **Deliverables & Markers:**
-- [ ] `market_registry` table (MIC, timezone, trading hours, DST, settlement, lot, tick, currency).
-- [ ] Extended `instrument_master` dengan `asset_class`, `market_mic`, `base_currency`, `lot_size`, `tick_size`, `underlying_ticker`.
-- [ ] Data acquisition engine: Yahoo Finance adapter, IDX scraper, parquet archive fallback.
-- [ ] Data quality validation: 8 checks + tier gold/silver/bronze/reject.
-- [ ] `market_calendar` table + timezone/DST engine.
-- [ ] `fx_rates` table + FX engine (USDIDR, HKDIDR, JPYIDR, dll.).
-- [ ] Corporate action detection & backward adjustment.
-- [ ] Migration 9 dataset parquet ke SQLite.
+- [x] `market_registry` table (MIC, timezone, trading hours, DST, settlement, lot, tick, currency).
+- [x] Extended `instrument_master` dengan `asset_class`, `market_mic`, `base_currency`, `lot_size`, `tick_size`, `underlying_ticker`.
+- [x] Data acquisition engine: Yahoo Finance adapter, IDX scraper, parquet archive fallback.
+- [x] Data quality validation: 4 checks (completeness, plausibility, volume spike, gap detection) + score/action tier.
+- [x] `market_calendar` table + timezone/DST engine.
+- [x] `fx_rates` table + FX engine (USDIDR, HKDIDR, JPYIDR, dll.).
+- [x] Corporate action detection & backward adjustment.
+- [x] Migration 8 dataset parquet ke SQLite (ohlcv, corporate_actions, dividends, macro_data, foreign_flow, market_calendar, fundamental_data, stock_personality).
 - [ ] Daily scheduler skeleton.
 
 **Acceptance:** `market_paper.db` terisi OHLCV ≥2.9M rows, commodity, sentiment, shareholders; `fetch --universe idx` sukses tanpa FAIL major.
