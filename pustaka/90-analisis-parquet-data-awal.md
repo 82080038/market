@@ -2,29 +2,32 @@
 
 > **Dokumen 90** | Pustaka Pengetahuan Pasar Modal Indonesia
 >
-> **Tujuan:** Memberitahu pustaka bahwa database awal bisa di-bootstrap dari `/media/petrick/Parquet/trading_data`, dan menganalisis isi parquet tersebut untuk identifikasi data yang perlu diperbaiki, dilengkapi, atau di-migrate.
+> **Tujuan:** Memberitahu pustaka bahwa database awal bisa di-bootstrap dari parquet archive, dan menganalisis isi parquet tersebut untuk identifikasi data yang perlu diperbaiki, dilengkapi, atau di-migrate.
 >
-> **Lokasi data:**
-> - **Raw:** `/media/petrick/Parquet/trading_data/raw/` — 1024 items (971 ticker files + 53 subdirs)
-> - **Archive:** `/media/petrick/Parquet/trading_data/archive/` — 6 subdirs (ohlcv, tables, foreign_flow_idx, broker_flow_idx, instrument_master, trading_suspensions)
+> **Lokasi data (UPDATE 2026-08-06):**
+> - **Parquet milik project `market` (pustaka_data):** `/media/petrick/Parquet/pustaka_data/` — direktori mandiri, berisi data yang sudah diperbaiki & dibersihkan dari `market_paper.db`. Inilah sumber parquet utama untuk project ini.
+>   - **Raw:** `/media/petrick/Parquet/pustaka_data/raw/` — (akan diisi sesuai kebutuhan)
+>   - **Archive:** `/media/petrick/Parquet/pustaka_data/archive/tables/` — 20 tabel parquet hasil export dari DB bersih
+> - **Parquet milik project `global` (referensi historis, READ-ONLY):** `/media/petrick/Parquet/trading_data/` — 1024 items raw + 28 tabel archive. Digunakan hanya untuk bootstrap awal (sudah selesai 2026-08-05). Jangan tulis/modifikasi.
 >
 > **PENTING — Konvensi Penyimpanan Parquet:**
-> - Direktori `/media/petrick/Parquet/trading_data/` **sudah dipakai oleh project `global`** (trading-system v0.1.11). Jangan tulis/modifikasi file di sini dari luar project.
-> - Untuk membuat file parquet baru di luar project `global`, gunakan direktori terpisah, misalnya: `/media/petrick/Parquet/pustaka_data/` atau `/media/petrick/Parquet/<project_baru>/`.
+> - Direktori `/media/petrick/Parquet/trading_data/` **milik project `global`** (trading-system v0.1.11). Jangan tulis/modifikasi file di sini dari luar project tersebut.
+> - **Project `market` sekarang punya direktori sendiri:** `/media/petrick/Parquet/pustaka_data/`. Semua export parquet dari aplikasi `market` ditulis ke sini.
 > - Struktur direktori `/media/petrick/Parquet/` saat ini:
 >   ```
 >   /media/petrick/Parquet/
->   ├── trading_data/          # ⚠️ DIPAKAI project global (287MB)
+>   ├── trading_data/          # ⚠️ MILIK project global (287MB, READ-ONLY untuk market)
 >   │   ├── raw/                # Data raw (971 ticker + 53 subdirs)
 >   │   └── archive/            # Data archive (6 subdirs, 28 tabel)
+>   ├── pustaka_data/          # ✅ MILIK project market (data bersih hasil export)
+>   │   ├── raw/                # (akan diisi sesuai kebutuhan)
+>   │   └── archive/tables/     # 20 tabel parquet hasil export dari market_paper.db
 >   ├── System Volume Information/  # Windows metadata (partisi NTFS/exFAT)
 >   └── .Trash-1000/           # Recycle bin
 >   ```
-> - **Jika project baru dibuat** dan butuh menyimpan parquet, buat direktori sendiri:
->   ```bash
->   mkdir -p /media/petrick/Parquet/pustaka_data/{raw,archive}
->   ```
-> - **Jika ingin membaca data dari project `global`**, path tetap `/media/petrick/Parquet/trading_data/` (read-only).
+> - **Untuk bootstrap database di komputer lain:** copy isi `/media/petrick/Parquet/pustaka_data/archive/tables/` ke komputer target, set `PARQUET_ARCHIVE_PATH` di `.env`, lalu jalankan `python -m market.data.migrate_parquet`.
+> - **Untuk export data bersih ke parquet:** jalankan `ENV=paper python -m market.data.export_to_parquet` (export dari `market_paper.db` ke `pustaka_data/archive/tables/`).
+> - **Jika ingin membaca data legacy dari project `global`**, path tetap `/media/petrick/Parquet/trading_data/` (read-only), tapi tidak lagi menjadi sumber utama.
 
 ---
 

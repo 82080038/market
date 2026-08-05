@@ -36,7 +36,7 @@ class Settings(BaseSettings):
     yfinance_enabled: bool = True
     yfinance_rate_limit_per_second: float = 1.0
     idx_scraper_enabled: bool = True
-    parquet_archive_path: str = "/media/petrick/Parquet/trading_data"
+    parquet_archive_path: str = "/media/petrick/Parquet/pustaka_data"
 
     # Broker / execution
     broker_adapter: str = "mock"
