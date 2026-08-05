@@ -172,7 +172,7 @@ class BacktestEngine:
         if equity.empty or len(equity) < 2:
             return {}
 
-        returns = equity.pct_change().dropna()
+        returns = equity.pct_change(fill_method=None).dropna()
 
         total_return = (
             (equity.iloc[-1] / equity.iloc[0]) - 1

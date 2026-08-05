@@ -66,6 +66,9 @@ node_modules/
 out/
 frontend/.env*
 frontend/dist
+frontend/test-results/
+frontend/playwright-report/
+*.tsbuildinfo
 
 # Alembic local override (keep version files, ignore local env if any)
 alembic.ini.local

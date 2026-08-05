@@ -13,14 +13,14 @@ export function Card({ children, className }: CardProps) {
   );
 }
 
-export function CardHeader({ children }: { children: React.ReactNode }) {
-  return <div className="mb-4">{children}</div>;
+export function CardHeader({ children, className }: CardProps) {
+  return <div className={cn("mb-4", className)}>{children}</div>;
 }
 
-export function CardTitle({ children }: { children: React.ReactNode }) {
-  return <h3 className="text-lg font-semibold">{children}</h3>;
+export function CardTitle({ children, className }: CardProps) {
+  return <h3 className={cn("text-lg font-semibold", className)}>{children}</h3>;
 }
 
-export function CardContent({ children }: { children: React.ReactNode }) {
-  return <div>{children}</div>;
+export function CardContent({ children, className }: CardProps) {
+  return <div className={className}>{children}</div>;
 }

@@ -25,6 +25,7 @@ def test_make_engine_creates_tables():
         found = session.get(MarketRegistry, "XIDX")
         assert found is not None
     Base.metadata.drop_all(engine)
+    engine.dispose()
 
 
 def test_get_session_yields_and_closes():
@@ -48,3 +49,4 @@ def test_get_session_yields_and_closes():
     finally:
         eng_mod.get_sessionmaker = original_sm
     Base.metadata.drop_all(engine)
+    engine.dispose()

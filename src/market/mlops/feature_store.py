@@ -120,7 +120,7 @@ class FeatureStore:
             name="forward_return_5d",
             description="5-day forward return",
             version="1.0.0",
-            compute_fn=lambda df: df["close"].shift(-5).pct_change(5),
+            compute_fn=lambda df: df["close"].shift(-5).pct_change(5, fill_method=None),
             dependencies=["close"],
         ))
 

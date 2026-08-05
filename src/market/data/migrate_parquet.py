@@ -49,13 +49,13 @@ def _safe_read_parquet(path: Path) -> pd.DataFrame | None:
 def _f(row: pd.Series, key: str, default: float = 0.0) -> float | None:
     """Extract a float value from a pandas row, None if NaN."""
     v = row.get(key)
-    return float(v) if pd.notna(v) else default if default else None
+    return float(v) if pd.notna(v) else default
 
 
 def _s(row: pd.Series, key: str, default: str = "") -> str | None:
     """Extract a string value from a pandas row, None if NaN."""
     v = row.get(key)
-    return str(v) if pd.notna(v) else default if default else None
+    return str(v) if pd.notna(v) else default
 
 
 def _d(row: pd.Series, key: str) -> date | None:

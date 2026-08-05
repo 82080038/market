@@ -91,9 +91,10 @@ class GlobalMarketEngine:
                 else:
                     below_ma200.append(ticker)
 
-        total = len(data)
-        ma50_score = (len(above_ma50) / total) * 50 if total > 0 else 0
-        ma200_score = (len(above_ma200) / total) * 50 if total > 0 else 0
+        total_ma50 = len(above_ma50) + len(below_ma50)
+        total_ma200 = len(above_ma200) + len(below_ma200)
+        ma50_score = (len(above_ma50) / total_ma50) * 50 if total_ma50 > 0 else 0
+        ma200_score = (len(above_ma200) / total_ma200) * 50 if total_ma200 > 0 else 0
         total_score = min(100.0, ma50_score + ma200_score)
 
         return GlobalMarketScore(

@@ -19,10 +19,6 @@ class Position:
     sector: str = "unknown"
     market_mic: str = "XIDX"
 
-    @property
-    def market_value(self) -> float:
-        return self.shares * self.current_price if hasattr(self, "current_price") else 0.0
-
 
 @dataclass
 class PortfolioSummary:

@@ -21,6 +21,7 @@ def repo():
     with Session(engine) as session:
         yield DataRepository(session)
     Base.metadata.drop_all(engine)
+    engine.dispose()
 
 
 def test_save_and_load_ohlcv(repo):

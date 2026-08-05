@@ -17,6 +17,7 @@ def db_session():
     with Session(engine) as session:
         yield session
     Base.metadata.drop_all(engine)
+    engine.dispose()
 
 
 def test_seed_markets_inserts_all(db_session):

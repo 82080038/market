@@ -23,6 +23,7 @@ def repo():
     with Session(engine) as session:
         yield DataRepository(session)
     Base.metadata.drop_all(engine)
+    engine.dispose()
 
 
 def _mock_records(ticker: str = "TEST.JK", count: int = 5):

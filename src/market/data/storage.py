@@ -45,11 +45,12 @@ class DataRepository:
         """
         count = 0
         for r in records:
+            tf = getattr(r, "timeframe", "1d")
             existing = self._session.execute(
                 select(OHLCV).where(
                     OHLCV.ticker == r.ticker,
                     OHLCV.timestamp == r.timestamp,
-                    OHLCV.timeframe == "1d",
+                    OHLCV.timeframe == tf,
                 )
             ).scalar_one_or_none()
 
@@ -67,7 +68,7 @@ class DataRepository:
                     OHLCV(
                         ticker=r.ticker,
                         timestamp=r.timestamp,
-                        timeframe="1d",
+                        timeframe=tf,
                         open=r.open,
                         high=r.high,
                         low=r.low,

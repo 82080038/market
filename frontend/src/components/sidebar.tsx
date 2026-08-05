@@ -10,6 +10,8 @@ import {
   Search,
   Settings,
   FileText,
+  Bot,
+  Scan,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 
@@ -19,6 +21,8 @@ const navItems = [
   { href: "/portfolio", label: "Portofolio", icon: Wallet },
   { href: "/backtest", label: "Backtest", icon: FlaskConical },
   { href: "/screener", label: "Screener", icon: Search },
+  { href: "/scan", label: "Pola & Prediksi", icon: Scan },
+  { href: "/automation", label: "Otomasi", icon: Bot },
   { href: "/reports", label: "Laporan", icon: FileText },
   { href: "/settings", label: "Pengaturan", icon: Settings },
 ];

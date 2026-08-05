@@ -307,7 +307,7 @@ class TrainingPipeline:
             # Create forward return target
             if "close" in data.columns:
                 data = data.copy()
-                data[target] = data["close"].shift(-5).pct_change(5)
+                data[target] = data["close"].shift(-5).pct_change(5, fill_method=None)
                 data = data.dropna()
             else:
                 raise ValueError(f"Target {target} not found and cannot be derived")

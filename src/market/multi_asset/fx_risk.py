@@ -170,7 +170,7 @@ class FXRiskEngine:
         if history is None or len(history) < 2:
             return 0.0
 
-        returns = history.pct_change().dropna()
+        returns = history.pct_change(fill_method=None).dropna()
         if len(returns) == 0:
             return 0.0
 
@@ -231,7 +231,7 @@ class FXRiskEngine:
             pair = f"{exp.currency}{self.base_currency}"
             history = self._history.get(pair)
             if history is not None and len(history) >= 2:
-                returns = history.pct_change().dropna()
+                returns = history.pct_change(fill_method=None).dropna()
                 vol = float(returns.std() * np.sqrt(252) * 100)
                 total_fx_vol += vol * exp.weight_pct / 100
 

@@ -27,6 +27,7 @@ def db_session():
     with Session(engine) as session:
         yield session
     Base.metadata.drop_all(engine)
+    engine.dispose()
 
 
 def test_create_market_registry(db_session):

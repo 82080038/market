@@ -29,6 +29,7 @@ dependencies = [
     "aiofiles>=24.1",
     "openpyxl>=3.1.5",
     "reportlab>=5.0.0",
+    "pyarrow>=15.0",
 ]
 
 [project.optional-dependencies]
@@ -88,6 +89,10 @@ python_classes = ["Test*"]
 python_functions = ["test_*"]
 addopts = "--cov=market --cov-report=term-missing --cov-fail-under=70"
 asyncio_mode = "auto"
+filterwarnings = [
+    "ignore::DeprecationWarning",
+    "ignore:Using.*httpx.*deprecated:UserWarning",
+]
 
 [tool.coverage.run]
 source = ["src/market"]
