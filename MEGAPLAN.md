@@ -197,21 +197,21 @@ Membuat satu aplikasi desktop/web single-user untuk analisis, rekomendasi, simul
 
 ---
 
-### Fase 7 — Multi-Market & Multi-Asset Extension (Minggu 19-21)
+### Fase 7 — Multi-Market & Multi-Asset Extension (Minggu 19-21) [~] IN PROGRESS
 
 **Tujuan:** aplikasi siap untuk aset dan pasar lain sebagai input/faktor, dengan jalur trading bertahap.
 
 **Dokumen acuan:** `03-pasar-modal-global.md`, `04-instrumen-pasar-modal.md`, `35-multi-asset-cross-market-analysis.md`, `36-gap-data-timezone-global-idx.md`, `92-multi-market-multi-asset-trading-system.md`.
 
 **Deliverables & Markers:**
-- [ ] Multi-market registry (US, HK, SG, JP, etc.).
-- [ ] Multi-asset instrument master (equity, ETF, bond, commodity, forex, crypto, derivative stubs).
-- [ ] FX & currency risk engine.
-- [ ] Cross-market relationship engine (correlation, lead-lag, spillover).
-- [ ] Per-asset-class fundamental scorer.
-- [ ] Per-asset-class decision weights.
-- [ ] Multi-market OMS validation rules.
-- [ ] UI market selector + multi-currency PnL display.
+- [x] Multi-market registry (US, HK, SG, JP, etc.).
+- [x] Multi-asset instrument master (equity, ETF, bond, commodity, forex, crypto, derivative stubs).
+- [x] FX & currency risk engine.
+- [x] Cross-market relationship engine (correlation, lead-lag, spillover).
+- [x] Per-asset-class fundamental scorer.
+- [x] Per-asset-class decision weights.
+- [x] Multi-market OMS validation rules.
+- [x] UI market selector + multi-currency PnL display.
 
 **Acceptance:** `/api/instruments?market_mic=XNAS&asset_class=equity` works; cross-market correlation heatmap displayed.
 
