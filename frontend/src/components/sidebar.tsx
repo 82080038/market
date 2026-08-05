@@ -12,6 +12,7 @@ import {
   FileText,
   Bot,
   Scan,
+  Database,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 
@@ -24,6 +25,7 @@ const navItems = [
   { href: "/scan", label: "Pola & Prediksi", icon: Scan },
   { href: "/automation", label: "Otomasi", icon: Bot },
   { href: "/reports", label: "Laporan", icon: FileText },
+  { href: "/data", label: "Data & Sumber", icon: Database },
   { href: "/settings", label: "Pengaturan", icon: Settings },
 ];
 
