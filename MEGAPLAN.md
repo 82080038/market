@@ -134,7 +134,7 @@ Membuat satu aplikasi desktop/web single-user untuk analisis, rekomendasi, simul
 
 ---
 
-### Fase 4 — Backtest, Paper Trading & Risk (Minggu 10-12) [~] IN PROGRESS
+### Fase 4 — Backtest, Paper Trading & Risk (Minggu 10-12) ✅
 
 **Tujuan:** validasi strategi tanpa risiko finansial.
 
@@ -145,7 +145,7 @@ Membuat satu aplikasi desktop/web single-user untuk analisis, rekomendasi, simul
 - [x] Strategies: Buy & Hold, MA Crossover, Conviction.
 - [x] Walk-forward analysis, Monte Carlo simulation, Deflated Sharpe Ratio.
 - [x] Paper trading engine with lot validation, fees, tax, dividends.
-- [ ] PnL engine (realized/unrealized, FIFO cost basis).
+- [x] PnL engine (realized/unrealized, FIFO cost basis).
 - [x] Risk engine: VaR/CVaR, Kelly, position sizing, drawdown circuit breaker.
 - [x] Backtest quality gate runner (WFA, Monte Carlo, DSR).
 
@@ -153,17 +153,17 @@ Membuat satu aplikasi desktop/web single-user untuk analisis, rekomendasi, simul
 
 ---
 
-### Fase 5 — Execution, OMS & Portfolio (Minggu 13-15)
+### Fase 5 — Execution, OMS & Portfolio (Minggu 13-15) [~] IN PROGRESS
 
 **Tujuan:** sistem dapat mengelola order dan portofolio.
 
 **Dokumen acuan:** `16-strategi-mencari-keuntungan.md`, `26-post-trade-settlement-rekonsiliasi.md`, `40-oms-ems-architecture.md`, `47-operational-contract-runbook.md`, `48-disaster-recovery-business-continuity.md`, `49-incident-management-post-mortem.md`, `52-transaction-cost-analysis-execution-quality.md`, `55-capacity-planning-load-stress-testing.md`, `74-trading-financial-management-capital-operations.md`, `76-idx-trading-rules-market-mechanics.md`.
 
 **Deliverables & Markers:**
-- [ ] OMS state machine (new → pending → partial → filled/cancelled/rejected).
-- [ ] Order validation: lot, tick size, price limits, session, buying power.
-- [ ] Broker adapter: mock, paper, Sinarmas/BNI stubs.
-- [ ] Portfolio engine: positions, exposures, drift, rebalancing.
+- [x] OMS state machine (new → pending → partial → filled/cancelled/rejected).
+- [x] Order validation: lot, tick size, price limits, session, buying power.
+- [x] Broker adapter: mock, paper, Sinarmas/BNI stubs.
+- [x] Portfolio engine: positions, exposures, drift, rebalancing.
 - [ ] Performance attribution vs IHSG (Brinson, factor attribution).
 - [ ] Trade ledger (double-entry), NAV, reconciliation.
 - [ ] DR/BCP & incident response runbooks.
