@@ -20,13 +20,21 @@ from sqlalchemy import select
 from market.config import settings
 from market.db.models import (
     OHLCV,
+    AuditLog,
     CorporateAction,
     Dividend,
+    FearGreed,
     ForeignFlow,
     FundamentalData,
+    InstrumentMaster,
     MacroData,
     MarketCalendar,
+    RelationshipMatrix,
+    Score,
+    SectorMaster,
+    SourceHealth,
     StockPersonality,
+    TechnicalIndicator,
 )
 
 if TYPE_CHECKING:
@@ -82,9 +90,16 @@ def migrate_ohlcv(session: Session, dry_run: bool = False) -> int:
         return len(df)
 
     count = 0
+    skip = 0
     for _, row in df.iterrows():
         ticker = str(row.get("ticker", ""))
         ts = pd.Timestamp(row.get("timestamp")).to_pydatetime()
+
+        close_val = row.get("close")
+        if pd.isna(close_val):
+            skip += 1
+            continue
+
         existing = session.execute(
             select(OHLCV).where(
                 OHLCV.ticker == ticker,
@@ -100,11 +115,11 @@ def migrate_ohlcv(session: Session, dry_run: bool = False) -> int:
                 ticker=ticker,
                 timestamp=ts,
                 timeframe="1d",
-                open=float(row.get("open", 0)),
-                high=float(row.get("high", 0)),
-                low=float(row.get("low", 0)),
-                close=float(row.get("close", 0)),
-                volume=int(row.get("volume", 0)),
+                open=float(row.get("open", 0)) if pd.notna(row.get("open")) else 0,
+                high=float(row.get("high", 0)) if pd.notna(row.get("high")) else 0,
+                low=float(row.get("low", 0)) if pd.notna(row.get("low")) else 0,
+                close=float(close_val),
+                volume=int(row.get("volume", 0)) if pd.notna(row.get("volume")) else 0,
                 adjusted_close=_f(row, "adjusted_close"),
                 data_quality_score=_f(row, "data_quality_score"),
                 source="parquet_archive",
@@ -113,9 +128,11 @@ def migrate_ohlcv(session: Session, dry_run: bool = False) -> int:
         count += 1
         if count % 10000 == 0:
             session.commit()
-            logger.info("OHLCV migrated: %d/%d", count, len(df))
+            logger.info("OHLCV migrated: %d/%d (skipped %d)", count, len(df), skip)
 
     session.commit()
+    if skip:
+        logger.info("OHLCV skipped %d rows with NaN close", skip)
     return count
 
 
@@ -357,6 +374,420 @@ def migrate_stock_personality(session: Session, dry_run: bool = False) -> int:
     return count
 
 
+# Exchange code mapping: parquet exchange → MIC code
+_EXCHANGE_TO_MIC: dict[str, str] = {
+    "IDX": "XIDX",
+    "JKT": "XIDX",
+    "YHD": "XNYS",
+    "SNP": "XNYS",
+    "NYB": "XNYS",
+    "PCX": "XNAS",
+    "SHH": "XIDX",  # SSE — fallback to XIDX for .JK suffix
+    "HKG": "XHKG",
+    "OSA": "XTSE",
+    "MYS": "XSGX",
+    "LON": "XLON",
+    "GER": "XFRA",
+    "CCY": "XIDX",  # Forex — no dedicated market
+    "CMX": "XIDX",  # Commodities — no dedicated market
+    "NYM": "XNYS",  # NYMEX — fallback
+    "DJI": "XNYS",
+    "FGI": "XNYS",  # Fear/Greed index
+    "NIM": "XNYS",
+    "CGI": "XNYS",
+    "CXI": "XNYS",
+}
+
+
+def migrate_instrument_master(session: Session, dry_run: bool = False) -> int:
+    """Migrate instrument_master.parquet (992 tickers)."""
+    path = ARCHIVE_TABLES / "instrument_master.parquet"
+    if not path.exists():
+        logger.warning("instrument_master.parquet not found")
+        return 0
+
+    df = _safe_read_parquet(path)
+    if df is None or df.empty:
+        return 0
+
+    logger.info("instrument_master parquet: %d rows", len(df))
+
+    if dry_run:
+        return len(df)
+
+    count = 0
+    for _, row in df.iterrows():
+        ticker = str(row.get("ticker", ""))
+        if not ticker:
+            continue
+
+        existing = session.get(InstrumentMaster, ticker)
+        exchange = str(row.get("exchange", "IDX"))
+        mic = _EXCHANGE_TO_MIC.get(exchange, "XIDX")
+
+        if existing is not None:
+            existing.name = _s(row, "name") or existing.name
+            existing.sector = _s(row, "sector") or existing.sector
+            existing.subsector = _s(row, "subsector") or existing.subsector
+            existing.is_active = bool(row.get("is_active", 1))
+            existing.listing_date = _d(row, "listing_date")
+            existing.delisting_date = _d(row, "delisting_date")
+            existing.asset_class = _s(row, "asset_class") or "equity"
+            existing.market_mic = mic
+        else:
+            session.add(
+                InstrumentMaster(
+                    ticker=ticker,
+                    market_mic=mic,
+                    asset_class=_s(row, "asset_class") or "equity",
+                    name=_s(row, "name"),
+                    base_currency="IDR" if mic == "XIDX" else "USD",
+                    reporting_currency="IDR",
+                    lot_size=100 if mic == "XIDX" else 1,
+                    is_active=bool(row.get("is_active", 1)),
+                    sector=_s(row, "sector"),
+                    subsector=_s(row, "subsector"),
+                    listing_date=_d(row, "listing_date"),
+                    delisting_date=_d(row, "delisting_date"),
+                )
+            )
+        count += 1
+
+    session.commit()
+    return count
+
+
+def migrate_sector_master(session: Session, dry_run: bool = False) -> int:
+    """Migrate sector_master.parquet."""
+    path = ARCHIVE_TABLES / "sector_master.parquet"
+    if not path.exists():
+        logger.warning("sector_master.parquet not found")
+        return 0
+
+    df = _safe_read_parquet(path)
+    if df is None or df.empty:
+        return 0
+
+    if dry_run:
+        return len(df)
+
+    count = 0
+    for _, row in df.iterrows():
+        kode = str(row.get("kode", ""))
+        if not kode:
+            continue
+
+        existing = session.get(SectorMaster, kode)
+        if existing is not None:
+            existing.nama = _s(row, "nama") or existing.nama
+            existing.deskripsi = _s(row, "deskripsi") or existing.deskripsi
+        else:
+            session.add(
+                SectorMaster(
+                    kode=kode,
+                    nama=_s(row, "nama") or "",
+                    deskripsi=_s(row, "deskripsi"),
+                )
+            )
+        count += 1
+
+    session.commit()
+    return count
+
+
+def migrate_scores(session: Session, dry_run: bool = False) -> int:
+    """Migrate scores.parquet (engine scores)."""
+    path = ARCHIVE_TABLES / "scores.parquet"
+    if not path.exists():
+        logger.warning("scores.parquet not found")
+        return 0
+
+    df = _safe_read_parquet(path)
+    if df is None or df.empty:
+        return 0
+
+    if dry_run:
+        return len(df)
+
+    count = 0
+    for _, row in df.iterrows():
+        ticker = str(row.get("ticker", ""))
+        engine = str(row.get("engine", ""))
+        if not ticker or not engine:
+            continue
+
+        as_of_val = row.get("as_of")
+        as_of_dt = pd.Timestamp(as_of_val).to_pydatetime() if pd.notna(as_of_val) else None
+
+        existing = session.execute(
+            select(Score).where(
+                Score.ticker == ticker,
+                Score.engine == engine,
+                Score.as_of == as_of_dt,
+            )
+        ).scalar_one_or_none()
+
+        if existing is not None:
+            existing.score = float(row.get("score", 0))
+            existing.breakdown = _s(row, "breakdown")
+        else:
+            session.add(
+                Score(
+                    ticker=ticker,
+                    engine=engine,
+                    score=float(row.get("score", 0)),
+                    breakdown=_s(row, "breakdown"),
+                    as_of=as_of_dt,
+                )
+            )
+        count += 1
+
+    session.commit()
+    return count
+
+
+def migrate_technical_indicators(session: Session, dry_run: bool = False) -> int:
+    """Migrate technical_indicators.parquet."""
+    path = ARCHIVE_TABLES / "technical_indicators.parquet"
+    if not path.exists():
+        logger.warning("technical_indicators.parquet not found")
+        return 0
+
+    df = _safe_read_parquet(path)
+    if df is None or df.empty:
+        return 0
+
+    if dry_run:
+        return len(df)
+
+    count = 0
+    for _, row in df.iterrows():
+        ticker = str(row.get("ticker", ""))
+        indicator = str(row.get("indicator", ""))
+        if not ticker or not indicator:
+            continue
+
+        date_val = _d(row, "date")
+        if date_val is None:
+            continue
+
+        timeframe = str(row.get("timeframe", "1d"))
+        source = str(row.get("source", "computed"))
+
+        existing = session.execute(
+            select(TechnicalIndicator).where(
+                TechnicalIndicator.ticker == ticker,
+                TechnicalIndicator.date == date_val,
+                TechnicalIndicator.indicator == indicator,
+                TechnicalIndicator.timeframe == timeframe,
+                TechnicalIndicator.source == source,
+            )
+        ).scalar_one_or_none()
+
+        if existing is not None:
+            existing.value = float(row.get("value", 0))
+        else:
+            session.add(
+                TechnicalIndicator(
+                    ticker=ticker,
+                    date=date_val,
+                    indicator=indicator,
+                    value=float(row.get("value", 0)),
+                    timeframe=timeframe,
+                    source=source,
+                )
+            )
+        count += 1
+
+    session.commit()
+    return count
+
+
+def migrate_relationship_matrix(session: Session, dry_run: bool = False) -> int:
+    """Migrate relationship_matrix.parquet."""
+    path = ARCHIVE_TABLES / "relationship_matrix.parquet"
+    if not path.exists():
+        logger.warning("relationship_matrix.parquet not found")
+        return 0
+
+    df = _safe_read_parquet(path)
+    if df is None or df.empty:
+        return 0
+
+    if dry_run:
+        return len(df)
+
+    count = 0
+    for _, row in df.iterrows():
+        asset_a = str(row.get("asset_a", ""))
+        asset_b = str(row.get("asset_b", ""))
+        window = int(row.get("window", 0))
+        if not asset_a or not asset_b or window <= 0:
+            continue
+
+        existing = session.execute(
+            select(RelationshipMatrix).where(
+                RelationshipMatrix.asset_a == asset_a,
+                RelationshipMatrix.asset_b == asset_b,
+                RelationshipMatrix.window == window,
+            )
+        ).scalar_one_or_none()
+
+        if existing is not None:
+            existing.correlation = _f(row, "correlation")
+            existing.lag = int(row.get("lag", 0)) if pd.notna(row.get("lag")) else None
+        else:
+            session.add(
+                RelationshipMatrix(
+                    asset_a=asset_a,
+                    asset_b=asset_b,
+                    window=window,
+                    correlation=_f(row, "correlation"),
+                    lag=int(row.get("lag", 0)) if pd.notna(row.get("lag")) else None,
+                )
+            )
+        count += 1
+
+    session.commit()
+    return count
+
+
+def migrate_fear_greed(session: Session, dry_run: bool = False) -> int:
+    """Migrate fear_greed.parquet."""
+    path = ARCHIVE_TABLES / "fear_greed.parquet"
+    if not path.exists():
+        logger.warning("fear_greed.parquet not found")
+        return 0
+
+    df = _safe_read_parquet(path)
+    if df is None or df.empty:
+        return 0
+
+    if dry_run:
+        return len(df)
+
+    count = 0
+    for _, row in df.iterrows():
+        tanggal = _d(row, "tanggal")
+        if tanggal is None:
+            continue
+
+        nilai = float(row.get("nilai", 0))
+        label = _s(row, "label")
+
+        existing = session.execute(
+            select(FearGreed).where(FearGreed.tanggal == tanggal)
+        ).scalar_one_or_none()
+
+        if existing is not None:
+            existing.nilai = nilai
+            existing.label = label
+        else:
+            session.add(
+                FearGreed(
+                    tanggal=tanggal,
+                    nilai=nilai,
+                    label=label,
+                )
+            )
+        count += 1
+
+    session.commit()
+    return count
+
+
+def migrate_source_health(session: Session, dry_run: bool = False) -> int:
+    """Migrate source_health.parquet."""
+    path = ARCHIVE_TABLES / "source_health.parquet"
+    if not path.exists():
+        logger.warning("source_health.parquet not found")
+        return 0
+
+    df = _safe_read_parquet(path)
+    if df is None or df.empty:
+        return 0
+
+    if dry_run:
+        return len(df)
+
+    count = 0
+    for _, row in df.iterrows():
+        source = str(row.get("source", ""))
+        if not source:
+            continue
+
+        existing = session.get(SourceHealth, source)
+        last_success = row.get("last_success")
+        last_error = row.get("last_error")
+
+        if existing is not None:
+            if pd.notna(last_success):
+                existing.last_success = pd.Timestamp(last_success).to_pydatetime()
+            if pd.notna(last_error):
+                existing.last_error = pd.Timestamp(last_error).to_pydatetime()
+            existing.status = str(row.get("status", "ok"))
+        else:
+            ls = (
+                pd.Timestamp(last_success).to_pydatetime()
+                if pd.notna(last_success)
+                else None
+            )
+            le = (
+                pd.Timestamp(last_error).to_pydatetime()
+                if pd.notna(last_error)
+                else None
+            )
+            session.add(
+                SourceHealth(
+                    source=source,
+                    last_success=ls,
+                    last_error=le,
+                    status=str(row.get("status", "ok")),
+                )
+            )
+        count += 1
+
+    session.commit()
+    return count
+
+
+def migrate_audit_log(session: Session, dry_run: bool = False) -> int:
+    """Migrate audit_log.parquet."""
+    path = ARCHIVE_TABLES / "audit_log.parquet"
+    if not path.exists():
+        logger.warning("audit_log.parquet not found")
+        return 0
+
+    df = _safe_read_parquet(path)
+    if df is None or df.empty:
+        return 0
+
+    if dry_run:
+        return len(df)
+
+    count = 0
+    for _, row in df.iterrows():
+        event_type = str(row.get("event_type", ""))
+        if not event_type:
+            continue
+
+        timestamp = row.get("timestamp")
+        created_at = pd.Timestamp(timestamp).to_pydatetime() if pd.notna(timestamp) else None
+
+        session.add(
+            AuditLog(
+                event_type=event_type,
+                event_payload=_s(row, "payload"),
+                actor=str(row.get("actor", "system")),
+                created_at=created_at,
+            )
+        )
+        count += 1
+
+    session.commit()
+    return count
+
+
 def run_all_migrations(session: Session, dry_run: bool = False) -> dict[str, int]:
     """Run all parquet migrations. Returns a summary dict."""
     results: dict[str, int] = {}
@@ -369,6 +800,14 @@ def run_all_migrations(session: Session, dry_run: bool = False) -> dict[str, int
         ("market_calendar", migrate_market_calendar),
         ("fundamental_data", migrate_fundamental_data),
         ("stock_personality", migrate_stock_personality),
+        ("instrument_master", migrate_instrument_master),
+        ("sector_master", migrate_sector_master),
+        ("scores", migrate_scores),
+        ("technical_indicators", migrate_technical_indicators),
+        ("relationship_matrix", migrate_relationship_matrix),
+        ("fear_greed", migrate_fear_greed),
+        ("source_health", migrate_source_health),
+        ("audit_log", migrate_audit_log),
     ]
 
     for name, func in migrations:
@@ -380,6 +819,7 @@ def run_all_migrations(session: Session, dry_run: bool = False) -> dict[str, int
         except Exception as exc:
             logger.error("  %s FAILED: %s", name, exc)
             results[name] = -1
+            session.rollback()
 
     return results
 

@@ -130,4 +130,4 @@ def test_run_all_migrations_all_missing(tmp_path):
     with patch("market.data.migrate_parquet.ARCHIVE_TABLES", tmp_path):
         results = run_all_migrations(session, dry_run=True)
     assert all(v == 0 for v in results.values())
-    assert len(results) == 8
+    assert len(results) == 16
