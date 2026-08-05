@@ -21,9 +21,19 @@ def cmd_env(args: argparse.Namespace) -> int:
 
 def cmd_migrate(args: argparse.Namespace) -> int:
     """Run database migrations for the active environment."""
+    from alembic import command
+    from alembic.config import Config as AlembicConfig
+
     print(f"Running migrations for environment: {settings.env}")
     print(f"Database: {settings.resolved_db_path}")
-    # Alembic integration will be wired in Fase 1.
+
+    alembic_cfg = AlembicConfig("alembic.ini")
+    alembic_cfg.set_main_option(
+        "sqlalchemy.url",
+        f"sqlite:///{settings.resolved_db_path}",
+    )
+    command.upgrade(alembic_cfg, "head")
+    print("Migrations complete.")
     return 0
 
 

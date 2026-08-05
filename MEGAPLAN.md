@@ -95,16 +95,16 @@ Membuat satu aplikasi desktop/web single-user untuk analisis, rekomendasi, simul
 
 ---
 
-### Fase 2 — Core Analysis Engines: IDX (Minggu 5-7)
+### Fase 2 — Core Analysis Engines: IDX (Minggu 5-7) [~] IN PROGRESS
 
 **Tujuan:** setiap faktor pasar modal dapat dihitung dan di-skor untuk saham Indonesia.
 
 **Dokumen acuan:** `05-analisis-teknikal.md`, `06-analisis-fundamental.md`, `07-manajemen-risiko.md`, `18-modul-engine-data-wajib.md`, `21-portfolio-optimization-construction.md`, `23-machine-learning-trading.md`, `24-market-microstructure-likuiditas.md`, `30-sentiment-analysis-alternative-data.md`, `35-multi-asset-cross-market-analysis.md`, `39-screening-aiml-pattern-memory.md`, `58-feature-store-engineering-pipeline.md`, `31-risk-management-lanjutan.md`.
 
 **Deliverables & Markers:**
-- [ ] Technical analysis engine (RSI, MACD, MA, ADX, ATR, BB, volume profile).
-- [ ] Fundamental analysis engine (PER, PBV, ROE, DER, EPS growth, DCF stub).
-- [ ] Macro/global engine (US10Y, USD/IDR, oil, gold, S&P 500, etc.).
+- [x] Technical analysis engine (RSI, MACD, MA, ADX, ATR, BB, volume profile).
+- [x] Fundamental analysis engine (PER, PBV, ROE, DER, EPS growth, DCF stub).
+- [x] Macro/global engine (US10Y, USD/IDR, oil, gold, S&P 500, etc.).
 - [ ] Relationship/correlation engine (lead-lag, spillover, clustering).
 - [ ] Sentiment engine (IndoBERT, foreign flow, broker flow, news, social media).
 - [ ] Corporate action engine integrated into technical signals.
