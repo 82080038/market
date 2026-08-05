@@ -1,0 +1,17 @@
+{
+  "agent": {
+    "model": "swe-1-6-fast",
+    "show_history_on_continue": true
+  },
+  "read_config_from": {
+    "cursor": true,
+    "windsurf": true,
+    "claude": true
+  },
+  "permissions": {
+    "allow": ["Read(pustaka/**)", "Read(AGENTS.md)"],
+    "ask": ["Write(pustaka/**)", "Bash(**)", "Exec(**)"]
+  },
+  "subagents_enabled": true,
+  "notify": "smart"
+}
