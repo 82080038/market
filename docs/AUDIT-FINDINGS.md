@@ -193,3 +193,41 @@ Coverage sekarang 83.77% (sebelumnya 83.36%). Test baru ditambah untuk:
 - ⏳ **Paper Trading 30 Hari** — Jalankan minimal 30 hari simulasi sebelum human-gate broker real.
 - ⏳ **PyTorch Installation** — Install `torch` untuk GPU-accelerated LSTM training (saat ini fallback mode).
 - ⏳ **Live Gate** — Setelah paper period memadai, ajukan approval untuk broker real.
+
+---
+
+## Data Quality Cleanup (6 Agustus 2026)
+
+**Audit mendalam `market_paper.db`** menemukan 8 masalah kualitas data. Semua telah diperbaiki dengan script `src/market/data/cleanup_data.py` (idempotent, safe to re-run).
+
+### Hasil Perbaikan
+
+| # | Masalah | Sebelum | Sesudah | Status |
+|---|---|---|---|---|
+| 1 | Ticker suffix inconsistency | instrument_master & foreign_flow tanpa `.JK` suffix; hanya 976/990 OHLCV match | 990/990 OHLCV ∩ instrument_master match; 970 IM + 961 FF tickers dinormalisasi | ✅ |
+| 2 | OHLC anomalies (high<low, high<open/close, low>open/close) | 796 rows anomali | 0 anomali | ✅ |
+| 3 | volume=0 tidak di-flag | 523K rows tanpa flag | 232K rows di-flag `data_quality_score=0.3` | ✅ |
+| 4 | Timestamp dengan jam (17:00:00) + gap BBCA.JK 24 hari | 7,344 rows dengan time component; BBCA.JK Juli 2026 hanya 7 rows | 0 rows dengan time; BBCA.JK 23 rows; 882 rows backfilled | ✅ |
+| 5 | sector_master duplikasi (22 rows, 2 sistem) | 22 rows dengan 3-letter + long-form codes | 11 rows (long-form IDX only) | ✅ |
+| 6 | market_calendar hanya 2026 | 365 rows (2026 only) | 9,773 rows (2000-2026), 6,882 trading days | ✅ |
+| 7 | fundamental_data nilai 0 (pe/pb/roe/eps/market_cap) | 991 rows dengan pe=0, pb=0, roe=0, eps=0 | 991 rows dengan nilai real (pe=5.54, pb=20403, roe=0.21, eps=1642.97) | ✅ |
+| 8 | esg_scores & corporate_governance tidak ada di DB | 0 rows | esg_scores: 164 rows, corporate_governance: 208 rows | ✅ |
+
+### File Baru/Dimodifikasi
+
+- **`src/market/data/cleanup_data.py`** (baru) — Script cleanup komprehensif untuk 8 fix.
+- **`src/market/db/models.py`** — Tambah `ESGScore` dan `CorporateGovernance` models.
+- **`alembic/versions/0002_add_esg_governance.py`** (baru) — Migration untuk 2 tabel baru.
+
+### Database Status Pasca-Cleanup
+
+| DB | Ukuran | Tabel | Rows | Status |
+|---|---|---|---|---|
+| `market_paper.db` | 839 MB | 23 | 3,070,605 | ✅ Bersih, lengkap |
+| `market_research.db` | 839 MB | 23 | 3,070,605 | ✅ Di-seed dari paper |
+| `market_live.db` | 268 KB | 21 | 1 | Sesuai (Live belum aktif) |
+
+### Backup
+
+- `data/backups/market_paper.db.pre-cleanup-20260806-000825.db` (825 MB)
+- `data/backups/market_research.db.pre-seed-20260806-001740.db` (268 KB)

@@ -396,6 +396,45 @@ class FearGreed(Base):
     label: Mapped[str | None] = mapped_column(String(30), nullable=True)
 
 
+class ESGScore(Base):
+    """ESG scores (pustaka/18 §13 D28, pustaka/90 §2)."""
+
+    __tablename__ = "esg_scores"
+    __table_args__ = (
+        UniqueConstraint("kode", "year", "rating_agency", name="uq_esg_pk"),
+    )
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    kode: Mapped[str] = mapped_column(String(30), nullable=False, index=True)
+    year: Mapped[int] = mapped_column(Integer, nullable=False)
+    rating_agency: Mapped[str] = mapped_column(String(50), nullable=False)
+    rating: Mapped[str | None] = mapped_column(String(30), nullable=True)
+    score: Mapped[float | None] = mapped_column(Numeric(10, 4), nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=_utcnow)
+
+
+class CorporateGovernance(Base):
+    """Corporate governance scores (pustaka/18 §13 D29, pustaka/90 §2)."""
+
+    __tablename__ = "corporate_governance"
+    __table_args__ = (
+        UniqueConstraint("kode", "year", name="uq_cg_pk"),
+    )
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    kode: Mapped[str] = mapped_column(String(30), nullable=False, index=True)
+    year: Mapped[int] = mapped_column(Integer, nullable=False)
+    board_commissioners: Mapped[float | None] = mapped_column(Numeric(10, 2), nullable=True)
+    independent_commissioners: Mapped[float | None] = mapped_column(Numeric(10, 2), nullable=True)
+    board_directors: Mapped[float | None] = mapped_column(Numeric(10, 2), nullable=True)
+    audit_committee_meetings: Mapped[float | None] = mapped_column(Numeric(10, 2), nullable=True)
+    gcg_score: Mapped[str | None] = mapped_column(String(50), nullable=True)
+    acgs_score: Mapped[str | None] = mapped_column(String(50), nullable=True)
+    has_whistleblowing: Mapped[bool | None] = mapped_column(Boolean, nullable=True)
+    has_risk_committee: Mapped[bool | None] = mapped_column(Boolean, nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=_utcnow)
+
+
 class Watchlist(Base):
     """User watchlist (pustaka/18 §13 #12)."""
 
