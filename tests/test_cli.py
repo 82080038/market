@@ -27,7 +27,10 @@ def test_migrate_command(capsys, tmp_path, monkeypatch):
     assert "Migrations complete" in captured.out
 
 
-def test_api_command(capsys):
+def test_api_command(capsys, monkeypatch):
+    import uvicorn
+
+    monkeypatch.setattr(uvicorn, "run", lambda *a, **kw: None)
     assert main(["api"]) == 0
     captured = capsys.readouterr()
     assert "Starting API server" in captured.out
