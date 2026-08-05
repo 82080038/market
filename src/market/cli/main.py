@@ -39,8 +39,20 @@ def cmd_migrate(args: argparse.Namespace) -> int:
 
 def cmd_api(args: argparse.Namespace) -> int:
     """Start the FastAPI development server."""
+    import uvicorn
+
+    host = args.host
+    port = args.port
     print(f"Starting API server for environment: {settings.env}")
-    # Uvicorn integration will be wired in Fase 6.
+    print(f"  Host: {host}:{port}")
+    print(f"  DB: {settings.resolved_db_path}")
+    uvicorn.run(
+        "market.api.app:create_app",
+        host=host,
+        port=port,
+        reload=args.reload,
+        factory=True,
+    )
     return 0
 
 
@@ -75,6 +87,61 @@ def cmd_scheduler(args: argparse.Namespace) -> int:
     return 0
 
 
+def cmd_model(args: argparse.Namespace) -> int:
+    """Manage model registry and champion promotion."""
+    from market.mlops.registry import ModelRegistry
+
+    registry = ModelRegistry()
+
+    if args.model_action == "list":
+        models = registry.list_models()
+        if not models:
+            print("No models registered.")
+            return 0
+        for m in models:
+            aliases = ", ".join(m.aliases) if m.aliases else "—"
+            print(f"  {m.model_id}: {m.model_type} v{m.version} [{aliases}]")
+        print(f"Total: {len(models)} models")
+        return 0
+
+    if args.model_action == "champion":
+        champ = registry.champion
+        if champ is None:
+            print("No champion model set.")
+            return 0
+        print(f"Champion: {champ.model_id} ({champ.model_type} v{champ.version})")
+        print(f"  Metrics: {champ.metrics}")
+        return 0
+
+    if args.model_action == "promote":
+        model = registry.get(args.model_id)
+        if model is None:
+            print(f"Model not found: {args.model_id}")
+            return 1
+        success = registry.promote(args.model_id)
+        if success:
+            updated = registry.get(args.model_id)
+            if updated is not None:
+                print(f"Promoted {args.model_id} → {updated.aliases}")
+            else:
+                print(f"Promoted {args.model_id}")
+        else:
+            print(f"Promotion failed for {args.model_id}")
+            return 1
+        return 0
+
+    if args.model_action == "rollback":
+        new_champ = registry.rollback()
+        if new_champ is None:
+            print("No champion to rollback from.")
+            return 1
+        print(f"Rolled back to: {new_champ.model_id}")
+        return 0
+
+    print("Usage: market model [list|champion|promote|rollback]")
+    return 0
+
+
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(
         prog="market",
@@ -89,6 +156,9 @@ def main(argv: list[str] | None = None) -> int:
     migrate_p.set_defaults(func=cmd_migrate)
 
     api_p = sub.add_parser("api", help="Start FastAPI server")
+    api_p.add_argument("--host", default="127.0.0.1", help="Bind host")
+    api_p.add_argument("--port", type=int, default=8000, help="Bind port")
+    api_p.add_argument("--reload", action="store_true", help="Auto-reload on changes")
     api_p.set_defaults(func=cmd_api)
 
     scheduler_p = sub.add_parser("scheduler", help="Start daily scheduler")
@@ -99,6 +169,16 @@ def main(argv: list[str] | None = None) -> int:
         choices=["list", "run"],
     )
     scheduler_p.set_defaults(func=cmd_scheduler)
+
+    model_p = sub.add_parser("model", help="Manage model registry")
+    model_p.add_argument(
+        "model_action",
+        nargs="?",
+        default="list",
+        choices=["list", "champion", "promote", "rollback"],
+    )
+    model_p.add_argument("--model-id", default="", help="Model ID for promote")
+    model_p.set_defaults(func=cmd_model)
 
     args = parser.parse_args(argv)
     result: int = args.func(args)

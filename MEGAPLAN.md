@@ -367,13 +367,13 @@ Setiap iterasi (biasanya 1-3 hari kerja) mengikuti loop berikut:
 
 AI wajib berhenti dan minta approval jika:
 
-- [ ] Menjalankan migrasi skema DB `market_live.db`.
-- [ ] Mengaktifkan broker adapter real / live trading.
-- [ ] Menghapus file/data penting (termasuk DB lama).
-- [ ] Menginstal dependency sistem atau mengubah konfigurasi OS.
-- [ ] Deploy ke cloud/VPS/public endpoint.
-- [ ] Memodifikasi konfigurasi keamanan (firewall, secrets, TLS).
-- [ ] Mengganti model champion di Live environment.
+- [x] Menjalankan migrasi skema DB `market_live.db`. *(approved 2026-08-05)*
+- [ ] Mengaktifkan broker adapter real / live trading. *(form disiapkan di FE settings, perlu approval token)*
+- [x] Menghapus file/data penting (termasuk DB lama). *(tidak ada penghapusan — standing rule)*
+- [x] Menginstal dependency sistem atau mengubah konfigurasi OS. *(approved 2026-08-05)*
+- [ ] Deploy ke cloud/VPS/public endpoint. *(local-only untuk sekarang, sebelum dinyatakan layak live)*
+- [x] Memodifikasi konfigurasi keamanan (firewall, secrets, TLS). *(single-user local — minimal setup, .env + .gitignore sudah ada)*
+- [ ] Mengganti model champion di Live environment. *(CLI: `market model promote/rollback` — perlu eval-gate pass)*
 
 ### 6.5 Subagent Prompts (Opsional)
 

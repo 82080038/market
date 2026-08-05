@@ -1,0 +1,37 @@
+bertindak selaku perancang aplikasi profesional dan ahli pasar modal;
+analisa secara mendalam dan satu persatu; seluruh file di @pustaka; 
+lakukan CRUD terhadap file yang membutuhkan tindakan tersebut;
+analisa secara mendalam dari sumber apapun, termasuk dari internet untuk tujuan dari @pustaka, lengkapi secara ahli dan profesional;
+kemudian, 
+apabila sudah selesai, siapkan file ".devin", untuk membuat/update konfigurasi devin (rules, skills, worflows) dan memories;
+sekalian buatkan aturan bahwa context di cascade sudah hampir selesai/habis, segera update ke memories, termasuk ke konfigurasi devin (rules, skills, worflows); agar context tidak hilang/lupa arah development/tujuan.
+
+lanjutkan
+
+bertindak selaku developer aplikasi pasar saham profesional;
+di aplikasi,sebelum aplikasi mengambil keputusan pilihan instrumen pasar modal, harus ada pengetahuan aplikasi tentang seberapa banyak durasi dan data instrumen pasar modal yang harus dilakukan screening/testing selanjutnya, sehingga aplikasi menyadari tentang pola-pola dari instrumen tersebut, melakukan manajemen resiko dan keputusan, dan atau hal lainnya sesuai tujuan aplikasi, termasuk perfroma model dan auto adjust.
+biasanya setiap instrumen pasar modal, termasuk setiap saham, jenis instrumen pasar modal; memiliki pola yang berbeda, tergantung hal yang mempengaruhi instrumen pasar modal tersebut.
+
+bertindak selaku perancang aplikasi profesional dan ahli pasar modal;
+pelajari aplikasi secara mendalam;
+di FE, buatkan fitur untuk memberikan pilihan kepada user, tentang otomatisasi trading robot/eksekusi hasil keputusan/sinyal trading, berdasarkan screening AI/ML/model/engine, dan sebagainya; apakah aplikasi melakukan portfolio terhadap instrumen indonesia atau terhadap instrumen pasar modal lainnya; dalam bentuk centang; dan buat aturan, kapan bagian tersebut boleh dicentang, dan kapan untuk tidak boleh. yang dicentang, segera lakukan pengujian ulang dan siapkan rencana eksekusi ke pasar modal, kemudian eksekusi.
+
+bertindak selaku perancang aplikasi profesional dan ahli pasar modal;
+mungkin anda mengetahui arti "leverage", seharusnya aplikasi juga bisa memberikan saran leverage kepada user, dengan alasan yang tepat dan bisa dipertanggung jawabkan, namun juga memberikan opsi kepada user tentang opsi toggle  leverage tersebut.
+
+
+bertindak selaku perancang aplikasi profesional dan ahli pasar modal;
+backtest di aplikasi, melakukan kegiatannya terhadap seluruh instrumen pasar modal, terhadap seluruh perubahan data, terhadap seluruh aktivitas user dan pasar modal dunia/lainnya. jadi, tidak ada campur tangan user di bagian tersebut, karena seharusnya bagian tersebut dibantu oleh AI-self evolution & autonomous layer.
+
+bertindak selaku programmer tester aplikasi, yang ahli di bidang pemograman dan pasar modal;
+lakukan testing komprehensif aplikasi, termasuk menggunakan playwright (headless, headed, browser),
+terkait playwright tersebut, komputer ini memiliki 3 layar,  tampilkan browser hasil di layar acer atau epson.
+
+
+pada saat melakukan pengecekan pola instrumen  pasar modal dan prediksi, aplikasi tidak boleh melihat data ahead/data di depan tanggal yang belum di-cek; sehingga apabila terjadi error prediksi, aplikasi harus mengetahui mengapa hal tersebut bisa error, memperbaikinya, mengingat dan untuk masa depan menjadi salah satu perhitungan resiko yang tidak boleh dilupakan, mengingat kejadian tersebut bisa saja terjadi lagi, sehingga aplikasi bisa melakukan pengambilan keputusan eksekusi portfolio yang bijak, objektif dan empiris; terhadap instrumen pasar modal.
+pengecekan pola instrumen  pasar modal tersebut harus dibarengi dengan adanya prediksi selanjutnya terhadap kondisi instrumen pasar modal;
+dan proses pengecekan pola instrumen  pasar modal dan prediksi tersebut, tampil di FE, baik dalam bentuk terminal, maupun grafik.
+
+
+berikan juga pengingat AI/ML, terhadap pola instrumen pasar modal, termasuk saham yang delisted, kenapa delisted atau diblokir; agar menghindari pola tersebut di pengambilan keputusan instrumen pasar modal yang akan masuk porfolio/yang disarankan aplikasi (mungkin juga menjadi bagian memory AI-self evolution & autonomous layer).
+
