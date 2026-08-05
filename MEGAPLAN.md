@@ -134,20 +134,20 @@ Membuat satu aplikasi desktop/web single-user untuk analisis, rekomendasi, simul
 
 ---
 
-### Fase 4 — Backtest, Paper Trading & Risk (Minggu 10-12)
+### Fase 4 — Backtest, Paper Trading & Risk (Minggu 10-12) [~] IN PROGRESS
 
 **Tujuan:** validasi strategi tanpa risiko finansial.
 
 **Dokumen acuan:** `19-flow-logic-testing-kpi.md`, `20-syarat-robot-auto-trading.md`, `29-backtesting-strategy-validation.md`, `74-trading-financial-management-capital-operations.md`, `77-performance-attribution-benchmark-comparison.md`, `85-backtest-to-live-gap-prevention.md`, `07-manajemen-risiko.md`, `31-risk-management-lanjutan.md`.
 
 **Deliverables & Markers:**
-- [ ] Event-driven backtest engine (next-bar-open, realistic cost, slippage).
-- [ ] Strategies: Buy & Hold, MA Crossover, Conviction.
-- [ ] Walk-forward analysis, Monte Carlo simulation, Deflated Sharpe Ratio.
-- [ ] Paper trading engine with lot validation, fees, tax, dividends.
+- [x] Event-driven backtest engine (next-bar-open, realistic cost, slippage).
+- [x] Strategies: Buy & Hold, MA Crossover, Conviction.
+- [x] Walk-forward analysis, Monte Carlo simulation, Deflated Sharpe Ratio.
+- [x] Paper trading engine with lot validation, fees, tax, dividends.
 - [ ] PnL engine (realized/unrealized, FIFO cost basis).
-- [ ] Risk engine: VaR/CVaR, Kelly, position sizing, drawdown circuit breaker.
-- [ ] Backtest quality gate runner (PBO, DSR, WFA).
+- [x] Risk engine: VaR/CVaR, Kelly, position sizing, drawdown circuit breaker.
+- [x] Backtest quality gate runner (WFA, Monte Carlo, DSR).
 
 **Acceptance:** Backtest returns equity curve, Sharpe, Sortino, max DD, win rate; paper trading updates virtual portfolio correctly.
 
