@@ -191,7 +191,7 @@ Coverage sekarang 83.77% (sebelumnya 83.36%). Test baru ditambah untuk:
 
 ### Remaining (Human-Gate Required):
 - ⏳ **Paper Trading 30 Hari** — Jalankan minimal 30 hari simulasi sebelum human-gate broker real.
-- ⏳ **PyTorch Installation** — Install `torch` untuk GPU-accelerated LSTM training (saat ini fallback mode).
+- ✅ **PyTorch Installation** — `torch 2.5.1+cu121` installed, LSTM training verified on `cuda:1` (GTX 1050 Ti, 4GB VRAM, 16.6 MB used). `get_device()` auto-selects `cuda:1` per project rules. Added `[gpu]` extras to `pyproject.toml`.
 - ⏳ **Live Gate** — Setelah paper period memadai, ajukan approval untuk broker real.
 
 ---

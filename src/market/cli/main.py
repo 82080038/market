@@ -58,10 +58,12 @@ def cmd_api(args: argparse.Namespace) -> int:
 
 def cmd_scheduler(args: argparse.Namespace) -> int:
     """Start the daily data & analysis scheduler."""
+    from market.core.wiring import wire_all_events
     from market.scheduler import DailyScheduler
     from market.scheduler_tasks import register_default_tasks
 
     print(f"Starting scheduler for environment: {settings.env}")
+    wire_all_events()  # connect event handlers before running tasks
     scheduler = DailyScheduler()
     register_default_tasks(scheduler)
 

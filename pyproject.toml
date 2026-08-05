@@ -43,6 +43,9 @@ dev = [
     "types-pytz>=2024.1",
     "types-requests>=2.32",
 ]
+gpu = [
+    "torch>=2.5",
+]
 
 [project.scripts]
 market = "market.cli.main:main"
