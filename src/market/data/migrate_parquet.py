@@ -15,6 +15,7 @@ from pathlib import Path
 from typing import TYPE_CHECKING
 
 import pandas as pd
+from sqlalchemy import select
 
 from market.config import settings
 from market.db.models import (
@@ -82,12 +83,22 @@ def migrate_ohlcv(session: Session, dry_run: bool = False) -> int:
 
     count = 0
     for _, row in df.iterrows():
+        ticker = str(row.get("ticker", ""))
+        ts = pd.Timestamp(row.get("timestamp")).to_pydatetime()
+        existing = session.execute(
+            select(OHLCV).where(
+                OHLCV.ticker == ticker,
+                OHLCV.timestamp == ts,
+                OHLCV.timeframe == "1d",
+            )
+        ).scalar_one_or_none()
+        if existing:
+            count += 1
+            continue
         session.add(
             OHLCV(
-                ticker=str(row.get("ticker", "")),
-                timestamp=pd.Timestamp(
-                    row.get("timestamp")
-                ).to_pydatetime(),
+                ticker=ticker,
+                timestamp=ts,
                 timeframe="1d",
                 open=float(row.get("open", 0)),
                 high=float(row.get("high", 0)),
@@ -322,16 +333,24 @@ def migrate_stock_personality(session: Session, dry_run: bool = False) -> int:
     count = 0
     for _, row in df.iterrows():
         ticker = str(row.get("kode", row.get("ticker", "")))
-        session.add(
-            StockPersonality(
-                ticker=ticker,
-                volatility_regime=_s(row, "volatility_regime"),
-                trend_bias=_s(row, "trend_bias"),
-                beta_vs_ihsg=_f(row, "beta_vs_ihsg"),
-                liquidity_score=_f(row, "liquidity_score"),
-                personality_label=_s(row, "personality_label"),
+        existing = session.get(StockPersonality, ticker)
+        if existing is not None:
+            existing.volatility_regime = _s(row, "volatility_regime") or existing.volatility_regime
+            existing.trend_bias = _s(row, "trend_bias") or existing.trend_bias
+            existing.beta_vs_ihsg = _f(row, "beta_vs_ihsg")
+            existing.liquidity_score = _f(row, "liquidity_score")
+            existing.personality_label = _s(row, "personality_label") or existing.personality_label
+        else:
+            session.add(
+                StockPersonality(
+                    ticker=ticker,
+                    volatility_regime=_s(row, "volatility_regime"),
+                    trend_bias=_s(row, "trend_bias"),
+                    beta_vs_ihsg=_f(row, "beta_vs_ihsg"),
+                    liquidity_score=_f(row, "liquidity_score"),
+                    personality_label=_s(row, "personality_label"),
+                )
             )
-        )
         count += 1
 
     session.commit()

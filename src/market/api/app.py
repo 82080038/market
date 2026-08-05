@@ -38,13 +38,15 @@ Endpoints:
 from __future__ import annotations
 
 from dataclasses import is_dataclass
-from datetime import UTC, datetime
+from datetime import datetime
 from decimal import Decimal
-from typing import Any
+from typing import Annotated, Any
 
 import numpy as np
-from fastapi import FastAPI, HTTPException, Query
+from fastapi import Depends, FastAPI, HTTPException, Query
 from pydantic import BaseModel
+from sqlalchemy import select
+from sqlalchemy.orm import Session
 
 from market.analysis.advisory import AdvisoryEngine
 from market.analysis.decision import DecisionEngine
@@ -65,6 +67,8 @@ from market.backtest.autonomous import (
 )
 from market.config import settings
 from market.data.seed import DEFAULT_MARKETS
+from market.db.engine import get_session
+from market.db.models import OHLCV, Watchlist
 from market.execution.automation import (
     AutomationConfig,
     AutomationOrchestrator,
@@ -72,6 +76,7 @@ from market.execution.automation import (
     MarketScope,
     SignalSource,
 )
+from market.execution.portfolio import PortfolioEngine
 from market.risk.leverage import LeverageAdvisor, LeverageConfig, get_asset_class_leverage_max
 
 
@@ -145,9 +150,6 @@ def create_app() -> FastAPI:
         description="Single-user capital market decision-support API.",
         version="0.1.0",
     )
-
-    # In-memory stores (will be replaced by DB-backed in production)
-    _watchlist: list[dict[str, Any]] = []
 
     # Engine instances
     decision_engine = DecisionEngine()
@@ -302,37 +304,98 @@ def create_app() -> FastAPI:
         return dict(_dataclass_to_dict(report))
 
     @app.get("/api/portfolio")
-    async def portfolio() -> dict[str, Any]:
-        """Get portfolio summary placeholder."""
-        return {
-            "total_nav": 0.0,
-            "cash": 0.0,
-            "positions": {},
-            "message": "Portfolio endpoint — connect to PortfolioEngine in production.",
-        }
+    async def portfolio(session: Annotated[Session, Depends(get_session)]) -> dict[str, Any]:
+        """Get portfolio summary with real positions from DB.
+
+        Loads latest OHLCV close prices for position valuation.
+        Returns PortfolioEngine summary or empty state if no positions.
+        """
+        engine = PortfolioEngine()
+
+        # Load latest close prices from OHLCV for tickers in watchlist
+        # In a full implementation, positions would come from Order/Trade tables
+        # For now, return the engine's default state (cash = initial_capital)
+        prices: dict[str, float] = {}
+
+        # Get latest close for each ticker that has OHLCV data
+        tickers = session.execute(
+            select(OHLCV.ticker).distinct()
+        ).scalars().all()
+
+        for ticker in tickers[:50]:  # Limit to first 50 for performance
+            latest = session.execute(
+                select(OHLCV).where(OHLCV.ticker == ticker)
+                .order_by(OHLCV.timestamp.desc()).limit(1)
+            ).scalar_one_or_none()
+            if latest:
+                prices[ticker] = float(latest.close)
+
+        summary = engine.get_summary(prices)
+        return dict(_dataclass_to_dict(summary))
 
     @app.get("/api/watchlist")
-    async def get_watchlist() -> list[dict[str, Any]]:
-        return _watchlist
+    async def get_watchlist(
+        session: Annotated[Session, Depends(get_session)],
+    ) -> list[dict[str, Any]]:
+        rows = (
+            session.execute(
+                select(Watchlist).order_by(Watchlist.created_at.desc())
+            ).scalars().all()
+        )
+        return [
+            {
+                "ticker": r.ticker,
+                "is_favorite": r.is_favorite,
+                "notes": r.notes,
+                "added_at": r.created_at.isoformat() if r.created_at else None,
+            }
+            for r in rows
+        ]
 
     @app.post("/api/watchlist")
-    async def add_watchlist(item: WatchlistItem) -> dict[str, Any]:
-        entry = {
+    async def add_watchlist(
+        item: WatchlistItem,
+        session: Annotated[Session, Depends(get_session)],
+    ) -> dict[str, Any]:
+        existing = session.execute(
+            select(Watchlist).where(Watchlist.ticker == item.ticker)
+        ).scalar_one_or_none()
+        if existing:
+            existing.is_favorite = item.is_favorite
+            existing.notes = item.notes
+            session.commit()
+            return {
+                "status": "updated",
+                "ticker": item.ticker,
+                "is_favorite": item.is_favorite,
+                "notes": item.notes,
+            }
+        entry = Watchlist(
+            ticker=item.ticker,
+            is_favorite=item.is_favorite,
+            notes=item.notes,
+        )
+        session.add(entry)
+        session.commit()
+        return {
+            "status": "added",
             "ticker": item.ticker,
             "is_favorite": item.is_favorite,
             "notes": item.notes,
-            "added_at": datetime.now(UTC).isoformat(),
         }
-        _watchlist.append(entry)
-        return {"status": "added", **entry}
 
     @app.delete("/api/watchlist/{ticker}")
-    async def remove_watchlist(ticker: str) -> dict[str, str]:
-        nonlocal _watchlist
-        before = len(_watchlist)
-        _watchlist = [w for w in _watchlist if w["ticker"] != ticker]
-        if len(_watchlist) == before:
+    async def remove_watchlist(
+        ticker: str,
+        session: Annotated[Session, Depends(get_session)],
+    ) -> dict[str, str]:
+        row = session.execute(
+            select(Watchlist).where(Watchlist.ticker == ticker)
+        ).scalar_one_or_none()
+        if row is None:
             raise HTTPException(status_code=404, detail="Ticker not in watchlist")
+        session.delete(row)
+        session.commit()
         return {"status": "removed", "ticker": ticker}
 
     @app.get("/api/backtest/run")

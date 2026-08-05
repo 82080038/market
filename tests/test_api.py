@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import pytest
 from fastapi.testclient import TestClient
 
 from market.api.app import create_app
@@ -69,6 +70,7 @@ def test_advisory():
     assert data["screened"] == 0
 
 
+@pytest.mark.isolated_db
 def test_portfolio():
     client = TestClient(create_app())
     r = client.get("/api/portfolio")
@@ -76,8 +78,12 @@ def test_portfolio():
     assert "total_nav" in r.json()
 
 
+@pytest.mark.isolated_db
 def test_watchlist_add_get_remove():
     client = TestClient(create_app())
+
+    # Clean up any existing entry for this ticker
+    client.delete("/api/watchlist/BBCA.JK")
 
     # Add
     r = client.post("/api/watchlist", json={
@@ -88,11 +94,11 @@ def test_watchlist_add_get_remove():
     assert r.status_code == 200
     assert r.json()["status"] == "added"
 
-    # Get
+    # Get — find our ticker
     r = client.get("/api/watchlist")
     assert r.status_code == 200
-    assert len(r.json()) == 1
-    assert r.json()[0]["ticker"] == "BBCA.JK"
+    tickers = [w["ticker"] for w in r.json()]
+    assert "BBCA.JK" in tickers
 
     # Remove
     r = client.delete("/api/watchlist/BBCA.JK")
@@ -101,9 +107,11 @@ def test_watchlist_add_get_remove():
 
     # Verify removed
     r = client.get("/api/watchlist")
-    assert len(r.json()) == 0
+    tickers = [w["ticker"] for w in r.json()]
+    assert "BBCA.JK" not in tickers
 
 
+@pytest.mark.isolated_db
 def test_watchlist_remove_not_found():
     client = TestClient(create_app())
     r = client.delete("/api/watchlist/NONEXIST")
