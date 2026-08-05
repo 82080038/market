@@ -34,47 +34,36 @@
 
 ## Status Implementasi Terkini
 
-- **Fase 0 — Bootstrap & Environment Lifecycle:** ✅ SELESAI.
-  - File root: `pyproject.toml`, `.env.example`, `.gitignore`, `README.md`, `requirements-gpu.txt`.
-  - Struktur: `src/market/`, `frontend/`, `tests/`, `alembic/`, `data/`, `scripts/`, `docs/adr/`.
-  - `src/market/config.py` (environment-aware settings, database isolation, live-approval token).
-  - `src/market/cli/main.py` (env, migrate, api, scheduler commands).
-  - Tests: `tests/test_config.py`, `tests/test_cli.py` — coverage 92.55%.
-  - ADR-0001 tentang environment lifecycle.
-  - `uv sync --extra dev` berhasil; `ruff`, `mypy`, `pytest` bersih.
-- **GitHub push:** Proyek pertama kali di-push ke `git@github.com:82080038/market.git` pada branch `main` (commit e80f8fd). Identitas git lokal: `petrick@petrick-pc` / `Petrick`.
-- **Fase 1 — Data Platform & Migration:** [~] IN PROGRESS.
-  - SQLAlchemy models: `market_registry`, `instrument_master`, `ohlcv`, `corporate_actions`, `dividends`, `market_calendar`, `fx_rates`, `scores`, `relationship_matrix`, `source_health`, `audit_log`, `data_watermark`, `fundamental_data`, `macro_data`, `foreign_flow`, `technical_indicators`, `stock_personality`, `sector_master`, `fear_greed`, `watchlist`.
-  - DB engine: `src/market/db/engine.py` (SQLite WAL, session management).
-  - Data contracts: `src/market/data/contracts.py` (NormalizedOHLCV, DataQualityResult, CorporateActionRecord, FXRateRecord).
-  - Yahoo Finance adapter: `src/market/data/yahoo_adapter.py` (fetch_ohlcv, fetch_dividends, fetch_splits, fetch_info).
-  - Rate limiter: `src/market/data/rate_limit.py` (sliding window).
-  - Data quality engine: `src/market/data/validation.py` (4 checks, score 0-100, accept/flag/pause).
-  - Data storage: `src/market/data/storage.py` (save/load OHLCV, scores, source health, audit, watermark).
-  - Acquisition engine: `src/market/data/acquisition.py` (fetch → validate → store orchestration).
-  - Market seed: `src/market/data/seed.py` (8 major exchanges: XIDX, XNYS, XNAS, XHKG, XTSE, XSGX, XLON, XFRA).
-  - Parquet migration: `src/market/data/migrate_parquet.py` (8 datasets: ohlcv, corporate_actions, dividends, macro_data, foreign_flow, market_calendar, fundamental_data, stock_personality).
-  - Tests: 38 passed, coverage 75.75%.
-  - Pending: daily scheduler skeleton, actual parquet migration run.
+- **Semua Fase 0-11:** ✅ DONE. 98/98 deliverables complete.
+  - 458 tests pass, coverage 82.68%, ruff + mypy clean.
+  - Latest commit: `a1fd9ae` (2026-08-05).
+  - GitHub: synced to `git@github.com:82080038/market.git` branch `main`.
+
+- **Human-Gate Checklist (§6.4) — approved items:**
+  - [x] Migrasi `market_live.db` — 21 tabel berhasil di-migrate.
+  - [x] Install dependency sistem — openpyxl, reportlab ditambahkan.
+  - [x] Tidak ada penghapusan file/data penting — standing rule.
+  - [x] Security config — single-user local, .env + .gitignore sudah ada.
+  - [ ] Broker real activation — form disiapkan di FE settings, perlu approval token.
+  - [ ] Deploy ke cloud/VPS — local-only untuk sekarang.
+  - [ ] Model champion di Live — CLI `market model promote/rollback` siap, perlu eval-gate pass.
+
+- **Modul baru sesi ini:**
+  - `src/market/scheduler.py` — DailyScheduler (task registration, cron-like, execution logging).
+  - `src/market/analysis/extras.py` — CorporateActionEngine, FeatureStore, PatternMemory.
+  - `src/market/analysis/attribution.py` — RegimeWeightAdjuster, BrinsonAttribution, TradeLedger, StressTester.
+  - `src/market/analysis/alerts.py` — AlertManager (15 alert types, 4 channels).
+  - `.github/workflows/ci.yml` — GitHub Actions CI (ruff + mypy + pytest).
+  - `Makefile` — local deployment commands.
+  - CLI: `market api --host --port --reload`, `market model [list|champion|promote|rollback]`.
+  - FE: form Aktivasi Broker Real di settings page.
 
 ## Tugas / Next Steps yang Masih Terbuka
 
-1. **Fase 1: Data Platform & Migration** — create `market_registry`, `instrument_master`, data acquisition engine, validation engine, FX/calendar, migrate parquet datasets.
-2. **Migrasi data berharga** dari `/media/petrick/Parquet/trading_data/`:
-   - `commodity/` → tabel `commodity_prices` (prioritas kritis, lihat `91-komoditas-spesifik-idx.md`).
-   - `sqlite_backup/idx_sentiment_data.parquet` → `sentiment_history`.
-   - `sqlite_backup/idx_social_media_sentiment.parquet` → `social_media_sentiment`.
-   - `sqlite_backup/shareholders.parquet` → `shareholders`.
-   - `sqlite_backup/idx_quarterly_earnings.parquet` → `quarterly_earnings`.
-   - `sqlite_backup/idx_stock_splits.parquet` → enrich `corporate_actions`.
-   - `sqlite_backup/saham_snapshot.parquet` → `fundamental_history`.
-   - `sqlite_backup/valuation_cache.parquet` → `valuation_cache`.
-   - `sqlite_backup/pattern_reliability.parquet` → `pattern_reliability`.
-2. **Menutup gap utama** menurut `88-gap-teori-vs-praktek.md`: frontend 7 halaman, OMS/EMS, broker adapter Sinarmas/BNI, real-time market data, Deflated Sharpe Ratio, KPI tracking otomatis.
-3. **Menambahkan faktor yang belum tercakup** menurut `89-faktor-pasar-modal-analisis-implementasi.md`: geopolitik/event shock, seasonal/kalender, sector rotation, insider trading, IPO timing, earnings season, commodity supercycle, tax-loss selling, index inclusion, QE/QT, retail participation.
-4. **Melengkapi mapping schema Bahasa Indonesia → English** di `90-analisis-parquet-data-awal.md` §6.1 untuk file yang belum punya mapping.
-5. **Implementasi multi-market & multi-asset** menurut `92-multi-market-multi-asset-trading-system.md`: market registry, instrument master extended, FX engine, cross-market relationship, per-asset decision weights, multi-market OMS, portfolio multi-currency, AI/ML transfer learning, roadmap 8 fase tambahan.
-6. **Implementasi lifecycle environment** menurut `93-lifecycle-environments-real-testing-ai.md`: environment selector, database isolation per env, broker adapter modes, backtest quality gate runner, 30-day paper orchestrator, model registry aliases, live approval token & audit log, auto-pause/rollback module, CI/CD promotion pipeline.
+1. **Paper trading 30 hari** — jalankan paper trading minimal 30 hari sebelum aktivasi broker real.
+2. **Broker real activation** — setelah paper trading memadai, gunakan form di FE settings + approval token.
+3. **Deploy ke cloud/VPS** — setelah dinyatakan layak live.
+4. **Model champion promotion** — gunakan `market model promote` setelah eval-gate pass (min Sharpe, max drawdown, min win rate).
 
 ## Referensi Kunci
 
