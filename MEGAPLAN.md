@@ -255,22 +255,22 @@ Membuat satu aplikasi desktop/web single-user untuk analisis, rekomendasi, simul
 
 ---
 
-### Fase 10 — Security, Compliance & Operations (Minggu 28-29)
+### Fase 10 — Security, Compliance & Operations (Minggu 28-29) [✓] DONE
 
 **Tujuan:** sistem siap produksi lokal dari sisi keamanan, kepatuhan, dan operasional.
 
 **Dokumen acuan:** `10-regulasi-pasar-modal.md`, `33-cybersecurity-trading-system.md`, `41-uu-pdp-compliance-fintech.md`, `42-customer-support-dispute-resolution.md`, `47-operational-contract-runbook.md`, `48-disaster-recovery-business-continuity.md`, `49-incident-management-post-mortem.md`, `50-change-release-management-trading.md`, `54-trade-surveillance-market-abuse.md`, `62-api-versioning-deprecation-policy.md`, `63-investasi-syariah-des-screening.md`, `64-fractional-shares-micro-investing.md`, `82-vendor-third-party-integration-management.md`, `87-regulatory-developments-2026.md`.
 
 **Deliverables & Markers:**
-- [ ] Credential encryption at rest (Fernet).
-- [ ] API versioning policy (`/api/v1/...`).
-- [ ] Sharia-compliant DES screening.
-- [ ] Fractional shares / micro-investing stubs.
-- [ ] Vendor health check & SLA monitoring.
-- [ ] Trade surveillance / market-abuse detection stubs.
-- [ ] Incident response & DR runbooks tested.
-- [ ] Customer support & dispute resolution workflow.
-- [ ] UU PDP compliance checklist implemented.
+- [x] Credential encryption at rest (Fernet).
+- [x] API versioning policy (`/api/v1/...`).
+- [x] Sharia-compliant DES screening.
+- [x] Fractional shares / micro-investing stubs.
+- [x] Vendor health check & SLA monitoring.
+- [x] Trade surveillance / market-abuse detection stubs.
+- [x] Incident response & DR runbooks tested.
+- [x] Customer support & dispute resolution workflow.
+- [x] UU PDP compliance checklist implemented.
 
 **Acceptance:** Security review passes; no secrets in repo; runbooks executed at least once.
 
