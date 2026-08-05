@@ -1,0 +1,206 @@
+"""Price endpoints: latest intraday prices and prediction-vs-actual comparison.
+
+Provides:
+- GET /api/prices/latest — latest intraday price snapshot from DB
+- POST /api/prices/intraday/trigger — manually trigger intraday fetch
+- GET /api/prices/compare/{ticker} — compare prediction vs actual price
+"""
+
+from __future__ import annotations
+
+from typing import Annotated, Any
+
+from fastapi import APIRouter, Depends, HTTPException
+from sqlalchemy import desc, select
+from sqlalchemy.orm import Session
+
+from market.core.events import broker
+from market.db.engine import get_session
+from market.db.models import OHLCV
+
+router = APIRouter(prefix="/api/prices", tags=["prices"])
+
+
+@router.get("/latest")
+async def prices_latest(
+    session: Annotated[Session, Depends(get_session)],
+    ticker: str | None = None,
+) -> dict[str, Any]:
+    """Latest intraday price snapshot.
+
+    Returns latest 15-min OHLCV bars from DB for all intraday tickers,
+    or a specific ticker if specified.
+
+    Query params:
+        ticker: Optional ticker filter (e.g. "^JKSE", "BBCA.JK")
+    """
+    stmt = (
+        select(OHLCV)
+        .where(OHLCV.timeframe == "15m")
+        .order_by(desc(OHLCV.timestamp))
+        .limit(50)
+    )
+    if ticker:
+        stmt = (
+            select(OHLCV)
+            .where(OHLCV.timeframe == "15m", OHLCV.ticker == ticker)
+            .order_by(desc(OHLCV.timestamp))
+            .limit(20)
+        )
+
+    rows = session.execute(stmt).scalars().all()
+
+    if not rows:
+        return {
+            "prices": {},
+            "count": 0,
+            "message": "No intraday data yet. Run fetch_intraday first.",
+        }
+
+    prices: dict[str, dict[str, Any]] = {}
+    for r in rows:
+        if r.ticker in prices:
+            continue
+        prices[r.ticker] = {
+            "price": float(r.close),
+            "open": float(r.open),
+            "high": float(r.high),
+            "low": float(r.low),
+            "volume": r.volume,
+            "timestamp": r.timestamp.isoformat() if r.timestamp else None,
+            "timeframe": r.timeframe,
+            "source": r.source,
+        }
+
+    return {
+        "prices": prices,
+        "count": len(prices),
+    }
+
+
+@router.post("/intraday/trigger")
+async def intraday_trigger(
+    body: dict[str, Any] | None = None,
+) -> dict[str, Any]:
+    """Manually trigger intraday fetch.
+
+    Optionally specify tickers in request body:
+        {"tickers": ["^JKSE", "^GSPC", "BBCA.JK"]}
+
+    If no tickers specified, uses default INTRADAY_TICKERS.
+    """
+    from market.scheduler_tasks import INTRADAY_TICKERS
+
+    tickers = (body or {}).get("tickers", INTRADAY_TICKERS)
+
+    event = broker.emit("data.fetch.intraday.requested", {
+        "source": "manual",
+        "tickers": tickers,
+    })
+
+    return {
+        "status": "triggered",
+        "event_id": id(event),
+        "tickers": tickers,
+        "message": "Intraday fetch triggered. Check /api/prices/latest after a few seconds.",
+    }
+
+
+@router.get("/compare/{ticker}")
+async def prices_compare(
+    ticker: str,
+    session: Annotated[Session, Depends(get_session)],
+    lookback_bars: int = 20,
+) -> dict[str, Any]:
+    """Compare prediction vs actual price for a ticker.
+
+    Fetches recent OHLCV data, runs prediction engine, and compares
+    the predicted direction/price with actual price movement.
+
+    Path params:
+        ticker: Ticker to compare (e.g. "BBCA.JK")
+
+    Query params:
+        lookback_bars: Number of recent bars to use for prediction (default 20)
+    """
+    import pandas as pd
+
+    from market.analysis.prediction import PredictionMethod
+    from market.api._engines import engines
+
+    rows = session.execute(
+        select(OHLCV)
+        .where(OHLCV.ticker == ticker, OHLCV.timeframe == "1d")
+        .order_by(OHLCV.timestamp)
+        .limit(300)
+    ).scalars().all()
+
+    if len(rows) < 50:
+        raise HTTPException(
+            404,
+            f"Insufficient data for {ticker}: {len(rows)} bars (need ≥50)",
+        )
+
+    df = pd.DataFrame(
+        [
+            {
+                "open": float(r.open),
+                "high": float(r.high),
+                "low": float(r.low),
+                "close": float(r.close),
+                "volume": r.volume,
+            }
+            for r in rows
+        ],
+        index=pd.DatetimeIndex([r.timestamp for r in rows]),
+    )
+
+    as_of = str(df.index[-lookback_bars])
+    actual_close = float(df.iloc[-1]["close"])
+    predicted_close_at_as_of = float(df.iloc[-lookback_bars]["close"])
+
+    try:
+        pred = engines.prediction_engine.predict(
+            ticker=ticker,
+            data=df,
+            method=PredictionMethod.ENSEMBLE,
+            as_of=as_of,
+        )
+    except Exception as exc:
+        raise HTTPException(500, f"Prediction failed: {exc}") from exc
+
+    actual_direction = "up" if actual_close > predicted_close_at_as_of else "down"
+    predicted_direction = pred.predicted_direction
+    direction_correct = actual_direction == predicted_direction
+
+    actual_pct_change = round(
+        (actual_close - predicted_close_at_as_of) / predicted_close_at_as_of * 100, 2,
+    )
+
+    predicted_price = pred.predicted_price
+    price_error_pct = None
+    if predicted_price is not None and predicted_price > 0:
+        price_error_pct = round(
+            abs(actual_close - predicted_price) / predicted_price * 100, 2,
+        )
+
+    return {
+        "ticker": ticker,
+        "as_of": as_of,
+        "prediction": {
+            "direction": predicted_direction,
+            "predicted_price": predicted_price,
+            "confidence": pred.confidence,
+            "method": pred.method.value,
+            "rationale": pred.rationale,
+        },
+        "actual": {
+            "direction": actual_direction,
+            "actual_price": actual_close,
+            "actual_pct_change": actual_pct_change,
+        },
+        "comparison": {
+            "direction_correct": direction_correct,
+            "price_error_pct": price_error_pct,
+        },
+    }

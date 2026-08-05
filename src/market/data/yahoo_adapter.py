@@ -40,6 +40,7 @@ class YahooFinanceAdapter:
         period: str = "max",
         market_mic: str = "XIDX",
         currency: str = "IDR",
+        interval: str = "1d",
     ) -> list[NormalizedOHLCV]:
         """Fetch OHLCV data for a single ticker.
 
@@ -50,14 +51,15 @@ class YahooFinanceAdapter:
             period: yfinance period string (e.g. ``max``, ``1y``, ``3mo``).
             market_mic: Market MIC code for the record.
             currency: Native currency of the instrument.
+            interval: yfinance interval (e.g. ``1d``, ``15m``, ``5m``).
 
         Returns:
             List of NormalizedOHLCV records.
         """
         self._limiter.acquire()
         logger.info(
-            "Fetching OHLCV for %s (period=%s, start=%s, end=%s)",
-            ticker, period, start, end,
+            "Fetching OHLCV for %s (period=%s, interval=%s, start=%s, end=%s)",
+            ticker, period, interval, start, end,
         )
 
         try:
@@ -68,7 +70,7 @@ class YahooFinanceAdapter:
                 period=period if not start else None,
                 auto_adjust=False,
                 progress=False,
-                interval="1d",
+                interval=interval,
             )
         except Exception as exc:
             logger.error("yfinance download failed for %s: %s", ticker, exc)

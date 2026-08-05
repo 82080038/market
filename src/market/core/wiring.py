@@ -44,6 +44,7 @@ def wire_all_events() -> None:
     broker.subscribe("data.fetch.requested", fetch_pipeline.on_fetch_requested)
     broker.subscribe("data.fetch_global.requested", fetch_pipeline.on_fetch_global_requested)
     broker.subscribe("data.fetch_macro.requested", fetch_pipeline.on_fetch_macro_requested)
+    broker.subscribe("data.fetch.intraday.requested", fetch_pipeline.on_intraday_requested)
 
     # ── Data layer: recompute pipeline ──────────────────────────
     # Listens to: data.fetch.completed

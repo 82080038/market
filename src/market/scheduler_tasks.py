@@ -50,11 +50,32 @@ def _task_fetch_macro() -> None:
     broker.emit("data.fetch_macro.requested", {"source": "macro"})
 
 
+# Tickers for intraday polling — key indices + commodities + user watchlist
+INTRADAY_TICKERS = [
+    "^JKSE", "^GSPC", "^IXIC", "^DJI", "^HSI", "^N225", "^FTSE", "^GDAXI",
+    "^TNX", "^VIX", "GC=F", "CL=F", "SI=F",
+]
+
+
+def _task_fetch_intraday() -> None:
+    """Emit intraday fetch request — poll yfinance for key tickers every 15 min.
+
+    Only runs during active market hours (IDX: 09:00-15:50 WIB, or global
+    market hours). Fetches latest price snapshot for ~40 tickers, stores
+    to DB with timeframe='15m'. Does NOT trigger full recompute.
+    """
+    broker.emit("data.fetch.intraday.requested", {
+        "source": "intraday",
+        "tickers": INTRADAY_TICKERS,
+    })
+
+
 def _task_quality_check() -> None:
     """Run data quality checks directly (lightweight, no event needed)."""
+    from sqlalchemy import func, select
+
     from market.db.engine import get_sessionmaker
     from market.db.models import OHLCV
-    from sqlalchemy import select, func
 
     session = get_sessionmaker()()
     try:
@@ -110,6 +131,7 @@ def register_default_tasks(scheduler: DailyScheduler) -> None:
     The scheduler only controls WHEN things happen, not HOW.
 
     Task schedule (WIB):
+        09:00-15:50  fetch_intraday   — poll yfinance every 15 min (market hours)
         17:00  health_check      — pre-flight checks
         17:30  fetch_eod         — fetch IDX equity OHLCV
         17:35  fetch_global      — fetch global indices/commodities/bonds
@@ -129,6 +151,13 @@ def register_default_tasks(scheduler: DailyScheduler) -> None:
         → HealthPipeline checks → emits health.check.completed
         → AlertPipeline evaluates alerts (terminal)
     """
+    scheduler.register_task(
+        task_id="fetch_intraday",
+        name="Intraday price poll (15-min interval)",
+        func=_task_fetch_intraday,
+        schedule="every_15min",
+        time_of_day="09:00",
+    )
     scheduler.register_task(
         task_id="health_check",
         name="Pre-flight health checks",

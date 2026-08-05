@@ -9,6 +9,7 @@
 
 ## 2. Keputusan Desain Tetap
 
+- **Metodologi trading:** Algorithmic/Quantitative Trading (Quant). Target simulasi: Day Trading (jika bisa) dan Swing Trading (wajib). Scalping/HFT tidak dirancang — tidak ada data tick-level, tidak ada WebSocket streaming, tidak ada co-located server. Intraday polling 15-menit via yfinance cukup untuk monitoring Day Trading; EOD data + recompute pipeline adalah backbone untuk Swing Trading.
 - **Bahasa UI:** Bahasa Indonesia; istilah teknis pasar modal (`ticker`, `OHLCV`, `RSI`, `MACD`, `VaR`, `P/E`, dll.) tetap dalam bahasa asli dengan tooltip Bahasa Indonesia.
 - **Zona waktu:** penyimpanan UTC, tampilan WIB (UTC+7), memperhatikan jam perdagangan IDX dan DST pasar global.
 - **GPU/CUDA:** setiap proses komputasi berat (LSTM, walk-forward, Monte Carlo, VaR, NLP/IndoBERT, ensemble) wajib memeriksa GPU `cuda:1` terlebih dahulu.

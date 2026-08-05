@@ -36,6 +36,7 @@ from market.analysis.pattern_detector import PatternDetection, PatternDetector
 
 if TYPE_CHECKING:
     from market.analysis.delisting_memory import DelistingMemory
+    from market.analysis.market_context import MarketContext, MarketContextProvider
 
 
 class PredictionMethod(Enum):
@@ -125,6 +126,7 @@ class PredictionEngine:
         ma_short: int = 10,
         ma_long: int = 30,
         horizon: int = 5,
+        context_provider: MarketContextProvider | None = None,
     ) -> None:
         self.pattern_detector = pattern_detector or PatternDetector()
         self.delisting_memory = delisting_memory or self.pattern_detector.delisting_memory
@@ -132,6 +134,7 @@ class PredictionEngine:
         self.ma_short = ma_short
         self.ma_long = ma_long
         self.horizon = horizon
+        self.context_provider = context_provider
         self._log: list[PredictionLogEntry] = []
         self._pending: dict[str, Prediction] = {}  # ticker → pending prediction
 
@@ -273,6 +276,30 @@ class PredictionEngine:
             "current_price": round(current_price, 2),
         }
 
+        # Fetch market context (fundamental, macro, sentiment, flow)
+        market_ctx: MarketContext | None = None
+        if self.context_provider is not None:
+            try:
+                market_ctx = self.context_provider.get_context(ticker, as_of_str, df=df)
+                if market_ctx.is_available:
+                    indicators["pe_ratio"] = market_ctx.pe_ratio or 0.0
+                    indicators["roe"] = market_ctx.roe or 0.0
+                    indicators["vix"] = market_ctx.vix or 0.0
+                    indicators["fear_greed"] = market_ctx.fear_greed_index or 0.0
+                    indicators["foreign_net_5d"] = market_ctx.foreign_net_flow_5d or 0.0
+                    indicators["fundamental_score"] = market_ctx.fundamental_score or 0.0
+                    indicators["technical_score"] = market_ctx.technical_score or 0.0
+                    self._log_entry(
+                        "info", ticker,
+                        f"Market context: PE={market_ctx.pe_ratio}, "
+                        f"VIX={market_ctx.vix}, "
+                        f"FG={market_ctx.fear_greed_index}, "
+                        f"Flow5d={market_ctx.foreign_net_flow_5d}, "
+                        f"composite={market_ctx.composite_signal():.3f}",
+                    )
+            except Exception as e:
+                self._log_entry("warn", ticker, f"Context fetch failed: {e}")
+
         # Generate prediction based on method
         if method == PredictionMethod.MA_BASED:
             pred = self._predict_ma(
@@ -297,6 +324,7 @@ class PredictionEngine:
             pred = self._predict_ensemble(
                 ticker, as_of_str, current_price, ma_s, ma_l,
                 momentum, rsi, atr, patterns, indicators, pattern_signals,
+                market_ctx=market_ctx,
             )
 
         # Adjust confidence based on historical error rate
@@ -807,8 +835,9 @@ class PredictionEngine:
         patterns: list[PatternDetection],
         indicators: dict[str, float],
         pattern_signals: list[str],
+        market_ctx: MarketContext | None = None,
     ) -> Prediction:
-        """Ensemble prediction: weighted combination of all methods."""
+        """Ensemble prediction: weighted combination of all methods + market context."""
         # Generate individual predictions
         pred_ma = self._predict_ma(
             ticker, as_of, price, ma_s, ma_l, indicators, pattern_signals,
@@ -863,6 +892,53 @@ class PredictionEngine:
         elif rsi < 30:
             confidence *= 0.8  # Oversold → reduce confidence
 
+        # ── Market context adjustment ────────────────────────────────────
+        context_signal = 0.0
+        context_rationale = ""
+        if market_ctx is not None and market_ctx.is_available:
+            context_signal = market_ctx.composite_signal()
+            fund_signal = market_ctx.fundamental_signal()
+            macro_signal = market_ctx.macro_signal()
+            sent_signal = market_ctx.sentiment_signal()
+            flow_signal = market_ctx.flow_signal()
+
+            # Adjust predicted price: context signal shifts price expectation
+            # Scale: context_signal in [-1, 1], apply up to ±5% adjustment
+            context_adjustment = context_signal * 5.0
+            predicted_price *= (1.0 + context_adjustment / 100.0)
+            ret_pct = (predicted_price - price) / price * 100
+
+            # Re-evaluate direction with context (lower threshold for sensitivity)
+            direction = "up" if ret_pct > 0.15 else "down" if ret_pct < -0.15 else "flat"
+
+            # Adjust confidence based on context alignment with technical signal
+            technical_signal = 1.0 if ret_pct > 0 else -1.0 if ret_pct < 0 else 0.0
+            alignment = context_signal * technical_signal
+            if alignment > 0:
+                confidence *= 1.15  # Context confirms technical → boost
+            elif alignment < 0:
+                confidence *= 0.85  # Context contradicts technical → reduce
+
+            # Fear & Greed extreme adjustment
+            if market_ctx.fear_greed_index is not None:
+                fg = market_ctx.fear_greed_index
+                if fg < 25:  # Extreme fear → contrarian bullish
+                    if direction == "down":
+                        confidence *= 0.9
+                    elif direction == "up":
+                        confidence *= 1.1
+                elif fg > 75:  # Extreme greed → contrarian bearish
+                    if direction == "up":
+                        confidence *= 0.9
+                    elif direction == "down":
+                        confidence *= 1.1
+
+            context_rationale = (
+                f" Context: fund={fund_signal:.2f}, macro={macro_signal:.2f}, "
+                f"sent={sent_signal:.2f}, flow={flow_signal:.2f}, "
+                f"composite={context_signal:.2f}"
+            )
+
         return Prediction(
             ticker=ticker, as_of=as_of, method=PredictionMethod.ENSEMBLE,
             predicted_price=round(predicted_price, 2),
@@ -875,7 +951,7 @@ class PredictionEngine:
             rationale=(
                 f"Ensemble: MA={weights['ma']:.0%}, Mom={weights['momentum']:.0%}, "
                 f"Pat={weights['pattern']:.0%}, Vol={weights['vol_adj']:.0%}. "
-                f"RSI={rsi:.1f}"
+                f"RSI={rsi:.1f}.{context_rationale}"
             ),
         )
 

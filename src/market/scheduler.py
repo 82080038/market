@@ -323,7 +323,9 @@ class DailyScheduler:
 
         last = datetime.fromisoformat(task.last_run)
 
-        if task.schedule == "hourly":
+        if task.schedule == "every_15min":
+            return (now - last) >= timedelta(minutes=15)
+        elif task.schedule == "hourly":
             return (now - last) >= timedelta(hours=1)
         elif task.schedule in ("daily", "EOD"):
             return (now - last) >= timedelta(hours=20)

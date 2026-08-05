@@ -41,10 +41,18 @@ data/*.db-journal
 data/*.db-wal
 data/*.db-shm
 data/backups/
+data/backtest_simulation_report.json
+data/parquet_export/*.parquet
 logs/
 *.log
 .cache/
 models/
+
+# Large Parquet data files (seeds are allowed, exports are not)
+*.parquet
+!data/parquet_seeds/*.parquet
+!data/parquet_seeds/.gitkeep
+!data/parquet_export/.gitkeep
 
 # Secrets
 *.pem

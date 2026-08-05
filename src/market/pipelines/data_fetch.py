@@ -13,8 +13,9 @@ from __future__ import annotations
 
 import logging
 import time
+from collections.abc import Callable
 from datetime import UTC, date, datetime
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any
 
 if TYPE_CHECKING:
     from market.core.events import Event
@@ -35,7 +36,7 @@ GLOBAL_TICKERS = [
 MACRO_SERIES = ["DGS10", "VIXCLS", "CPIAUCSL", "FEDFUNDS", "UNRATE"]
 
 
-def _retry(func, label: str, max_retries: int = MAX_RETRIES) -> object:
+def _retry(func: Callable[[], Any], label: str, max_retries: int = MAX_RETRIES) -> Any:
     """Retry a function with backoff. Returns result or None."""
     for attempt in range(max_retries + 1):
         try:
@@ -49,6 +50,7 @@ def _retry(func, label: str, max_retries: int = MAX_RETRIES) -> object:
             else:
                 logger.error("%s failed after %d attempts: %s", label, max_retries + 1, e)
                 return None
+    return None  # unreachable, but satisfies mypy
 
 
 class DataFetchPipeline:
@@ -61,15 +63,19 @@ class DataFetchPipeline:
     def on_fetch_requested(self, event: Event) -> None:
         """Handle data.fetch.requested — fetch IDX equity OHLCV.
 
-        Handles partial failures: failed tickers are logged but don't
-        abort the batch. Emits data.fetch.completed with summary.
+        Uses TickerScreener to filter out delisted/suspended/blocked
+        tickers before fetching. Handles partial failures: failed
+        tickers are logged but don't abort the batch.
+        Emits data.fetch.completed with summary.
         """
+        from sqlalchemy import func, select
+
+        from market.core.events import broker
         from market.data.acquisition import DataAcquisitionEngine
+        from market.data.screener import TickerScreener
         from market.data.storage import DataRepository
         from market.db.engine import get_sessionmaker
-        from market.db.models import InstrumentMaster, OHLCV
-        from sqlalchemy import select, func
-        from market.core.events import broker
+        from market.db.models import OHLCV
 
         session = get_sessionmaker()()
         try:
@@ -77,14 +83,14 @@ class DataFetchPipeline:
             engine = DataAcquisitionEngine()
             engine.set_repository(repo)
 
-            tickers = session.execute(
-                select(InstrumentMaster.ticker).where(
-                    InstrumentMaster.is_active == True,  # noqa: E712
-                    InstrumentMaster.asset_class == "equity",
-                )
-            ).scalars().all()
+            screener = TickerScreener()
+            screening = screener.screen(session, asset_class="equity")
+            tickers = screening.passed
 
-            logger.info("EOD fetch: %d active equity tickers", len(tickers))
+            logger.info(
+                "EOD fetch: %d tickers passed screening (excluded: %d)",
+                len(tickers), screening.total_excluded,
+            )
 
             success, failed, skipped = 0, 0, 0
             for ticker in tickers:
@@ -116,16 +122,17 @@ class DataFetchPipeline:
                 "tickers_success": success,
                 "tickers_failed": failed,
                 "tickers_skipped": skipped,
+                "screening": screening.summary(),
             })
         finally:
             session.close()
 
     def on_fetch_global_requested(self, event: Event) -> None:
         """Handle data.fetch_global.requested — fetch global reference tickers."""
+        from market.core.events import broker
         from market.data.acquisition import DataAcquisitionEngine
         from market.data.storage import DataRepository
         from market.db.engine import get_sessionmaker
-        from market.core.events import broker
 
         session = get_sessionmaker()()
         try:
@@ -141,8 +148,8 @@ class DataFetchPipeline:
                 currency = "IDR" if ticker == "^JKSE" else "USD"
 
                 result = _retry(
-                    lambda t=ticker: engine.fetch_and_store(
-                        ticker=t, period="5d", market_mic=market_mic, currency=currency,
+                    lambda t=ticker, m=market_mic, c=currency: engine.fetch_and_store(
+                        ticker=t, period="5d", market_mic=m, currency=c,
                     ),
                     label=f"fetch {ticker}",
                     max_retries=2,
@@ -163,11 +170,12 @@ class DataFetchPipeline:
 
     def on_fetch_macro_requested(self, event: Event) -> None:
         """Handle data.fetch_macro.requested — fetch macro economic data."""
+        from sqlalchemy import desc, select
+
+        from market.core.events import broker
         from market.data.yahoo_adapter import YahooFinanceAdapter
         from market.db.engine import get_sessionmaker
         from market.db.models import MacroData
-        from sqlalchemy import select, desc
-        from market.core.events import broker
 
         session = get_sessionmaker()()
         try:
@@ -188,7 +196,7 @@ class DataFetchPipeline:
 
                 result = _retry(
                     lambda s=series: adapter.fetch_ohlcv(
-                        ticker=f"^{series}" if not series.startswith("^") else series,
+                        ticker=f"^{s}" if not s.startswith("^") else s,
                         period="1mo", market_mic="XNYS", currency="USD",
                     ),
                     label=f"macro {series}",
@@ -213,6 +221,102 @@ class DataFetchPipeline:
             })
         except Exception as e:
             logger.error("Macro fetch failed: %s", e)
+            session.rollback()
+        finally:
+            session.close()
+
+    def on_intraday_requested(self, event: Event) -> None:
+        """Handle data.fetch.intraday.requested — poll yfinance for latest prices.
+
+        Fetches latest 15-min interval data for key tickers (indices,
+        commodities). Stores to OHLCV with timeframe='15m'.
+        Does NOT trigger full recompute — only updates latest prices.
+
+        Emits data.fetch.intraday.completed with price snapshot for FE.
+        """
+        from sqlalchemy import select
+
+        from market.core.events import broker
+        from market.data.yahoo_adapter import YahooFinanceAdapter
+        from market.db.engine import get_sessionmaker
+        from market.db.models import OHLCV
+
+        tickers = event.payload.get("tickers", [])
+        if not tickers:
+            logger.warning("Intraday fetch: no tickers in event payload")
+            return
+
+        session = get_sessionmaker()()
+        try:
+            adapter = YahooFinanceAdapter()
+            prices: dict[str, Any] = {}
+            success, failed = 0, 0
+
+            for ticker in tickers:
+                result = _retry(
+                    lambda t=ticker: adapter.fetch_ohlcv(
+                        ticker=t, period="1d", interval="15m",
+                    ),
+                    label=f"intraday {ticker}",
+                    max_retries=1,
+                )
+
+                if result and len(result) > 0:
+                    latest = result[-1]
+                    market_mic = "XIDX" if ticker in ("^JKSE",) else "XNYS"
+                    currency = "IDR" if ticker == "^JKSE" else "USD"
+
+                    existing = session.execute(
+                        select(OHLCV).where(
+                            OHLCV.ticker == ticker,
+                            OHLCV.timestamp == latest.timestamp,
+                            OHLCV.timeframe == "15m",
+                        )
+                    ).scalar_one_or_none()
+
+                    if existing is None:
+                        session.add(OHLCV(
+                            ticker=ticker,
+                            timestamp=latest.timestamp,
+                            timeframe="15m",
+                            open=latest.open,
+                            high=latest.high,
+                            low=latest.low,
+                            close=latest.close,
+                            volume=int(latest.volume) if latest.volume else 0,
+                            source="yahoo_finance_intraday",
+                        ))
+
+                    prices[ticker] = {
+                        "price": float(latest.close),
+                        "change": float(latest.close - latest.open),
+                        "change_pct": round(
+                            float((latest.close - latest.open) / latest.open * 100)
+                            if latest.open else 0.0, 2,
+                        ),
+                        "volume": int(latest.volume) if latest.volume else 0,
+                        "timestamp": latest.timestamp.isoformat(),
+                        "currency": currency,
+                        "market_mic": market_mic,
+                    }
+                    success += 1
+                else:
+                    failed += 1
+
+            session.commit()
+            logger.info(
+                "Intraday fetch: %d success, %d failed (of %d tickers)",
+                success, failed, len(tickers),
+            )
+
+            broker.emit("data.fetch.intraday.completed", {
+                "source": "intraday",
+                "prices": prices,
+                "success": success,
+                "failed": failed,
+            })
+        except Exception as e:
+            logger.error("Intraday fetch failed: %s", e)
             session.rollback()
         finally:
             session.close()

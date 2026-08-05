@@ -34,12 +34,13 @@ Membuat satu aplikasi desktop/web single-user untuk analisis, rekomendasi, simul
 - Multi-user, KYC, RBAC, deployment publik/enterprise.
 - Otorisasi regulator untuk memberikan saran investasi ke publik.
 - Eksekusi uang nyata tanpa persetujuan manual.
+- **Scalping/HFT** — tidak ada data tick-level, tidak ada WebSocket streaming, tidak ada co-located server. Metodologi adalah Quant/Algorithmic Trading dengan target Day Trading (intraday 15-min polling) dan Swing Trading (EOD + recompute).
 
 ## 4. Constraints & Assumptions
 
 - Single-user personal; API key di `.env` cukup.
 - UTC storage, WIB display (UTC+7).
-- Data EOD utama; real-time tick feed opsional/berbayar.
+- Data EOD utama; intraday polling 15-menit via yfinance untuk ~40 ticker penting (Day Trading monitoring). Real-time tick feed berbayar tidak dirancang.
 - GPU 2× GTX 1050 Ti 4 GB; batasi batch size dan hidden dim.
 - Parquet existing hanya dibaca; tulis data sendiri ke direktori project.
 - `.env` dan kredensial tidak di-commit; patuhi UU PDP.
@@ -426,13 +427,15 @@ AI wajib berhenti dan minta approval jika:
 
 ## 9. Next Steps Segera (Status Pasca-Sync)
 
-Semua fase 0–11 sudah selesai dari sisi kode dan test (691 passed, coverage 83%+). Langkah nyata berikutnya adalah mengisi data, menjadikan aplikasi berjalan end-to-end, dan memulai paper trading:
+Semua fase 0–11 sudah selesai dari sisi kode dan test (760+ passed, coverage 76%+). Langkah nyata berikutnya adalah mengisi data, menjadikan aplikasi berjalan end-to-end, dan memulai paper trading:
 
 1. **Persiapan Environment**: buat `.env` dari `.env.example`, pilih `ENV=paper` untuk validasi live-market tanpa uang nyata.
 2. **Database**: migrate & seed `market_research.db` dan `market_paper.db`; isi dari parquet archive (`/media/petrick/Parquet/trading_data/archive/tables/`).
-3. **Scheduler**: daftarkan task harian — EOD fetch, quality check, feature store refresh, drift detection, report generation.
+3. **Scheduler**: daftarkan task harian — EOD fetch, intraday poll (15-min), quality check, feature store refresh, drift detection, report generation.
 4. **Frontend Security**: atasi 3 high severity vulnerabilities (postcss/sharp via next).
 5. **Wire-up API**: sambungkan `/api/portfolio`, `/api/watchlist`, dan `/api/backtest/run` ke database, bukan mock/synthetic.
-6. **Paper Trading 30 Hari**: jalankan minimal 30 hari simulasi sebelum membuka human-gate broker real / model champion live.
-7. **Model Champion Pertama**: latih baseline LSTM/LightGBM di Paper environment, daftarkan ke model registry, dan promosikan setelah eval-gate pass.
-8. **Live Gate**: setelah paper period memadai, ajukan approval untuk broker real dan/atau deploy local-only production.
+6. **Intraday Polling**: aktifkan `fetch_intraday` task untuk polling yfinance setiap 15 menit selama jam trading (09:00-15:50 WIB). Endpoint `/api/prices/latest` menyediakan snapshot harga real-time untuk FE dashboard.
+7. **Prediction vs Actual Comparison**: gunakan endpoint `/api/prices/compare/{ticker}` untuk membandingkan hasil prediksi aplikasi dengan harga aktual dari yfinance. Berguna untuk evaluasi akurasi model selama paper trading.
+8. **Paper Trading 30 Hari**: jalankan minimal 30 hari simulasi sebelum membuka human-gate broker real / model champion live.
+9. **Model Champion Pertama**: latih baseline LSTM/LightGBM di Paper environment, daftarkan ke model registry, dan promosikan setelah eval-gate pass.
+10. **Live Gate**: setelah paper period memadai, ajukan approval untuk broker real dan/atau deploy local-only production.

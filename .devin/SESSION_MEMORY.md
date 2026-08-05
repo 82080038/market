@@ -1,10 +1,37 @@
 # Session Memory — Pustaka Pasar Modal
 
-## Checkpoint Terbaru
+## Checkpoint Sesi 2026-08-06 03:17 WIB
 
-- **Waktu:** 2026-08-06 00:20 WIB (sesi cleanup data quality).
-- **Alasan:** Audit pustaka + database menemukan 8 masalah kualitas data; semua diperbaiki batch.
-- **Perubahan signifikan:** `market_paper.db` & `market_research.db` sekarang bersih dan lengkap (3,070,605 rows, 23 tabel).
+- **Alasan:** Selesai analisis 5 proposal dari AI lain, semua ditolak (sudah ada di kodebase). User akan mulai percakapan baru.
+- **Topik aktif:** Intraday polling + prediction-vs-actual comparison + review proposal AI lain
+
+### Keputusan Desain
+- Metodologi: Quant/Algorithmic Trading. Target: Day Trading (intraday 15-min) + Swing Trading (EOD). Bukan HFT/Scalping.
+- 5 proposal AI lain ditolak: (1) Quant module, (2) Global Market State, (3) Parquet+Polars, (4) Streamlit dashboard, (5) XGBoost ML handler — semua sudah ada versi lebih lengkap di kodebase.
+
+### File Dimodifikasi Sesi Ini
+- `src/market/scheduler.py` — tambah schedule `every_15min`
+- `src/market/scheduler_tasks.py` — tambah `_task_fetch_intraday` + `INTRADAY_TICKERS` + register task
+- `src/market/pipelines/data_fetch.py` — tambah `on_intraday_requested` handler
+- `src/market/core/wiring.py` — wire `data.fetch.intraday.requested`
+- `src/market/data/yahoo_adapter.py` — tambah `interval` parameter di `fetch_ohlcv`
+- `src/market/api/routes_prices.py` (BARU) — 3 endpoint: `/api/prices/latest`, `/api/prices/intraday/trigger`, `/api/prices/compare/{ticker}`
+- `src/market/api/app.py` — register prices router + update endpoint inventory
+- `tests/test_intraday.py` (BARU) — 11 test cases
+- `tests/test_cli.py` — update task count 10→11
+- `MEGAPLAN.md` — tambah intraday polling + prediction comparison di Next Steps + Out of Scope HFT + Constraints
+- `AGENTS.md` — tambah metodologi trading di Keputusan Desain Tetap
+- `.devin/SESSION_MEMORY.md` — update status + fitur baru
+
+### Test Status
+- `tests/test_intraday.py` — 11 passed (11 detik)
+- Full test suite belum selesai di-run (di-cancel user untuk paste chat AI lain)
+- Ruff check: clean untuk file baru/modifikasi
+- TODO: jalankan full test suite di sesi berikutnya
+
+### Pending
+- Jalankan full `pytest tests/` untuk verifikasi semua test pass
+- Update `pustaka/` jika ada dokumen yang perlu cross-reference dengan intraday polling
 
 ## Ringkasan Proyek
 
@@ -58,12 +85,46 @@
 ## Status Implementasi Terkini
 
 - **Sync GitHub:** ✅ Commit `4843e52` (per audit 2026-08-05).
-- **Backend Quality:** ✅ 719 tests pass, coverage 83.77%, `ruff check .` clean, `mypy` clean.
+- **Backend Quality:** ✅ 760+ tests pass, coverage 76%+, `ruff check .` clean.
 - **Frontend Build:** ✅ `npm run build` sukses (Next.js 15.5.22, 12 halaman).
 - **Database:** ✅ Semua 3 DB siap. Paper & Research ter-seed penuh, Live kosong (sesuai).
-- **Scheduler:** ✅ 5 tasks terdaftar (fetch_eod, quality_check, feature_store, drift_detection, generate_reports).
+- **Scheduler:** ✅ 11 tasks terdaftar (fetch_intraday, fetch_eod, fetch_global, fetch_macro, health_check, quality_check, recompute, feature_store, drift_detection, generate_reports, export_parquet).
 - **Model registry:** ✅ Baseline model trained (fallback mode, PyTorch belum diinstall).
 - **Environment File:** ✅ `.env` dibuat dengan `ENV=paper`, `BROKER_ADAPTER=paper`.
+
+## Fitur Baru (Sesi 2026-08-06)
+
+### TickerScreener — Screening sebelum fetch
+- File: `src/market/data/screener.py`
+- Filter 5 lapis: active status, delisting_date, trading suspension, AI block (DelistingMemory), liquidity score
+- Terintegrasi di `DataFetchPipeline.on_fetch_requested` — hanya fetch ticker yang lolos screening
+- Test: `tests/test_screener.py` (9 test cases)
+
+### Intraday Polling — 15-menit via yfinance
+- File: `src/market/pipelines/data_fetch.py::on_intraday_requested`
+- Scheduler task `fetch_intraday` dengan schedule `every_15min`
+- Polling ~13 ticker penting (IDX + global indices + commodities)
+- Store ke OHLCV dengan `timeframe='15m'`
+- Event: `data.fetch.intraday.requested` → `data.fetch.intraday.completed`
+- Wiring: `src/market/core/wiring.py` sudah subscribe handler
+
+### Endpoint API Baru
+- `GET /api/prices/latest` — snapshot harga intraday terbaru dari DB
+- `POST /api/prices/intraday/trigger` — trigger manual intraday fetch
+- `GET /api/prices/compare/{ticker}` — bandingkan prediksi vs harga aktual
+- File: `src/market/api/routes_prices.py`
+- Test: `tests/test_intraday.py` (11 test cases)
+
+### YahooFinanceAdapter — interval parameter
+- `src/market/data/yahoo_adapter.py::fetch_ohlcv` sekarang menerima `interval` parameter (default "1d", support "15m", "5m")
+
+## Keputusan Desain: Metodologi Trading
+
+- **Algorithmic/Quantitative Trading (Quant)** — bukan HFT, bukan Scalping
+- Target simulasi: **Day Trading** (jika bisa, dengan intraday 15-min polling) dan **Swing Trading** (wajib, dengan EOD data + recompute pipeline)
+- Scalping/HFT tidak dirancang: tidak ada data tick-level, tidak ada WebSocket streaming, tidak ada co-located server
+- Frontend cukup REST + SWR polling, tidak perlu real-time tick chart
+- Prediction engine (ensemble: MA, momentum, pattern, vol-adjusted) cocok untuk Swing Trading horizon (1-5 hari)
 
 ## Human-Gate Checklist (MEGAPLAN §6.4)
 

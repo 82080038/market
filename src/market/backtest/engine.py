@@ -54,11 +54,13 @@ class BacktestEngine:
         commission_rate: float = COMMISSION_RATE,
         sales_tax_rate: float = SALES_TAX_RATE,
         slippage_rate: float = SLIPPAGE_RATE,
+        max_position_pct: float = 1.0,  # Max fraction of capital per trade
     ) -> None:
         self.initial_capital = initial_capital
         self.commission_rate = commission_rate
         self.sales_tax_rate = sales_tax_rate
         self.slippage_rate = slippage_rate
+        self.max_position_pct = max_position_pct
 
     def run(
         self,
@@ -106,8 +108,9 @@ class BacktestEngine:
                     exec_price *= (1 - self.slippage_rate)
 
                 if signal == Signal.BUY and cash > 0:
-                    # Buy as many shares as possible (reserve for commission)
-                    max_value = cash / (1 + self.commission_rate)
+                    # Buy with position sizing limit (reserve for commission)
+                    deployable = cash * self.max_position_pct
+                    max_value = deployable / (1 + self.commission_rate)
                     shares_to_buy = int(max_value / exec_price)
                     # IDX lot size = 100
                     shares_to_buy = (shares_to_buy // 100) * 100
@@ -159,7 +162,7 @@ class BacktestEngine:
             equity_curve, index=data.index[:len(equity_curve)],
         )
 
-        metrics = self._compute_metrics(equity_series)
+        metrics = self._compute_metrics(equity_series, trades)
 
         return BacktestResult(
             equity_curve=equity_series,
@@ -167,7 +170,11 @@ class BacktestEngine:
             metrics=metrics,
         )
 
-    def _compute_metrics(self, equity: pd.Series) -> dict[str, float]:
+    def _compute_metrics(
+        self,
+        equity: pd.Series,
+        trades: list[Trade] | None = None,
+    ) -> dict[str, float]:
         """Compute performance metrics from equity curve."""
         if equity.empty or len(equity) < 2:
             return {}
@@ -201,8 +208,22 @@ class BacktestEngine:
         drawdown = (equity - running_max) / running_max
         max_dd = float(drawdown.min() * 100)
 
-        # Win rate (from trades)
-        win_rate = 0.0  # Computed from trades in caller if needed
+        # Win rate from completed round-trip trades
+        n_trades = 0
+        win_rate = 0.0
+        if trades:
+            n_trades = len(trades)
+            # Pair buy/sell trades to compute profitability
+            buys = [t for t in trades if t.side == "buy"]
+            sells = [t for t in trades if t.side == "sell"]
+            wins = 0
+            for i, sell in enumerate(sells):
+                if i < len(buys):
+                    buy = buys[i]
+                    if sell.price * sell.shares > buy.price * buy.shares:
+                        wins += 1
+            if sells:
+                win_rate = wins / len(sells) * 100
 
         return {
             "total_return_pct": round(total_return, 2),
@@ -212,5 +233,5 @@ class BacktestEngine:
             "max_drawdown_pct": round(max_dd, 2),
             "win_rate_pct": round(win_rate, 2),
             "final_equity": round(float(equity.iloc[-1]), 2),
-            "n_trades": 0,
+            "n_trades": n_trades,
         }
