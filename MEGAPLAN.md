@@ -105,8 +105,8 @@ Membuat satu aplikasi desktop/web single-user untuk analisis, rekomendasi, simul
 - [x] Technical analysis engine (RSI, MACD, MA, ADX, ATR, BB, volume profile).
 - [x] Fundamental analysis engine (PER, PBV, ROE, DER, EPS growth, DCF stub).
 - [x] Macro/global engine (US10Y, USD/IDR, oil, gold, S&P 500, etc.).
-- [ ] Relationship/correlation engine (lead-lag, spillover, clustering).
-- [ ] Sentiment engine (IndoBERT, foreign flow, broker flow, news, social media).
+- [x] Relationship/correlation engine (lead-lag, spillover, clustering).
+- [x] Sentiment engine (lexicon-based NLP, foreign flow, broker flow, news, social media).
 - [ ] Corporate action engine integrated into technical signals.
 - [ ] Feature store with 42+ features per ticker, tagged `market_mic` + `asset_class`.
 - [ ] Pattern memory / reliability tracker.
@@ -115,17 +115,17 @@ Membuat satu aplikasi desktop/web single-user untuk analisis, rekomendasi, simul
 
 ---
 
-### Fase 3 — Decision, XAI & Advisory (Minggu 8-9)
+### Fase 3 — Decision, XAI & Advisory (Minggu 8-9) [~] IN PROGRESS
 
 **Tujuan:** aplikasi dapat memberikan saran yang dapat dijelaskan.
 
 **Dokumen acuan:** `12-panduan-membangun-aplikasi-pasar-modal.md`, `18-modul-engine-data-wajib.md`, `46-prediksi-pola-portfolio-pipeline.md`, `83-advisory-system-screening-to-recommendation.md`, `85-backtest-to-live-gap-prevention.md`, `69-knowledge-base-persistent-memory.md`.
 
 **Deliverables & Markers:**
-- [ ] Decision engine with default weights (technical 20%, fundamental 25%, macro/global/sentiment/relationship).
+- [x] Decision engine with default weights (technical 20%, fundamental 25%, macro/global/sentiment/relationship).
 - [ ] Regime-based weight adjustment.
-- [ ] XAI narrative generator (Bahasa Indonesia, top 3 factors, warning flags).
-- [ ] Advisory pipeline: screening → stock personality → strategy rec → position sizing → entry/exit → expected return → XAI evidence.
+- [x] XAI narrative generator (Bahasa Indonesia, top 3 factors, warning flags).
+- [x] Advisory pipeline: screening → stock personality → strategy rec → position sizing → entry/exit → expected return → XAI evidence.
 - [ ] `/api/recommend/{ticker}` endpoint.
 - [ ] `/api/advisory/{ticker}` endpoint.
 - [ ] Knowledge-base lookup integration.
