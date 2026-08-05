@@ -12,11 +12,12 @@ from __future__ import annotations
 from collections.abc import Callable
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 import numpy as np
 
-from market.mlops.registry import ModelAlias, ModelRegistry
+if TYPE_CHECKING:
+    from market.mlops.registry import ModelRegistry
 
 
 @dataclass
@@ -145,11 +146,8 @@ class EvalGate:
 
         if result.passed:
             model = self.registry.get(model_id)
-            if model:
-                if model.is_experiment or not model.aliases:
-                    self.registry.promote(model_id)
-                elif model.is_candidate:
-                    self.registry.promote(model_id)
+            if model and (model.is_experiment or not model.aliases or model.is_candidate):
+                self.registry.promote(model_id)
 
         return result
 
