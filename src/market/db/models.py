@@ -742,3 +742,20 @@ class SystemState(Base):
     key: Mapped[str] = mapped_column(String(100), primary_key=True)
     value: Mapped[str | None] = mapped_column(Text, nullable=True)
     updated_at: Mapped[datetime] = mapped_column(DateTime, default=_utcnow, onupdate=_utcnow)
+
+
+class SchedulerState(Base):
+    """Persistent scheduler state for catch-up of missed tasks.
+
+    Stores last_run timestamp and last_status per task so the scheduler
+    can resume after application restart and catch up on missed executions.
+    """
+
+    __tablename__ = "scheduler_state"
+
+    task_id: Mapped[str] = mapped_column(String(50), primary_key=True)
+    last_run: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+    last_status: Mapped[str] = mapped_column(String(20), default="pending")
+    last_error: Mapped[str | None] = mapped_column(Text, nullable=True)
+    run_count: Mapped[int] = mapped_column(Integer, default=0)
+    updated_at: Mapped[datetime] = mapped_column(DateTime, default=_utcnow, onupdate=_utcnow)

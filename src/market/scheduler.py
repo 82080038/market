@@ -2,6 +2,9 @@
 
 Runs scheduled tasks at defined times (EOD after IDX close).
 Supports task registration, cron-like scheduling, and execution logging.
+
+State is persisted to the scheduler_state table so missed tasks are caught up
+when the application restarts.
 """
 
 from __future__ import annotations
@@ -12,6 +15,8 @@ from dataclasses import dataclass, field
 from datetime import UTC, datetime, timedelta
 from enum import Enum
 from typing import Any
+
+from sqlalchemy import text
 
 logger = logging.getLogger(__name__)
 
@@ -60,12 +65,24 @@ class DailyScheduler:
 
     Schedules tasks like data updates, model retraining,
     drift detection, and report generation.
+
+    State is persisted to the scheduler_state table so that missed
+    tasks are caught up when the application restarts.
     """
 
-    def __init__(self, tz_offset_hours: int = 7) -> None:
+    def __init__(self, tz_offset_hours: int = 7, persist: bool = True) -> None:
         self._tasks: dict[str, ScheduledTask] = {}
         self._executions: list[TaskExecution] = []
         self._tz_offset = tz_offset_hours
+        self._persist = persist
+        self._session_factory = None
+
+    def _get_session(self):
+        """Lazily get a DB session for state persistence."""
+        if self._session_factory is None:
+            from market.db.engine import get_sessionmaker
+            self._session_factory = get_sessionmaker()
+        return self._session_factory()
 
     def register_task(
         self,
@@ -138,6 +155,73 @@ class DailyScheduler:
         task.enabled = False
         return True
 
+    def load_state(self) -> int:
+        """Load task state from scheduler_state table.
+
+        Restores last_run, last_status, and run_count for each registered
+        task from the database. Tasks not in the DB are left as PENDING.
+
+        Returns:
+            Number of tasks with restored state.
+        """
+        session = self._get_session()
+        try:
+            rows = session.execute(
+                text("SELECT task_id, last_run, last_status, last_error, run_count FROM scheduler_state")
+            ).fetchall()
+            restored = 0
+            for row in rows:
+                task = self._tasks.get(row[0])
+                if task is None:
+                    continue
+                if row[1] is not None:
+                    task.last_run = str(row[1])
+                if row[2]:
+                    try:
+                        task.last_status = TaskStatus(row[2])
+                    except ValueError:
+                        pass
+                if row[3]:
+                    task.last_error = row[3]
+                if row[4]:
+                    task.run_count = row[4]
+                restored += 1
+            logger.info("Loaded scheduler state: %d tasks restored", restored)
+            return restored
+        except Exception as e:
+            logger.warning("Failed to load scheduler state: %s", e)
+            return 0
+        finally:
+            session.close()
+
+    def save_state(self, task: ScheduledTask) -> None:
+        """Save a single task's state to scheduler_state table.
+
+        Uses UPSERT (INSERT OR REPLACE) to update or insert the row.
+        """
+        session = self._get_session()
+        try:
+            session.execute(
+                text(
+                    "INSERT OR REPLACE INTO scheduler_state "
+                    "(task_id, last_run, last_status, last_error, run_count, updated_at) "
+                    "VALUES (:tid, :lr, :ls, :le, :rc, datetime('now'))"
+                ),
+                {
+                    "tid": task.task_id,
+                    "lr": task.last_run,
+                    "ls": task.last_status.value,
+                    "le": task.last_error or None,
+                    "rc": task.run_count,
+                },
+            )
+            session.commit()
+        except Exception as e:
+            logger.warning("Failed to save scheduler state for %s: %s", task.task_id, e)
+            session.rollback()
+        finally:
+            session.close()
+
     def run_task(self, task_id: str) -> TaskExecution | None:
         """Execute a single task immediately.
 
@@ -186,6 +270,10 @@ class DailyScheduler:
         task.last_run = end.isoformat()
         task.run_count += 1
 
+        # Persist state to DB
+        if self._persist:
+            self.save_state(task)
+
         self._executions.append(execution)
         return execution
 
@@ -193,11 +281,16 @@ class DailyScheduler:
         """Run all tasks that are due.
 
         Checks each task's schedule and last run time to determine
-        if it should run now.
+        if it should run now. Loads persisted state first so that
+        catch-up works correctly after restart.
 
         Returns:
             List of TaskExecution records for tasks that ran.
         """
+        # Load persisted state before checking due tasks
+        if self._persist:
+            self.load_state()
+
         executions: list[TaskExecution] = []
         now = datetime.now(UTC)
 
@@ -214,6 +307,9 @@ class DailyScheduler:
 
     def _is_due(self, task: ScheduledTask, now: datetime) -> bool:
         """Check if a task is due to run.
+
+        A task is due if it has never run, or if enough time has
+        passed since its last run (catch-up for missed executions).
 
         Args:
             task: Task to check.

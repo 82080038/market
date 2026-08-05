@@ -89,6 +89,19 @@ def cmd_scheduler(args: argparse.Namespace) -> int:
     return 0
 
 
+def cmd_export_parquet(args: argparse.Namespace) -> int:
+    """Export DB to parquet archive (standalone, no scheduler needed)."""
+    from market.data.export_to_parquet import export_all
+
+    print(f"Exporting DB to parquet for environment: {settings.env}")
+    print(f"  DB: {settings.resolved_db_path}")
+    print(f"  Target: {settings.parquet_archive_path}/archive/tables/")
+    results = export_all()
+    total = sum(results.values())
+    print(f"Exported: {len(results)} tables, {total:,} rows")
+    return 0
+
+
 def cmd_model(args: argparse.Namespace) -> int:
     """Manage model registry and champion promotion."""
     from market.mlops.registry import ModelRegistry
@@ -171,6 +184,9 @@ def main(argv: list[str] | None = None) -> int:
         choices=["list", "run"],
     )
     scheduler_p.set_defaults(func=cmd_scheduler)
+
+    export_p = sub.add_parser("export-parquet", help="Export DB to parquet archive")
+    export_p.set_defaults(func=cmd_export_parquet)
 
     model_p = sub.add_parser("model", help="Manage model registry")
     model_p.add_argument(

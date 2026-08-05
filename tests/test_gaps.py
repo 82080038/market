@@ -32,14 +32,14 @@ from market.scheduler import DailyScheduler, TaskStatus
 
 
 def test_scheduler_register_task():
-    sched = DailyScheduler()
+    sched = DailyScheduler(persist=False)
     task = sched.register_task("T1", "Data Update", lambda: None, "daily")
     assert task.task_id == "T1"
     assert task.enabled
 
 
 def test_scheduler_run_task():
-    sched = DailyScheduler()
+    sched = DailyScheduler(persist=False)
     sched.register_task("T1", "Test", lambda: None, "daily")
     execution = sched.run_task("T1")
     assert execution is not None
@@ -47,7 +47,7 @@ def test_scheduler_run_task():
 
 
 def test_scheduler_run_task_failed():
-    sched = DailyScheduler()
+    sched = DailyScheduler(persist=False)
 
     def failing() -> None:
         raise ValueError("boom")
@@ -59,7 +59,7 @@ def test_scheduler_run_task_failed():
 
 
 def test_scheduler_disabled_task():
-    sched = DailyScheduler()
+    sched = DailyScheduler(persist=False)
     sched.register_task("T1", "Test", lambda: None, "daily")
     sched.disable_task("T1")
     execution = sched.run_task("T1")
@@ -67,7 +67,7 @@ def test_scheduler_disabled_task():
 
 
 def test_scheduler_run_all_due():
-    sched = DailyScheduler()
+    sched = DailyScheduler(persist=False)
     sched.register_task("T1", "Task 1", lambda: None, "daily")
     sched.register_task("T2", "Task 2", lambda: None, "daily")
     executions = sched.run_all_due()
@@ -75,7 +75,7 @@ def test_scheduler_run_all_due():
 
 
 def test_scheduler_status_summary():
-    sched = DailyScheduler()
+    sched = DailyScheduler(persist=False)
     sched.register_task("T1", "Task 1", lambda: None, "daily")
     sched.register_task("T2", "Task 2", lambda: None, "daily")
     sched.disable_task("T2")

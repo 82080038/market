@@ -7,13 +7,13 @@ from market.scheduler_tasks import register_default_tasks
 
 
 def test_register_default_tasks_count():
-    sched = DailyScheduler()
+    sched = DailyScheduler(persist=False)
     register_default_tasks(sched)
     assert len(sched.tasks) == 6
 
 
 def test_register_default_tasks_ids():
-    sched = DailyScheduler()
+    sched = DailyScheduler(persist=False)
     register_default_tasks(sched)
     ids = {t.task_id for t in sched.tasks}
     assert ids == {
@@ -23,13 +23,13 @@ def test_register_default_tasks_ids():
 
 
 def test_register_default_tasks_all_enabled():
-    sched = DailyScheduler()
+    sched = DailyScheduler(persist=False)
     register_default_tasks(sched)
     assert all(t.enabled for t in sched.tasks)
 
 
 def test_register_default_tasks_run_success():
-    sched = DailyScheduler()
+    sched = DailyScheduler(persist=False)
     register_default_tasks(sched)
     execution = sched.run_task("feature_store")
     assert execution is not None
@@ -37,7 +37,7 @@ def test_register_default_tasks_run_success():
 
 
 def test_register_default_tasks_idempotent():
-    sched = DailyScheduler()
+    sched = DailyScheduler(persist=False)
     register_default_tasks(sched)
     register_default_tasks(sched)
     # Re-registering overwrites, so count stays the same
