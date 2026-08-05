@@ -276,21 +276,21 @@ Membuat satu aplikasi desktop/web single-user untuk analisis, rekomendasi, simul
 
 ---
 
-### Fase 11 — Social, Robo-Advisor, Monetization & Polish (Minggu 30-32)
+### Fase 11 — Social, Robo-Advisor, Monetization & Polish (Minggu 30-32) [✓] DONE
 
 **Tujuan:** fitur engagement lengkap, reporting lengkap, dan final polish.
 
 **Dokumen acuan:** `44-social-copy-trading.md`, `45-robo-advisor-goal-based-investing.md`, `57-user-onboarding-journey-design.md`, `59-competitive-analysis-feature-benchmarking.md`, `60-monetization-business-model.md`, `78-reporting-export-system.md`, `79-education-content-management.md`, `81-gamification-engagement-design.md`.
 
 **Deliverables & Markers:**
-- [ ] Social/copy trading stubs (paper only, no real leaderboard for real trading).
-- [ ] Robo-advisor / goal-based investing module.
-- [ ] Onboarding journey (beginner → intermediate → advanced).
-- [ ] Competitive analysis feature benchmarking.
-- [ ] Monetization model document.
-- [ ] Reporting engine: PDF/CSV/Excel exports.
-- [ ] Final stress test & performance optimization.
-- [ ] Complete documentation & user manual.
+- [x] Social/copy trading stubs (paper only, no real leaderboard for real trading).
+- [x] Robo-advisor / goal-based investing module.
+- [x] Onboarding journey (beginner → intermediate → advanced).
+- [x] Competitive analysis feature benchmarking.
+- [x] Monetization model document.
+- [x] Reporting engine: PDF/CSV/Excel exports.
+- [x] Final stress test & performance optimization.
+- [x] Complete documentation & user manual.
 
 **Acceptance:** All major features accessible; load test ≥100 concurrent API calls; documentation complete.
 

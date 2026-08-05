@@ -65,10 +65,8 @@ def test_credential_store_retrieve():
 def test_credential_rotate_key():
     mgr = CredentialManager(master_key="old-key")
     mgr.store("api_key", "secret_value")
-    encrypted_before = mgr._store["api_key"].encrypted_value
 
     mgr.rotate_key("new-key")
-    encrypted_after = mgr._store["api_key"].encrypted_value
 
     # With Fernet, encrypted values change after rotation.
     # With base64 fallback (no cryptography lib), values stay the same.
