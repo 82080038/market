@@ -217,21 +217,21 @@ Membuat satu aplikasi desktop/web single-user untuk analisis, rekomendasi, simul
 
 ---
 
-### Fase 8 — Advanced AI/ML & MLOps (Minggu 22-24)
+### Fase 8 — Advanced AI/ML & MLOps (Minggu 22-24) [~] IN PROGRESS
 
 **Tujuan:** model dapat belajar, di-versioning, dan dipromosikan dengan aman.
 
 **Dokumen acuan:** `23-machine-learning-trading.md`, `30-sentiment-analysis-alternative-data.md`, `39-screening-aiml-pattern-memory.md`, `51-mlops-model-risk-management.md`, `58-feature-store-engineering-pipeline.md`, `67-llm-agent-layer-self-evolution.md`, `71-eval-gated-promotion-ab-testing.md`.
 
 **Deliverables & Markers:**
-- [ ] LSTM/ensemble training pipeline (GPU `cuda:1`).
-- [ ] Model registry with aliases (`@experiment`, `@candidate`, `@champion`).
-- [ ] Feature store automation.
-- [ ] Walk-forward & purged k-fold cross-validation.
-- [ ] Model drift detection.
-- [ ] Champion/challenger promotion workflow.
-- [ ] A/B testing framework for strategies.
-- [ ] Eval-gated promotion pipeline.
+- [x] LSTM/ensemble training pipeline (GPU `cuda:1`).
+- [x] Model registry with aliases (`@experiment`, `@candidate`, `@champion`).
+- [x] Feature store automation.
+- [x] Walk-forward & purged k-fold cross-validation.
+- [x] Model drift detection.
+- [x] Champion/challenger promotion workflow.
+- [x] A/B testing framework for strategies.
+- [x] Eval-gated promotion pipeline.
 
 **Acceptance:** Model can be trained, registered, promoted, and inference uses champion alias.
 
