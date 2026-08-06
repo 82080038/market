@@ -25,6 +25,12 @@ cp .env.example .env
 
 # 6. Jalankan migrasi database
 uv run market migrate
+
+# 7. ⚠️ Restore data besar dari external drive (wajib!)
+#    Data DB (6 GB) dan CSV dataset (233 MB) tidak ada di Git.
+#    Lihat README.md → "Data Eksternal (Wajib)" untuk detail.
+bash scripts/restore_data_from_external.sh  # jika punya backup
+# atau: uv run python scripts/seed_from_parquet.py  # seed dari Parquet
 ```
 
 ---
@@ -115,6 +121,8 @@ src/market/
 - **Alembic** untuk migrasi: `uv run alembic revision --autogenerate -m "description"`
 - **SQLite** untuk semua environment (research/paper/live)
 - **Parquet** untuk data portability dan seeder
+- **Ticker suffix**: Gunakan `src/market/data/ticker_util.py` (`to_yf_ticker`, `from_yf_ticker`, `get_currency`) untuk standardisasi suffix yfinance. **Jangan hardcode `.JK`** di kode baru.
+- **Screener**: Gunakan `TickerScreener` (`src/market/data/screener.py`) untuk filter eligible tickers sebelum data fetching. Screener mengecualikan tickers yang delisted, suspended, merged, blocked, atau low-liquidity.
 
 ---
 
@@ -205,6 +213,7 @@ uv run pytest tests/test_market_factors.py -v
 | `test_api.py` | API endpoint tests |
 | `test_advisory.py` | Robo advisor & NLP tests |
 | `test_acquisition.py` | Data acquisition & Yahoo adapter tests |
+| `test_screener.py` | Ticker screener filter tests (delisted, suspended, merged, low-liquidity) |
 
 ---
 
@@ -250,3 +259,6 @@ print(schema)
 - [MEGAPLAN.md](MEGAPLAN.md) — rencana implementasi 12 fase
 - [AGENTS.md](AGENTS.md) — aturan AI global
 - [docs/adr/](docs/adr/) — Architecture Decision Records
+- [docs/DATABASE-ISSUES.md](docs/DATABASE-ISSUES.md) — audit konsistensi data IDX
+- [docs/AUDIT-FINDINGS.md](docs/AUDIT-FINDINGS.md) — laporan audit aplikasi
+- `src/market/data/ticker_util.py` — helper standardisasi ticker suffix

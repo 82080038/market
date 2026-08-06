@@ -70,14 +70,20 @@ def check_stale_data(con: sqlite3.Connection) -> list[HealthIssue]:
     issues: list[HealthIssue] = []
     now = datetime.now(UTC)
 
-    # Active equity tickers stale >7 days
+    # Active IDX equity tickers stale >7 days
     stale = con.execute(
         """
-        SELECT ticker, MAX(date(timestamp)) last_date,
-               julianday('now') - julianday(MAX(date(timestamp))) days_old
-        FROM ohlcv
-        WHERE ticker LIKE '%.JK'
-        GROUP BY ticker
+        SELECT o.ticker, MAX(date(o.timestamp)) last_date,
+               julianday('now') - julianday(MAX(date(o.timestamp))) days_old
+        FROM ohlcv o
+        JOIN instrument_master im ON (
+            im.ticker = REPLACE(o.ticker, '.JK', '')
+            AND im.market_mic = 'XIDX'
+            AND im.is_active = 1
+            AND im.asset_class = 'equity'
+        )
+        WHERE o.ticker LIKE '%.JK'
+        GROUP BY o.ticker
         HAVING days_old > ?
         ORDER BY days_old DESC
         """,

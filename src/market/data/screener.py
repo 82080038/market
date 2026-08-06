@@ -50,6 +50,7 @@ class ScreeningResult:
     excluded_suspended: list[str] = field(default_factory=list)
     excluded_blocked: list[str] = field(default_factory=list)
     excluded_low_liquidity: list[str] = field(default_factory=list)
+    excluded_merged: list[str] = field(default_factory=list)
 
     @property
     def total_excluded(self) -> int:
@@ -58,6 +59,7 @@ class ScreeningResult:
             + len(self.excluded_suspended)
             + len(self.excluded_blocked)
             + len(self.excluded_low_liquidity)
+            + len(self.excluded_merged)
         )
 
     def summary(self) -> dict[str, int]:
@@ -67,6 +69,7 @@ class ScreeningResult:
             "excluded_suspended": len(self.excluded_suspended),
             "excluded_blocked": len(self.excluded_blocked),
             "excluded_low_liquidity": len(self.excluded_low_liquidity),
+            "excluded_merged": len(self.excluded_merged),
             "total_excluded": self.total_excluded,
         }
 
@@ -125,12 +128,24 @@ class TickerScreener:
             return result
 
         # Layer 2: Exclude tickers with delisting_date set
+        # (already filtered in Layer 1, but keep for backward compat)
         delisted = set(
             session.execute(
                 select(InstrumentMaster.ticker).where(
                     InstrumentMaster.is_active == True,  # noqa: E712
                     InstrumentMaster.asset_class == asset_class,
                     InstrumentMaster.delisting_date.is_not(None),
+                )
+            ).scalars().all()
+        )
+
+        # Layer 2b: Exclude tickers that have been merged (underlying_ticker set)
+        merged = set(
+            session.execute(
+                select(InstrumentMaster.ticker).where(
+                    InstrumentMaster.is_active == True,  # noqa: E712
+                    InstrumentMaster.asset_class == asset_class,
+                    InstrumentMaster.underlying_ticker.is_not(None),
                 )
             ).scalars().all()
         )
@@ -175,6 +190,8 @@ class TickerScreener:
         for ticker in active_tickers:
             if ticker in delisted:
                 result.excluded_delisted.append(ticker)
+            elif ticker in merged:
+                result.excluded_merged.append(ticker)
             elif ticker in suspended:
                 result.excluded_suspended.append(ticker)
             elif ticker in blocked:
@@ -185,10 +202,11 @@ class TickerScreener:
                 result.passed.append(ticker)
 
         logger.info(
-            "Screener: %d passed, %d excluded (delisted=%d, suspended=%d, blocked=%d, low_liq=%d)",
+            "Screener: %d passed, %d excluded (delisted=%d, merged=%d, suspended=%d, blocked=%d, low_liq=%d)",
             len(result.passed),
             result.total_excluded,
             len(result.excluded_delisted),
+            len(result.excluded_merged),
             len(result.excluded_suspended),
             len(result.excluded_blocked),
             len(result.excluded_low_liquidity),

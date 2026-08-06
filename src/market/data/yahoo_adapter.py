@@ -16,6 +16,7 @@ import yfinance as yf
 from market.config import settings
 from market.data.contracts import CorporateActionRecord, NormalizedOHLCV
 from market.data.rate_limit import RateLimiter
+from market.data.ticker_util import from_yf_ticker, get_currency
 
 logger = logging.getLogger(__name__)
 
@@ -62,13 +63,18 @@ class YahooFinanceAdapter:
             ticker, period, interval, start, end,
         )
 
+        # Limit end date to yesterday — exclude incomplete today's data
+        from datetime import timedelta
+        if end is None:
+            end = date.today() - timedelta(days=1)
+
         try:
             df = yf.download(
                 ticker,
                 start=start,
                 end=end,
                 period=period if not start else None,
-                auto_adjust=False,
+                auto_adjust=True,
                 progress=False,
                 interval=interval,
             )
@@ -80,12 +86,20 @@ class YahooFinanceAdapter:
             logger.warning("No data returned for %s", ticker)
             return []
 
+        # Flatten multi-index columns (yfinance returns (field, ticker) tuples)
+        if isinstance(df.columns, pd.MultiIndex):
+            df.columns = df.columns.get_level_values(0)
+
         records: list[NormalizedOHLCV] = []
         for ts, row in df.iterrows():
             try:
                 ts_dt = ts.to_pydatetime() if isinstance(ts, pd.Timestamp) else ts
                 if ts_dt.tzinfo is None:
                     ts_dt = ts_dt.replace(tzinfo=UTC)
+
+                # Skip rows with NaN values
+                if pd.isna(row.get("Open")) or pd.isna(row.get("Close")):
+                    continue
 
                 records.append(
                     NormalizedOHLCV(
@@ -96,10 +110,11 @@ class YahooFinanceAdapter:
                         high=Decimal(str(row["High"])),
                         low=Decimal(str(row["Low"])),
                         close=Decimal(str(row["Close"])),
-                        volume=int(row["Volume"]),
+                        volume=int(row["Volume"]) if not pd.isna(row.get("Volume")) else 0,
                         adjusted_close=(
                             Decimal(str(row["Adj Close"]))
-                            if "Adj Close" in row else None
+                            if "Adj Close" in row and not pd.isna(row.get("Adj Close"))
+                            else Decimal(str(row["Close"]))
                         ),
                         currency=currency,
                         source="yahoo_finance",
@@ -132,7 +147,7 @@ class YahooFinanceAdapter:
                     action_type="dividend",
                     ex_date=ex_date,
                     value=float(amount),
-                    currency="IDR" if ticker.endswith(".JK") else "USD",
+                    currency=get_currency(*from_yf_ticker(ticker)),
                     source="yahoo_finance",
                 )
             )

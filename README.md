@@ -36,7 +36,7 @@ Aplikasi **decision-support** untuk pasar modal Indonesia (IDX) dan global, diba
 │  Corporate Action adjustment, Time-Zone Bucket Grid              │
 ├─────────────────────────────────────────────────────────────────┤
 │              Database (SQLite + Parquet + Alembic)               │
-│  39 tables: OHLCV, Fundamental, Macro, News, Scores, etc.        │
+│  42+ tables: OHLCV, Fundamental, Macro, News, Scores, DTS, etc.   │
 └─────────────────────────────────────────────────────────────────┘
 ```
 
@@ -48,6 +48,9 @@ Aplikasi **decision-support** untuk pasar modal Indonesia (IDX) dan global, diba
 - **Prediction Engine** (`src/market/analysis/prediction.py`): Ensemble 5 metode (MA, momentum, pattern, vol-adjusted, context-adjusted) dengan error tracking dan risk memory.
 - **Risk Manager** (`src/market/analysis/risk.py`): VaR 95/99, CVaR, max drawdown, position sizing berbasis ATR.
 - **NLP Sentiment** (`src/market/social/robo_advisor.py`): Keyword-based NLP dengan lexicon EN+ID untuk news sentiment.
+- **Ticker Suffix Utility** (`src/market/data/ticker_util.py`): Standardisasi suffix yfinance berdasarkan `market_registry.data_suffix` — menggantikan hardcoded `.JK` di seluruh codebase. Mendukung XIDX, XNYS, XNAS, XFRA, XHKG, XSHG, XTSE, dll.
+- **Ticker Screener** (`src/market/data/screener.py`): Filter berlapis untuk eligible tickers — exclude delisted, suspended, merged, blocked, dan low-liquidity.
+- **Delisting Memory** (`src/market/analysis/delisting_memory.py`): AI-driven blocking instruments berdasarkan risk score dan status delisting/merger.
 
 ---
 
@@ -80,18 +83,97 @@ cp .env.example .env
 # 5. Jalankan migrasi database
 uv run market migrate
 
-# 6. Seed database dari Parquet (lihat section Database Seeding di bawah)
+# 6. ⚠️ RESTORE DATA BESAR DARI EXTERNAL DRIVE (wajib untuk menjalankan aplikasi)
+#    Lihat section "Data Eksternal (Wajib)" di bawah.
+#    Jika Anda memiliki flashdisk backup:
+bash scripts/restore_data_from_external.sh
+
+# 7. Seed database dari Parquet (jika tidak punya backup DB, lihat section Database Seeding)
 uv run python scripts/seed_from_parquet.py
 
-# 7. Jalankan server API
+# 8. Jalankan server API
 uv run market api
 
-# 8. Jalankan frontend (terminal terpisah)
+# 9. Jalankan frontend (terminal terpisah)
 cd frontend && npm run dev
 
-# 9. Jalankan scheduler harian (terminal terpisah)
+# 10. Jalankan scheduler harian (terminal terpisah)
 uv run market scheduler
 ```
+
+---
+
+## Data Eksternal (Wajib)
+
+Aplikasi ini menggunakan data pasar modal berukuran besar (**~6 GB database + 233 MB CSV dataset**) yang **tidak disimpan di repository Git**. Ada dua cara untuk mendapatkan data:
+
+### Opsi A: Restore dari External Drive (Cepat)
+
+Jika Anda memiliki backup data di external drive:
+
+```bash
+# 1. Mount external drive (otomatis di sebagian besar Linux desktop)
+#    Default path: /media/petrick/Parquet/projects/market/
+
+# 2. Restore data ke project directory
+bash scripts/restore_data_from_external.sh
+
+# 3. Verifikasi
+ls -lh data/market_research.db  # ~6 GB
+ls data/dataset-saham-idx/       # 1027 CSV files
+```
+
+Skrip `restore_data_from_external.sh` akan:
+- Mengembalikan `market_research.db` (auto-rejoin chunk jika FAT32)
+- Mengembalikan `dataset-saham-idx/` (1027 CSV files)
+- Mengembalikan `parquet_seeds/` dan `parquet_export/`
+
+### Opsi B: Seed dari Parquet (Dari Nol)
+
+Jika Anda tidak punya backup DB, bangun dari nol:
+
+```bash
+# 1. Siapkan file Parquet di direktori seed
+#    Default: /media/petrick/Parquet/pustaka_data/archive/tables/
+
+# 2. Validasi schema
+uv run python scripts/seed_from_parquet.py --validate
+
+# 3. Seed database
+uv run python scripts/seed_from_parquet.py
+
+# 4. Backfill dari Yahoo Finance (membutuhkan internet)
+uv run python scripts/backfill_data.py
+```
+
+### Opsi C: Backup Data ke External Drive
+
+Jika Anda sudah punya database dan ingin backup:
+
+```bash
+# Copy data ke external drive (tidak hapus source)
+bash scripts/sync_data_to_external.sh
+
+# Atau pindahkan (hapus source setelah copy)
+bash scripts/sync_data_to_external.sh --move
+```
+
+### Daftar Data yang Tidak di-Git
+
+| Path | Ukuran | Deskripsi | Sumber |
+|------|--------|-----------|--------|
+| `data/market_research.db` | ~6 GB | Database utama (OHLCV, DTS, fundamental, dll) | Seed/backfill |
+| `data/market_paper.db` | ~6 GB | Database paper trading | Seed dari research |
+| `data/market_live.db` | <1 MB | Database live (kosong, sesuai) | Migrate |
+| `data/dataset-saham-idx/` | 233 MB | 1027 CSV files IDX (Jul 2019–Feb 2025) | GitHub clone |
+| `data/backups/` | varies | Backup DB sebelum cleanup | Auto-generated |
+| `data/parquet_export/` | varies | Export Parquet dari DB | `--export` flag |
+| `.venv/` | ~674 MB | Python virtual environment | `uv sync` |
+| `frontend/node_modules/` | ~588 MB | Node.js dependencies | `npm install` |
+| `models/` | varies | Trained ML models | Training |
+| `logs/` | varies | Application logs | Runtime |
+
+> **⚠️ Penting:** Aplikasi akan error jika `data/market_research.db` tidak ada. Pastikan salah satu opsi di atas sudah dijalankan sebelum `uv run market api`.
 
 ---
 
@@ -134,9 +216,9 @@ Skrip seeder melakukan validasi otomatis:
 - **Column mapping**: konversi nama kolom Parquet → DB (misal: `pe_ratio` → `pe`)
 - **Extra columns**: kolom Parquet yang tidak ada di DB akan di-skip (warning)
 
-### 27 Seedable Tables
+### 28+ Seedable Tables
 
-`ohlcv`, `instrument_master`, `fundamental_data`, `corporate_actions`, `dividends`, `foreign_flow`, `macro_data`, `market_registry`, `market_calendar`, `news`, `scores`, `technical_indicators`, `relationship_matrix`, `fear_greed`, `pattern_analysis`, `stock_personality`, `sector_master`, `watchlist`, `broker_flow`, `fx_rates`, `external_events`, `policy_events`, `esg_scores`, `corporate_governance`, `valuation_cache`, `trading_suspensions`, `data_watermark`, `source_health`
+`ohlcv`, `instrument_master`, `fundamental_data`, `corporate_actions`, `dividends`, `foreign_flow`, `macro_data`, `market_registry`, `market_calendar`, `news`, `scores`, `technical_indicators`, `relationship_matrix`, `fear_greed`, `pattern_analysis`, `stock_personality`, `sector_master`, `watchlist`, `broker_flow`, `fx_rates`, `external_events`, `policy_events`, `esg_scores`, `corporate_governance`, `valuation_cache`, `trading_suspensions`, `daily_trading_stats`, `data_watermark`, `source_health`
 
 ---
 
@@ -173,9 +255,44 @@ market/
 ├── data/                 # Local SQLite, Parquet seeds/exports
 ├── scripts/              # Automation scripts (backfill, seed, simulation)
 ├── pustaka/              # Knowledge base (94 Markdown docs)
-├── docs/                 # ADRs & audit findings
+├── docs/                 # ADRs, audit findings, database issues
 └── .github/workflows/    # CI (lint + test)
 ```
+
+---
+
+## Corporate Actions & Delisting Logic
+
+Aplikasi menangani corporate events IDX secara komprehensif sebagai memory untuk ML/AI:
+
+- **Merger**: `instrument_master.underlying_ticker` di-set ke ticker penerus; `corporate_actions` diisi dengan `action_type='merger'`; screener mengecualikan ticker yang sudah merged.
+- **Pailit/Bankruptcy**: `instrument_master.delisting_risk_reason` diisi (e.g. "pailit", "voluntary delisting"); `is_active=0` + `delisting_date`.
+- **Name Change**: `instrument_master.former_ticker` dan `former_name` diisi untuk kontinuitas historis.
+- **Trading Suspension**: Tabel `trading_suspensions` dengan `suspend_date`, `resume_date`, `reason`.
+- **DTS (Daily Trading Stats)**: Data bid/offer, frequency, value, listed_shares dari GitHub Dataset-Saham-IDX (Jul 2019–Feb 2025) + derived dari OHLCV untuk IPO baru.
+
+### Database Stats (6 Agustus 2026)
+
+| Tabel | Rows | Tickers | Periode |
+|-------|------|---------|--------|
+| `instrument_master` | 985 | 923 active, 62 delisted | — |
+| `ohlcv` | 3,024,934 | 1,008 | 2000–2026-08-06 |
+| `daily_trading_stats` | 1,082,968 | 983 | 2019–2026-08-05 |
+| `foreign_flow` | 178,201 | — | 2019–2026-08-03 |
+| `fundamental_data` | 1,007 | 1,007 | snapshot |
+| `corporate_actions` | 6,367 | — | dividend 5,974, split 391, merger 2 |
+| `technical_indicators` | 19M+ | 923 | time series |
+
+### Migration History
+
+| Version | Description |
+|---------|-------------|
+| 0001 | Initial schema: all Fase 1 tables |
+| 0002 | Add esg_scores and corporate_governance tables |
+| 0003 | Complete schema: 15 missing tables + 4 column additions |
+| 0004 | Add scheduler_state table |
+| 0005 | Add suspension_date column to instrument_master |
+| 0006 | Add listed_shares, tradeable_shares, delisting_risk_score, delisting_risk_reason, former_ticker, former_name |
 
 ---
 
@@ -237,3 +354,6 @@ Rencana implementasi lengkap tersedia di [MEGAPLAN.md](MEGAPLAN.md) dengan 12 fa
 - [MEGAPLAN.md](MEGAPLAN.md) — rencana implementasi 12 fase.
 - [CONTRIBUTING.md](CONTRIBUTING.md) — panduan kontribusi untuk contributor.
 - [docs/adr/](docs/adr/) — Architecture Decision Records.
+- [docs/DATABASE-ISSUES.md](docs/DATABASE-ISSUES.md) — audit konsistensi data IDX.
+- [docs/AUDIT-FINDINGS.md](docs/AUDIT-FINDINGS.md) — laporan audit aplikasi.
+- [docs/prompting-ai-ml-analysis.md](docs/prompting-ai-ml-analysis.md) — prompt template untuk analisis AI/ML.

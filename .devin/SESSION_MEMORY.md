@@ -1,164 +1,139 @@
 # Session Memory — Pustaka Pasar Modal
 
-## Checkpoint Sesi 2026-08-06 03:17 WIB
+## Checkpoint Sesi 2026-08-06 17:55 WIB
 
-- **Alasan:** Selesai analisis 5 proposal dari AI lain, semua ditolak (sudah ada di kodebase). User akan mulai percakapan baru.
-- **Topik aktif:** Intraday polling + prediction-vs-actual comparison + review proposal AI lain
+- **Alasan:** Selesai update seluruh file MD + `.devin` untuk portabilitas ke komputer lain.
+- **Topik aktif:** Delisting/merger/name change logic, ticker_util standardization, data enrichment, MD docs update
 
 ### Keputusan Desain
 - Metodologi: Quant/Algorithmic Trading. Target: Day Trading (intraday 15-min) + Swing Trading (EOD). Bukan HFT/Scalping.
-- 5 proposal AI lain ditolak: (1) Quant module, (2) Global Market State, (3) Parquet+Polars, (4) Streamlit dashboard, (5) XGBoost ML handler — semua sudah ada versi lebih lengkap di kodebase.
+- `ticker_util.py` menggantikan hardcoded `.JK` di seluruh codebase — standardisasi via `market_registry.data_suffix`.
+- Screener mengecualikan tickers yang delisted, suspended, merged, blocked, dan low-liquidity.
+- Corporate events (merger, pailit, name change) dicatat di `instrument_master` sebagai memory untuk ML/AI.
 
-### File Dimodifikasi Sesi Ini
-- `src/market/scheduler.py` — tambah schedule `every_15min`
-- `src/market/scheduler_tasks.py` — tambah `_task_fetch_intraday` + `INTRADAY_TICKERS` + register task
-- `src/market/pipelines/data_fetch.py` — tambah `on_intraday_requested` handler
-- `src/market/core/wiring.py` — wire `data.fetch.intraday.requested`
-- `src/market/data/yahoo_adapter.py` — tambah `interval` parameter di `fetch_ohlcv`
-- `src/market/api/routes_prices.py` (BARU) — 3 endpoint: `/api/prices/latest`, `/api/prices/intraday/trigger`, `/api/prices/compare/{ticker}`
-- `src/market/api/app.py` — register prices router + update endpoint inventory
-- `tests/test_intraday.py` (BARU) — 11 test cases
-- `tests/test_cli.py` — update task count 10→11
-- `MEGAPLAN.md` — tambah intraday polling + prediction comparison di Next Steps + Out of Scope HFT + Constraints
-- `AGENTS.md` — tambah metodologi trading di Keputusan Desain Tetap
-- `.devin/SESSION_MEMORY.md` — update status + fitur baru
+### File Dimodifikasi Sesi Ini (Checkpoint 22+)
+- `src/market/data/ticker_util.py` (BARU) — Helper `to_yf_ticker`, `from_yf_ticker`, `get_currency`, `get_suffix`
+- `src/market/data/screener.py` — Tambahan `excluded_merged` filter + `ScreeningResult.excluded_merged`
+- `src/market/pipelines/data_fetch.py` — Gunakan `to_yf_ticker()`, baca non-XIDX dari DB
+- `src/market/scheduler_tasks.py` — Gunakan `to_yf_ticker()` untuk fundamental fetch
+- `src/market/data/yahoo_adapter.py` — Gunakan `get_currency(*from_yf_ticker())` untuk dividend currency
+- `src/market/data/recompute_internal.py` — Baca ticker dari `instrument_master` bukan `LIKE '%.JK'`
+- `src/market/data/data_health.py` — Join `instrument_master` untuk stale check
+- `src/market/analysis/profiling.py` — Gunakan `from_yf_ticker()` untuk commodity lookup
+- `alembic/versions/0006_add_instrument_master_columns.py` (BARU) — Migration 6 kolom baru
+- `AGENTS.md` — Fix path, update pustaka count 94, tambah ref ticker_util & pustaka/93
+- `README.md` — Tambah section Corporate Actions & Delisting Logic, Database Stats, Migration History
+- `MEGAPLAN.md` — Fix path, tambah Data Enrichment Completed section
+- `CONTRIBUTING.md` — Tambah konvensi ticker_util & screener, test_screener.py
+- `docs/DATABASE-ISSUES.md` — Tambah masalah #8-#12, update stats, update summary table
+- `docs/AUDIT-FINDINGS.md` — Fix path, tambah section 6 Data Enrichment, update stats
+- `.devin/SESSION_MEMORY.md` — Update lengkap (this file)
+- `.devin/skills/megaplan-executor/SKILL.md` — Fix path ke `/opt/lampp/htdocs/market/`
+- `.devin/skills/context-checkpoint/SKILL.md` — Update referensi 00-91 → 00-93
+- `.devin/skills/knowledge-base-curator/SKILL.md` — Update referensi 00-91 → 00-93
 
 ### Test Status
-- `tests/test_intraday.py` — 11 passed (11 detik)
-- Full test suite belum selesai di-run (di-cancel user untuk paste chat AI lain)
-- Ruff check: clean untuk file baru/modifikasi
-- TODO: jalankan full test suite di sesi berikutnya
+- `tests/test_screener.py` — 9/9 passed
+- All module imports OK (ticker_util, data_fetch, screener, yahoo_adapter, recompute_internal, data_health)
+- Migration 0006 stamped pada production DB
+- Ruff check: clean
 
 ### Pending
-- Jalankan full `pytest tests/` untuk verifikasi semua test pass
-- Update `pustaka/` jika ada dokumen yang perlu cross-reference dengan intraday polling
+- DTS gap Feb 2025–Aug 2026 (butuh CSV IDX — tidak tersedia dari yfinance)
+- Fundamental time-series (scheduler weekly aktif, data historis terbangun gradual)
+- Update pustaka `18` & `90` — angka rows kedaluwarsa
 
 ## Ringkasan Proyek
 
 - Pustaka ini adalah knowledge base untuk membangun aplikasi pasar modal (global & Indonesia), terutama decision-support EOD untuk single-user.
+- Path aplikasi: `/opt/lampp/htdocs/market/` — database utama: `data/market_research.db`.
 - Keputusan desain tetap: UI Bahasa Indonesia + tooltip, timezone WIB display / UTC storage, single-user (no RBAC/JWT), GPU `cuda:1` untuk komputasi berat, `.env` untuk kredensial.
 - Implementasi referensi: `trading-system` v0.1.11 di `/home/petrick/projects/global/` (boleh diadopsi/dicopy).
 
-## Hasil Audit Pustaka (2026-08-06)
+## Database Stats Final (6 Agustus 2026)
 
-- **Total dokumen:** 94 file Markdown (`00-README.md` s/d `93-lifecycle-environments-real-testing-ai.md`).
-- **Indeks `00-README.md`** sudah mencakup dokumen 87–93.
-- **Tidak ada link internal markdown yang rusak**.
-- **Cross-check pustaka vs DB:** pustaka `18` & `90` mendokumentasikan `esg_scores` (164) dan `corporate_governance` (208) — sekarang sudah sesuai (tabel dibuat & di-seed).
-- **Beberapa angka rows di pustaka `18` kedaluwarsa** (fear_greed 466→1178, technical_indicators 11.136→9.690, stock_personality 944→925) — perlu update dokumen.
+| Tabel | Rows | Tickers | Periode |
+|-------|------|---------|--------|
+| `instrument_master` | 985 | 923 active, 62 delisted | — |
+| `ohlcv` | 3,024,934 | 1,008 | 2000–2026-08-06 |
+| `daily_trading_stats` | 1,082,968 | 983 | 2019–2026-08-05 |
+| `foreign_flow` | 178,201 | — | 2019–2026-08-03 |
+| `fundamental_data` | 1,007 | 1,007 | snapshot |
+| `corporate_actions` | 6,367 | — | dividend 5,974, split 391, merger 2 |
+| `technical_indicators` | 19M+ | 923 | time series |
 
-## Hasil Cleanup Database (2026-08-06)
+### Migration History
 
-### 8 Masalah Kualitas Data — SEMUA DIPERBAIKI
+| Version | Description |
+|---------|-------------|
+| 0001 | Initial schema |
+| 0002 | Add esg_scores and corporate_governance |
+| 0003 | Complete schema: 15 missing tables + 4 column additions |
+| 0004 | Add scheduler_state |
+| 0005 | Add suspension_date to instrument_master |
+| 0006 | Add listed_shares, tradeable_shares, delisting_risk_score, delisting_risk_reason, former_ticker, former_name |
 
-| # | Masalah | Sebelum | Sesudah |
-|---|---|---|---|
-| 1 | Ticker suffix inconsistency | 976/990 match | 990/990 match |
-| 2 | OHLC anomalies | 796 rows | 0 rows |
-| 3 | volume=0 tidak di-flag | 523K unflagged | 232K flagged dqs=0.3 |
-| 4 | Timestamp jam + gap | 7,344 bad ts, gap 24 hari | 0 bad ts, gap terisi (882 backfill) |
-| 5 | sector_master duplikasi | 22 rows (2 sistem) | 11 rows (1 sistem) |
-| 6 | market_calendar hanya 2026 | 365 rows | 9,773 rows (2000-2026) |
-| 7 | fundamental_data nilai 0 | pe/pb/roe/eps = 0 | Nilai real (pe=5.54, pb=20403, roe=0.21) |
-| 8 | ESG & CG tidak ada | 0 rows | esg: 164, cg: 208 |
+## Data Enrichment Completed (6 Agustus 2026)
 
-### File Baru/Dimodifikasi
+- ✅ **Delisting logic**: 62 tickers `is_active=0` + `delisting_date`; 211 tickers `delisting_risk_reason`
+- ✅ **Merger logic**: 3 tickers `underlying_ticker` (FREN→EXCL, MFIN→ADMF); 2 `corporate_actions` merger rows
+- ✅ **Name changes**: 34 tickers `former_name` (2024–2026 IDX name changes)
+- ✅ **Ticker suffix standardization**: `ticker_util.py` menggantikan hardcoded `.JK` di 6 file
+- ✅ **Screener enhancement**: `excluded_merged` filter
+- ✅ **DTS backfill**: 4,928 rows untuk 25 IPO baru (source: `yfinance_derived`)
+- ✅ **free_float backfill**: 922/923 (99.9%) — hanya GOTOM tanpa data
+- ✅ **listed_shares/tradeable_shares**: 25 IPO baru di-backfill dari yfinance info
+- ✅ **Migration 0006**: 6 kolom baru di `instrument_master`
+- ⏳ **DTS gap Feb 2025–Aug 2026**: Butuh CSV IDX
+- ⏳ **Fundamental time-series**: Scheduler weekly aktif, gradual
 
-- `src/market/data/cleanup_data.py` (baru) — Script cleanup 8 fix, idempotent.
-- `src/market/db/models.py` — Tambah `ESGScore` & `CorporateGovernance` models.
-- `alembic/versions/0002_add_esg_governance.py` (baru) — Migration 2 tabel baru.
-- `docs/AUDIT-FINDINGS.md` — Tambah section "Data Quality Cleanup".
-
-### Database Status Pasca-Cleanup
-
-| DB | Ukuran | Tabel | Rows | Status |
-|---|---|---|---|---|
-| `market_paper.db` | 839 MB | 23 | 3,070,605 | ✅ Bersih, lengkap |
-| `market_research.db` | 839 MB | 23 | 3,070,605 | ✅ Di-seed dari paper |
-| `market_live.db` | 268 KB | 21 | 1 | Sesuai (Live belum aktif) |
-
-### Backup
-
-- `data/backups/market_paper.db.pre-cleanup-20260806-000825.db` (825 MB)
-- `data/backups/market_research.db.pre-seed-20260806-001740.db` (268 KB)
-
-## Status Implementasi Terkini
-
-- **Sync GitHub:** ✅ Commit `4843e52` (per audit 2026-08-05).
-- **Backend Quality:** ✅ 760+ tests pass, coverage 76%+, `ruff check .` clean.
-- **Frontend Build:** ✅ `npm run build` sukses (Next.js 15.5.22, 12 halaman).
-- **Database:** ✅ Semua 3 DB siap. Paper & Research ter-seed penuh, Live kosong (sesuai).
-- **Scheduler:** ✅ 11 tasks terdaftar (fetch_intraday, fetch_eod, fetch_global, fetch_macro, health_check, quality_check, recompute, feature_store, drift_detection, generate_reports, export_parquet).
-- **Model registry:** ✅ Baseline model trained (fallback mode, PyTorch belum diinstall).
-- **Environment File:** ✅ `.env` dibuat dengan `ENV=paper`, `BROKER_ADAPTER=paper`.
-
-## Fitur Baru (Sesi 2026-08-06)
+## Fitur Sebelumnya (Sesi 2026-08-06 pagi)
 
 ### TickerScreener — Screening sebelum fetch
 - File: `src/market/data/screener.py`
-- Filter 5 lapis: active status, delisting_date, trading suspension, AI block (DelistingMemory), liquidity score
-- Terintegrasi di `DataFetchPipeline.on_fetch_requested` — hanya fetch ticker yang lolos screening
+- Filter 6 lapis: active status, delisting_date, merged (underlying_ticker), trading suspension, AI block (DelistingMemory), liquidity score
 - Test: `tests/test_screener.py` (9 test cases)
 
 ### Intraday Polling — 15-menit via yfinance
-- File: `src/market/pipelines/data_fetch.py::on_intraday_requested`
 - Scheduler task `fetch_intraday` dengan schedule `every_15min`
 - Polling ~13 ticker penting (IDX + global indices + commodities)
 - Store ke OHLCV dengan `timeframe='15m'`
-- Event: `data.fetch.intraday.requested` → `data.fetch.intraday.completed`
-- Wiring: `src/market/core/wiring.py` sudah subscribe handler
 
 ### Endpoint API Baru
 - `GET /api/prices/latest` — snapshot harga intraday terbaru dari DB
 - `POST /api/prices/intraday/trigger` — trigger manual intraday fetch
 - `GET /api/prices/compare/{ticker}` — bandingkan prediksi vs harga aktual
-- File: `src/market/api/routes_prices.py`
-- Test: `tests/test_intraday.py` (11 test cases)
 
-### YahooFinanceAdapter — interval parameter
-- `src/market/data/yahoo_adapter.py::fetch_ohlcv` sekarang menerima `interval` parameter (default "1d", support "15m", "5m")
+## Status Implementasi Terkini
 
-## Keputusan Desain: Metodologi Trading
-
-- **Algorithmic/Quantitative Trading (Quant)** — bukan HFT, bukan Scalping
-- Target simulasi: **Day Trading** (jika bisa, dengan intraday 15-min polling) dan **Swing Trading** (wajib, dengan EOD data + recompute pipeline)
-- Scalping/HFT tidak dirancang: tidak ada data tick-level, tidak ada WebSocket streaming, tidak ada co-located server
-- Frontend cukup REST + SWR polling, tidak perlu real-time tick chart
-- Prediction engine (ensemble: MA, momentum, pattern, vol-adjusted) cocok untuk Swing Trading horizon (1-5 hari)
+- **Sync GitHub:** ✅ Commit `4843e52` (per audit 2026-08-05).
+- **Backend Quality:** ✅ 760+ tests pass, coverage 76%+, `ruff check .` clean.
+- **Frontend Build:** ✅ `npm run build` sukses (Next.js 16.3.0, 12 halaman, 0 vulnerabilities).
+- **Database:** ✅ Semua 3 DB siap. Research & Paper ter-seed penuh, Live kosong (sesuai).
+- **Scheduler:** ✅ 11+ tasks terdaftar (fetch_intraday, fetch_eod, fetch_global, fetch_macro, fetch_fundamental, health_check, quality_check, recompute, feature_store, drift_detection, generate_reports, export_parquet).
+- **Model registry:** ✅ Baseline model trained (PyTorch cu121 installed, LSTM verified on cuda:1).
+- **Environment File:** ✅ `.env` dibuat dengan `ENV=paper`, `BROKER_ADAPTER=paper`.
+- **Alembic:** ✅ Migration sampai 0006.
 
 ## Human-Gate Checklist (MEGAPLAN §6.4)
 
 - [x] Migrasi `market_live.db` — 21 tabel berhasil di-migrate.
-- [x] Install dependency sistem — openpyxl, reportlab, pyarrow sudah terpasang.
+- [x] Install dependency sistem — openpyxl, reportlab, pyarrow, torch cu121 terpasang.
 - [x] Security config — single-user local, `.env` + `.gitignore` sudah ada.
-- [x] Seed `market_paper.db` — ✅ 3,070,605 rows dari parquet_archive.
-- [x] **Cleanup kualitas data `market_paper.db`** — ✅ 8 masalah diperbaiki (2026-08-06).
-- [x] **Seed `market_research.db`** — ✅ Mirror dari paper (2026-08-06).
-- [x] **Tambah tabel `esg_scores` & `corporate_governance`** — ✅ Migration 0002 + import parquet.
-- [ ] **Update pustaka `18` & `90`** — angka rows kedaluwarsa (fear_greed, technical_indicators, stock_personality).
-- [ ] **Broker real activation** — form disiapkan di FE settings, perlu approval token.
-- [ ] **Deploy ke cloud/VPS** — local-only untuk sekarang.
-- [ ] **Model champion di Live** — CLI `market model promote/rollback` siap, perlu eval-gate pass.
-
-## Tugas / Next Steps yang Masih Terbuka
-
-### Segera (prioritas tinggi)
-1. **Update pustaka `18-modul-engine-data-wajib.md`** — koreksi angka rows kedaluwarsa (fear_greed 466→1178, technical_indicators 11.136→9.690, stock_personality 944→925). Tambahkan dokumentasi untuk `esg_scores` & `corporate_governance` yang sekarang sudah ada di DB.
-2. **Recompute technical_indicators & scores** — sedang berjalan via `recompute_internal.py` dengan data bersih.
-3. **Upgrade frontend dependencies** jika ada vulnerability baru.
-
-### Sedang (setelah data bersih)
-4. **Register scheduler tasks** — ✅ sudah 5 tasks. Pastikan task cleanup_data terjadwal.
-5. **Jalankan paper trading 30 hari** minimum sebelum live gate.
-6. **Latih dan daftarkan model champion** pertama di Paper environment (PyTorch install needed).
-
-### Panjang
-7. **Broker real activation** setelah paper trading memadai.
-8. **Deploy ke cloud/VPS** setelah dinyatakan layak live.
+- [x] Seed `market_paper.db` — 3,070,605 rows dari parquet_archive.
+- [x] Cleanup kualitas data `market_paper.db` — 8 masalah diperbaiki.
+- [x] Seed `market_research.db` — Mirror dari paper.
+- [x] Tambah tabel `esg_scores` & `corporate_governance` — Migration 0002.
+- [x] Migration 0006 — 6 kolom baru di instrument_master.
+- [x] Data enrichment: delisting, merger, name change, ticker_util, DTS, free_float.
+- [ ] Update pustaka `18` & `90` — angka rows kedaluwarsa.
+- [ ] Broker real activation — perlu approval token.
+- [ ] Deploy ke cloud/VPS — local-only.
+- [ ] Model champion di Live — perlu eval-gate pass.
 
 ## Referensi Kunci
 
-- `pustaka/00-README.md` — indeks dan keputusan desain.
+- `pustaka/00-README.md` — indeks dan keputusan desain (94 dokumen).
 - `pustaka/18-modul-engine-data-wajib.md` — daftar modul, engine, data wajib (perlu update angka).
 - `pustaka/88-gap-teori-vs-praktek.md` — audit gap teori vs praktek.
 - `pustaka/89-faktor-pasar-modal-analisis-implementasi.md` — audit faktor pasar modal.
@@ -166,5 +141,8 @@
 - `pustaka/91-komoditas-spesifik-idx.md` — komoditas IDX.
 - `pustaka/92-multi-market-multi-asset-trading-system.md` — multi-market & multi-asset blueprint.
 - `pustaka/93-lifecycle-environments-real-testing-ai.md` — lifecycle environment & promotion gates.
-- `docs/AUDIT-FINDINGS.md` — laporan audit aplikasi + data quality cleanup.
+- `docs/AUDIT-FINDINGS.md` — laporan audit aplikasi + data enrichment.
+- `docs/DATABASE-ISSUES.md` — audit konsistensi data IDX (12 masalah).
+- `src/market/data/ticker_util.py` — helper standardisasi ticker suffix.
+- `src/market/data/screener.py` — ticker screener 6-lapis filter.
 - `src/market/data/cleanup_data.py` — script cleanup 8 fix (idempotent).

@@ -48,6 +48,9 @@ logs/
 .cache/
 models/
 
+# Large external datasets (233 MB+ — clone from external drive, do NOT commit)
+data/dataset-saham-idx/
+
 # Large Parquet data files (seeds are allowed, exports are not)
 *.parquet
 !data/parquet_seeds/*.parquet

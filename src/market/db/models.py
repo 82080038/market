@@ -77,10 +77,17 @@ class InstrumentMaster(Base):
     subsector: Mapped[str | None] = mapped_column(String(100), nullable=True)
     underlying_ticker: Mapped[str | None] = mapped_column(String(30), nullable=True)
     listing_date: Mapped[date | None] = mapped_column(Date, nullable=True)
+    suspension_date: Mapped[date | None] = mapped_column(Date, nullable=True)
     delisting_date: Mapped[date | None] = mapped_column(Date, nullable=True)
     board: Mapped[str | None] = mapped_column(String(20), nullable=True)
     free_float: Mapped[float | None] = mapped_column(Numeric(10, 4), nullable=True)
     market_cap: Mapped[float | None] = mapped_column(Numeric(20, 2), nullable=True)
+    listed_shares: Mapped[float | None] = mapped_column(Numeric(20, 2), nullable=True)
+    tradeable_shares: Mapped[float | None] = mapped_column(Numeric(20, 2), nullable=True)
+    delisting_risk_score: Mapped[float | None] = mapped_column(Numeric(5, 2), nullable=True, default=0)
+    delisting_risk_reason: Mapped[str | None] = mapped_column(Text, nullable=True)
+    former_ticker: Mapped[str | None] = mapped_column(String(30), nullable=True)
+    former_name: Mapped[str | None] = mapped_column(String(200), nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime, default=_utcnow)
     updated_at: Mapped[datetime] = mapped_column(DateTime, default=_utcnow, onupdate=_utcnow)
 
@@ -349,6 +356,43 @@ class ForeignFlow(Base):
     created_at: Mapped[datetime] = mapped_column(DateTime, default=_utcnow)
 
 
+class DailyTradingStats(Base):
+    """Daily trading statistics from IDX (pustaka/18 §13 D36).
+
+    Stores per-ticker per-day data from GitHub Dataset-Saham-IDX:
+    value, frequency, offer/bid, listed/tradeable shares, non-regular market,
+    index individual, weight for index.
+    """
+
+    __tablename__ = "daily_trading_stats"
+    __table_args__ = (
+        UniqueConstraint("ticker", "date", "source", name="uq_dts_pk"),
+        Index("ix_dts_ticker_date", "ticker", "date"),
+    )
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    ticker: Mapped[str] = mapped_column(String(30), nullable=False, index=True)
+    date: Mapped[date] = mapped_column(Date, nullable=False, index=True)
+    previous_close: Mapped[float | None] = mapped_column(Numeric(20, 4), nullable=True)
+    first_trade: Mapped[float | None] = mapped_column(Numeric(20, 4), nullable=True)
+    change: Mapped[float | None] = mapped_column(Numeric(20, 4), nullable=True)
+    value: Mapped[float | None] = mapped_column(Numeric(20, 2), nullable=True)
+    frequency: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    index_individual: Mapped[float | None] = mapped_column(Numeric(20, 4), nullable=True)
+    offer: Mapped[float | None] = mapped_column(Numeric(20, 4), nullable=True)
+    offer_volume: Mapped[float | None] = mapped_column(Numeric(20, 2), nullable=True)
+    bid: Mapped[float | None] = mapped_column(Numeric(20, 4), nullable=True)
+    bid_volume: Mapped[float | None] = mapped_column(Numeric(20, 2), nullable=True)
+    listed_shares: Mapped[float | None] = mapped_column(Numeric(20, 2), nullable=True)
+    tradeable_shares: Mapped[float | None] = mapped_column(Numeric(20, 2), nullable=True)
+    weight_for_index: Mapped[float | None] = mapped_column(Numeric(20, 4), nullable=True)
+    non_regular_volume: Mapped[float | None] = mapped_column(Numeric(20, 2), nullable=True)
+    non_regular_value: Mapped[float | None] = mapped_column(Numeric(20, 2), nullable=True)
+    non_regular_frequency: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    source: Mapped[str] = mapped_column(String(50), default="github_dataset")
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=_utcnow)
+
+
 class TechnicalIndicator(Base):
     """Technical indicators cache (pustaka/18 §13 D34)."""
 
@@ -426,11 +470,11 @@ class ESGScore(Base):
 
     __tablename__ = "esg_scores"
     __table_args__ = (
-        UniqueConstraint("kode", "year", "rating_agency", name="uq_esg_pk"),
+        UniqueConstraint("ticker", "year", "rating_agency", name="uq_esg_pk"),
     )
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
-    kode: Mapped[str] = mapped_column(String(30), nullable=False, index=True)
+    ticker: Mapped[str] = mapped_column(String(30), nullable=False, index=True)
     year: Mapped[int] = mapped_column(Integer, nullable=False)
     rating_agency: Mapped[str] = mapped_column(String(50), nullable=False)
     rating: Mapped[str | None] = mapped_column(String(30), nullable=True)
@@ -443,11 +487,11 @@ class CorporateGovernance(Base):
 
     __tablename__ = "corporate_governance"
     __table_args__ = (
-        UniqueConstraint("kode", "year", name="uq_cg_pk"),
+        UniqueConstraint("ticker", "year", name="uq_cg_pk"),
     )
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
-    kode: Mapped[str] = mapped_column(String(30), nullable=False, index=True)
+    ticker: Mapped[str] = mapped_column(String(30), nullable=False, index=True)
     year: Mapped[int] = mapped_column(Integer, nullable=False)
     board_commissioners: Mapped[float | None] = mapped_column(Numeric(10, 2), nullable=True)
     independent_commissioners: Mapped[float | None] = mapped_column(Numeric(10, 2), nullable=True)

@@ -27,6 +27,7 @@ MAX_RETRIES = 2
 RETRY_DELAY_SEC = 5
 
 # Global reference tickers (pustaka/18 §3.4)
+# Used as fallback when DB has no non-XIDX instruments registered
 GLOBAL_TICKERS = [
     "^GSPC", "^IXIC", "^DJI", "^HSI", "^N225", "^FTSE", "^GDAXI",
     "^TNX", "^VIX", "GC=F", "CL=F", "SI=F", "^JKSE",
@@ -94,18 +95,21 @@ class DataFetchPipeline:
 
             success, failed, skipped = 0, 0, 0
             for ticker in tickers:
+                # Use ticker_util to apply correct suffix per market_mic
+                yf_ticker = to_yf_ticker(ticker, "XIDX", session)
+
                 latest = session.execute(
-                    select(func.max(OHLCV.timestamp)).where(OHLCV.ticker == ticker)
+                    select(func.max(OHLCV.timestamp)).where(OHLCV.ticker == yf_ticker)
                 ).scalar()
-                if latest and (datetime.now(UTC) - latest).days <= 1:
+                if latest and (datetime.now(UTC).replace(tzinfo=None) - latest).days <= 1:
                     skipped += 1
                     continue
 
                 result = _retry(
-                    lambda t=ticker: engine.fetch_and_store(
+                    lambda t=yf_ticker: engine.fetch_and_store(
                         ticker=t, period="5d", market_mic="XIDX", currency="IDR",
                     ),
-                    label=f"fetch {ticker}",
+                    label=f"fetch {yf_ticker}",
                     max_retries=1,
                 )
                 if result and result.get("stored", 0) > 0:
@@ -128,11 +132,19 @@ class DataFetchPipeline:
             session.close()
 
     def on_fetch_global_requested(self, event: Event) -> None:
-        """Handle data.fetch_global.requested — fetch global reference tickers."""
+        """Handle data.fetch_global.requested — fetch global reference tickers.
+
+        Reads non-XIDX instruments from instrument_master (commodities,
+        indices, FX, ETFs). Falls back to hardcoded GLOBAL_TICKERS if
+        DB has no non-XIDX entries.
+        """
         from market.core.events import broker
         from market.data.acquisition import DataAcquisitionEngine
         from market.data.storage import DataRepository
+        from market.data.ticker_util import get_currency
         from market.db.engine import get_sessionmaker
+        from market.db.models import InstrumentMaster
+        from sqlalchemy import select
 
         session = get_sessionmaker()()
         try:
@@ -140,13 +152,35 @@ class DataFetchPipeline:
             engine = DataAcquisitionEngine()
             engine.set_repository(repo)
 
-            logger.info("Global fetch: %d reference tickers", len(GLOBAL_TICKERS))
+            # Read non-XIDX active instruments from DB
+            db_rows = session.execute(
+                select(
+                    InstrumentMaster.ticker,
+                    InstrumentMaster.market_mic,
+                    InstrumentMaster.base_currency,
+                ).where(
+                    InstrumentMaster.market_mic != "XIDX",
+                    InstrumentMaster.is_active == True,  # noqa: E712
+                )
+            ).all()
+
+            if db_rows:
+                tickers_data = [
+                    (row[0], row[1], row[2] or get_currency(row[0], row[1]))
+                    for row in db_rows
+                ]
+                logger.info("Global fetch: %d tickers from DB", len(tickers_data))
+            else:
+                # Fallback to hardcoded list
+                tickers_data = [
+                    (t, "XIDX" if t == "^JKSE" else "XNYS",
+                     "IDR" if t == "^JKSE" else "USD")
+                    for t in GLOBAL_TICKERS
+                ]
+                logger.info("Global fetch: %d fallback tickers", len(tickers_data))
 
             success, failed = 0, 0
-            for ticker in GLOBAL_TICKERS:
-                market_mic = "XIDX" if ticker in ("^JKSE",) else "XNYS"
-                currency = "IDR" if ticker == "^JKSE" else "USD"
-
+            for ticker, market_mic, currency in tickers_data:
                 result = _retry(
                     lambda t=ticker, m=market_mic, c=currency: engine.fetch_and_store(
                         ticker=t, period="5d", market_mic=m, currency=c,

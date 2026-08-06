@@ -89,7 +89,7 @@ REQUIRED_COLUMNS: dict[str, list[str]] = {
 }
 
 # Column name mapping: Parquet column → DB column
-# Handles schema differences between external Parquet and DB
+# Handles schema differences between external Parquet and DB schema
 COLUMN_MAPPING: dict[str, dict[str, str]] = {
     "fundamental_data": {
         "pe_ratio": "pe",
@@ -99,6 +99,28 @@ COLUMN_MAPPING: dict[str, dict[str, str]] = {
         "net_profit": "net_income",
     },
 }
+
+# Value mapping: fix specific column values to match DB FK constraints
+# instrument_master.market_mic uses short codes (IDX, HKG) but
+# market_registry.mic_code uses MIC standard codes (XIDX, XHKG)
+VALUE_MAPPING: dict[str, dict[str, dict[str, str]]] = {
+    "instrument_master": {
+        "market_mic": {
+            "IDX": "XIDX",
+            "JKT": "XIDX",
+            "HKG": "XHKG",
+            "GER": "XFRA",
+            "OSA": "XTSE",
+        },
+    },
+}
+
+# Seed order: tables with no FK dependencies first
+SEED_ORDER = [
+    "market_registry",
+    "sector_master",
+    "instrument_master",
+]
 
 
 def get_table_columns(session: Session, table_name: str) -> list[str]:
@@ -214,6 +236,25 @@ def seed_table(
     total_rows = len(df)
     inserted = 0
 
+    # Apply value mapping (e.g. market_mic IDX → XIDX)
+    val_map = VALUE_MAPPING.get(table_name, {})
+    for col, mapping in val_map.items():
+        if col in df.columns:
+            replaced = df[col].map(mapping)
+            changed = replaced.notna().sum()
+            unmapped = df.loc[replaced.isna(), col].unique()
+            # Fallback: map any remaining unmapped values to XIDX
+            if len(unmapped) > 0 and col == "market_mic":
+                replaced = replaced.fillna("XIDX")
+                changed = len(df)
+                logger.info("  Mapped %d values in %s (incl. fallback for unmapped: %s)",
+                            changed, col, list(unmapped))
+            elif changed > 0:
+                df[col] = replaced.fillna(df[col])
+                logger.info("  Mapped %d values in %s: %s", changed, col, mapping)
+            if changed > 0:
+                df[col] = replaced
+
     logger.info(
         "Seeding %s from %s (%d rows, %d columns)",
         table_name, parquet_path.name, total_rows, len(parquet_cols),
@@ -246,7 +287,7 @@ def seed_table(
             records.append(record)
 
         if records:
-            session.bulk_insert_mappings(db_table, records)
+            session.execute(db_table.insert(), records)
             session.commit()
             inserted += len(records)
 
@@ -361,11 +402,27 @@ def main() -> int:
             )
             return 1
 
+        # Disable FK constraints via raw DBAPI connection (PRAGMA must be
+        # set outside a transaction; SQLAlchemy auto-opens transactions)
+        dbapi_conn = session.connection().connection
+        cursor = dbapi_conn.cursor()
+        cursor.execute("PRAGMA foreign_keys = OFF")
+        cursor.close()
+
         # Find Parquet files
         if args.table:
             parquet_files = list(args.seed_dir.glob(f"{args.table}.parquet"))
         else:
-            parquet_files = sorted(args.seed_dir.glob("*.parquet"))
+            all_files = {f.stem: f for f in args.seed_dir.glob("*.parquet")}
+            # Build ordered list: SEED_ORDER first, then rest alphabetically
+            ordered_names = []
+            for name in SEED_ORDER:
+                if name in all_files:
+                    ordered_names.append(name)
+            for name in sorted(all_files.keys()):
+                if name not in ordered_names:
+                    ordered_names.append(name)
+            parquet_files = [all_files[n] for n in ordered_names]
 
         if not parquet_files:
             logger.error("No Parquet files found in %s", args.seed_dir)
@@ -397,6 +454,12 @@ def main() -> int:
 
             count = seed_table(session, table_name, pq_file)
             total_inserted += count
+
+        # Re-enable FK constraints via raw DBAPI connection
+        dbapi_conn = session.connection().connection
+        cursor = dbapi_conn.cursor()
+        cursor.execute("PRAGMA foreign_keys = ON")
+        cursor.close()
 
         logger.info("=" * 60)
         if args.validate:

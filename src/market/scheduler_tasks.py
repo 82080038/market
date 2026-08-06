@@ -124,6 +124,111 @@ def _task_export_parquet() -> None:
     broker.emit("data.export.requested", {"source": "scheduled"})
 
 
+def _task_fetch_fundamental() -> None:
+    """Fetch fundamental data from yfinance (weekly snapshot).
+
+    yfinance only provides current fundamental snapshot, so running this
+    weekly builds historical fundamental data gradually over time.
+    """
+    from market.db.engine import get_sessionmaker
+    from market.db.models import FundamentalData, InstrumentMaster
+    from market.data.rate_limit import RateLimiter
+    from market.data.ticker_util import to_yf_ticker
+    from decimal import Decimal
+    from datetime import UTC, date, datetime
+    import yfinance as yf
+    from sqlalchemy import select
+
+    limiter = RateLimiter(max_calls=1.0)
+    session = get_sessionmaker()()
+    fetch_date = datetime.now(UTC).date()
+
+    INFO_MAP = {
+        "trailingPE": "pe",
+        "priceToBook": "pb",
+        "returnOnEquity": "roe",
+        "debtToEquity": "der",
+        "dividendYield": "dividend_yield",
+        "trailingEps": "eps",
+        "bookValue": "book_value_per_share",
+        "totalRevenue": "revenue",
+        "netIncomeToCommon": "net_income",
+        "totalAssets": "total_assets",
+        "totalDebt": "total_liabilities",
+        "totalCash": "cash_flow",
+        "marketCap": "market_cap",
+    }
+
+    try:
+        rows = session.execute(
+            select(InstrumentMaster.ticker).where(
+                InstrumentMaster.market_mic == "XIDX",
+                InstrumentMaster.asset_class == "equity",
+                InstrumentMaster.is_active == True,
+            ).order_by(InstrumentMaster.ticker)
+        ).fetchall()
+        tickers = [to_yf_ticker(r[0], "XIDX", session) for r in rows]
+        logger.info("Fundamental fetch: %d tickers", len(tickers))
+
+        inserted = 0
+        for ticker in tickers:
+            limiter.acquire()
+            try:
+                info = yf.Ticker(ticker).info
+            except Exception:
+                continue
+            if not info:
+                continue
+
+            data = {}
+            for yf_key, db_col in INFO_MAP.items():
+                val = info.get(yf_key)
+                if val is not None:
+                    data[db_col] = float(val)
+
+            if not data:
+                continue
+
+            existing = session.execute(
+                select(FundamentalData).where(
+                    FundamentalData.ticker == ticker,
+                    FundamentalData.date == fetch_date,
+                    FundamentalData.source == "yahoo_finance",
+                )
+            ).scalar_one_or_none()
+
+            if existing:
+                continue
+
+            session.add(FundamentalData(
+                ticker=ticker,
+                date=fetch_date,
+                pe=Decimal(str(data["pe"])) if "pe" in data else None,
+                pb=Decimal(str(data["pb"])) if "pb" in data else None,
+                roe=Decimal(str(data["roe"])) if "roe" in data else None,
+                der=Decimal(str(data["der"])) if "der" in data else None,
+                dividend_yield=Decimal(str(data["dividend_yield"])) if "dividend_yield" in data else None,
+                eps=Decimal(str(data["eps"])) if "eps" in data else None,
+                book_value_per_share=Decimal(str(data["book_value_per_share"])) if "book_value_per_share" in data else None,
+                revenue=Decimal(str(data["revenue"])) if "revenue" in data else None,
+                net_income=Decimal(str(data["net_income"])) if "net_income" in data else None,
+                total_assets=Decimal(str(data["total_assets"])) if "total_assets" in data else None,
+                total_liabilities=Decimal(str(data["total_liabilities"])) if "total_liabilities" in data else None,
+                cash_flow=Decimal(str(data["cash_flow"])) if "cash_flow" in data else None,
+                market_cap=Decimal(str(data["market_cap"])) if "market_cap" in data else None,
+                source="yahoo_finance",
+            ))
+            inserted += 1
+
+            if inserted % 100 == 0:
+                session.commit()
+
+        session.commit()
+        logger.info("Fundamental fetch complete: %d new snapshots", inserted)
+    finally:
+        session.close()
+
+
 def register_default_tasks(scheduler: DailyScheduler) -> None:
     """Register all built-in tasks on the given scheduler.
 
@@ -142,6 +247,7 @@ def register_default_tasks(scheduler: DailyScheduler) -> None:
         18:45  drift_detection   — check model drift
         19:00  generate_reports  — daily reports
         19:30  export_parquet    — backup DB to parquet + WAL checkpoint
+        Sat 10:00 fetch_fundamental — weekly fundamental snapshot from yfinance
 
     Event chain (automatic, after fetch):
         fetch_eod emits → data.fetch.requested
@@ -227,4 +333,11 @@ def register_default_tasks(scheduler: DailyScheduler) -> None:
         func=_task_export_parquet,
         schedule="daily",
         time_of_day="19:30",
+    )
+    scheduler.register_task(
+        task_id="fetch_fundamental",
+        name="Weekly fundamental data snapshot (yfinance)",
+        func=_task_fetch_fundamental,
+        schedule="weekly",
+        time_of_day="10:00",
     )

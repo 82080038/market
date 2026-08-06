@@ -465,7 +465,9 @@ class InstrumentProfiler:
         )
 
         # Commodity linkage
-        commodity = COMMODITY_TICKERS.get(ticker.replace(".JK", ""))
+        from market.data.ticker_util import from_yf_ticker
+        bare_ticker = from_yf_ticker(ticker)[0]
+        commodity = COMMODITY_TICKERS.get(bare_ticker)
 
         return InstrumentProfile(
             ticker=ticker,

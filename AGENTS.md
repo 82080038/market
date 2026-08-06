@@ -3,9 +3,10 @@
 ## 1. Identitas & Tujuan Proyek
 
 - Ini adalah **pustaka pengetahuan** (knowledge base) untuk pembangunan aplikasi pasar modal Indonesia/global.
-- Basis pengetahuan berada di `/home/petrick/projects/market/pustaka/` — 92 dokumen Markdown bernomor `00-README.md` sampai `91-*.md`.
+- Basis pengetahuan berada di `/opt/lampp/htdocs/market/pustaka/` — 94 dokumen Markdown bernomor `00-README.md` sampai `93-*.md`.
 - Pustaka ini mendukung pengembangan aplikasi **single-user (personal)**; fitur multi-user, KYC, RBAC, deployment publik, dan enterprise security adalah **tidak relevan** kecuali secara eksplisit diminta.
 - Sumber implementasi referensi: `trading-system` v0.1.11 di `/home/petrick/projects/global/` (boleh diadopsi/dicopy sesuai README).
+- Path aplikasi: `/opt/lampp/htdocs/market/` — database utama: `data/market_research.db`.
 
 ## 2. Keputusan Desain Tetap
 
@@ -48,3 +49,5 @@
 - Audit faktor pasar modal: `pustaka/89-faktor-pasar-modal-analisis-implementasi.md`
 - Audit data parquet: `pustaka/90-analisis-parquet-data-awal.md`
 - Komoditas IDX: `pustaka/91-komoditas-spesifik-idx.md`
+- Lifecycle environments: `pustaka/93-lifecycle-environments-real-testing-ai.md`
+- Ticker suffix helper: `src/market/data/ticker_util.py` (`to_yf_ticker`, `from_yf_ticker`, `get_currency`)

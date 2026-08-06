@@ -71,15 +71,17 @@ def _load_ohlcv_df(session: Session, ticker: str) -> pd.DataFrame:
 
 
 def _load_all_idx_tickers(session: Session) -> list[str]:
-    """Get all IDX equity tickers from OHLCV (excluding indices/forex)."""
-    result = session.execute(
-        text(
-            "SELECT DISTINCT ticker FROM ohlcv "
-            "WHERE ticker LIKE '%.JK' "
-            "ORDER BY ticker"
+    """Get all IDX equity tickers from instrument_master."""
+    from market.db.models import InstrumentMaster
+    from market.data.ticker_util import to_yf_ticker
+
+    rows = session.execute(
+        select(InstrumentMaster.ticker, InstrumentMaster.market_mic).where(
+            InstrumentMaster.market_mic == "XIDX",
+            InstrumentMaster.asset_class == "equity",
         )
-    )
-    return [r[0] for r in result.fetchall()]
+    ).all()
+    return [to_yf_ticker(r[0], r[1], session) for r in rows]
 
 
 def recompute_technical_indicators(session: Session, dry_run: bool = False) -> int:

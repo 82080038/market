@@ -2,7 +2,7 @@
 
 **Tanggal audit:** 5 Agustus 2026 (update pasca-implementasi rekomendasi)  
 **Repository:** https://github.com/82080038/market.git  
-**Path:** `/home/petrick/projects/market`  
+**Path:** `/opt/lampp/htdocs/market`  
 **Python:** 3.12 (via uv venv) — target `>=3.11`  
 **Node.js:** v20.x
 
@@ -21,8 +21,8 @@
 | Playwright E2E | ✅ 61 tests passed (headed mode) |
 | npm audit | ✅ 0 vulnerabilities |
 | `.env` | ✅ Dibuat dengan `ENV=paper`, `BROKER_ADAPTER=paper` |
-| Database | ✅ `market_paper.db` terisi: 2.91M OHLCV + 7 tabel parquet lainnya |
-| Scheduler | ✅ 5 tasks terdaftar (fetch_eod, quality_check, feature_store, drift_detection, generate_reports) |
+| Database | ✅ `market_research.db` terisi: 3M+ OHLCV + 1M+ DTS + 178K foreign_flow + 1K fundamental |
+| Scheduler | ✅ 6 tasks terdaftar (fetch_eod, fetch_fundamental, quality_check, feature_store, drift_detection, generate_reports) |
 | Model registry | ✅ Baseline model trained (fallback mode, PyTorch belum diinstall) |
 | API portfolio | ✅ Wired to PortfolioEngine dengan OHLCV DB prices |
 | API watchlist | ✅ DB-backed CRUD (Watchlist model) |
@@ -223,11 +223,68 @@ Coverage sekarang 83.77% (sebelumnya 83.36%). Test baru ditambah untuk:
 
 | DB | Ukuran | Tabel | Rows | Status |
 |---|---|---|---|---|
-| `market_paper.db` | 839 MB | 23 | 3,070,605 | ✅ Bersih, lengkap |
-| `market_research.db` | 839 MB | 23 | 3,070,605 | ✅ Di-seed dari paper |
+| `market_research.db` | ~900 MB | 42+ | 3M+ OHLCV, 1M+ DTS, 19M+ TI | ✅ Bersih, lengkap |
+| `market_paper.db` | ~840 MB | 23+ | 3M+ OHLCV + 7 tabel lainnya | ✅ Di-seed dari research |
 | `market_live.db` | 268 KB | 21 | 1 | Sesuai (Live belum aktif) |
 
 ### Backup
 
 - `data/backups/market_paper.db.pre-cleanup-20260806-000825.db` (825 MB)
 - `data/backups/market_research.db.pre-seed-20260806-001740.db` (268 KB)
+
+---
+
+## 6. Data Enrichment & Corporate Actions (6 Agustus 2026)
+
+**Audit mendalam corporate events IDX** — delisting, merger, pailit, name change, dan standardisasi ticker suffix.
+
+### Hasil Perbaikan
+
+| # | Masalah | Sebelum | Sesudah | Status |
+|---|---|---|---|---|
+| 1 | Delisting/merger tidak tertangani | 46 delisted tanpa reason, 0 merger | 62 delisted, 211 risk_reason, 3 merger, 2 corporate_actions | ✅ |
+| 2 | Name change tidak tercatat | 0 former_name | 34 tickers dengan former_name | ✅ |
+| 3 | Non-XIDX suffix hardcoded | `.JK` hardcoded di 6 file | `ticker_util.py` helper, 6 file updated | ✅ |
+| 4 | Screener tidak filter merged | N/A | `excluded_merged` filter + `ScreeningResult` | ✅ |
+| 5 | 25 IPO baru tanpa DTS/shares | 0 DTS, 0 shares | 4,928 DTS rows, 25 listed_shares filled | ✅ |
+| 6 | free_float kosong | ~15 tickers kosong | 922/923 (99.9%) terisi | ✅ |
+| 7 | DTS gap Feb 2025–Aug 2026 | Gap ~18 bulan | 4,928 rows derived untuk IPO; gap utama pending | ⏳ |
+| 8 | Migration 0006 | N/A | 6 kolom baru di instrument_master | ✅ |
+
+### File Baru/Dimodifikasi
+
+- **`src/market/data/ticker_util.py`** (baru) — Helper standardisasi suffix yfinance.
+- **`src/market/data/screener.py`** — Tambahan `excluded_merged` filter.
+- **`src/market/pipelines/data_fetch.py`** — Gunakan `to_yf_ticker()`, baca non-XIDX dari DB.
+- **`src/market/scheduler_tasks.py`** — Gunakan `to_yf_ticker()` untuk fundamental fetch.
+- **`src/market/data/yahoo_adapter.py`** — Gunakan `get_currency(*from_yf_ticker())`.
+- **`src/market/data/recompute_internal.py`** — Baca ticker dari `instrument_master`.
+- **`src/market/data/data_health.py`** — Join `instrument_master` untuk stale check.
+- **`src/market/analysis/profiling.py`** — Gunakan `from_yf_ticker()`.
+- **`alembic/versions/0006_add_instrument_master_columns.py`** (baru) — Migration 6 kolom.
+
+### Database Stats Final (6 Agustus 2026)
+
+| Tabel | Rows | Tickers | Periode |
+|-------|------|---------|--------|
+| `instrument_master` | 985 | 923 active, 62 delisted | — |
+| `ohlcv` | 3,024,934 | 1,008 | 2000–2026-08-06 |
+| `daily_trading_stats` | 1,082,968 | 983 | 2019–2026-08-05 |
+| `foreign_flow` | 178,201 | — | 2019–2026-08-03 |
+| `fundamental_data` | 1,007 | 1,007 | snapshot |
+| `corporate_actions` | 6,367 | — | dividend 5,974, split 391, merger 2 |
+| `technical_indicators` | 19M+ | 923 | time series |
+| `trading_suspensions` | 45+ | 45 | — |
+| `esg_scores` | 164 | 42 | — |
+| `corporate_governance` | 208 | 47 | — |
+
+### Migration History
+
+| Version | Description |
+|---------|-------------|
+| 0001 | Initial schema |
+| 0002 | Add esg_scores and corporate_governance |
+| 0003 | Complete schema: 15 missing tables + 4 column additions |
+| 0004 | Add scheduler_state |
+| 0005 | Add suspension_date to instrument_master |
+| 0006 | Add listed_shares, tradeable_shares, delisting_risk_score, delisting_risk_reason, former_ticker, former_name |

@@ -24,7 +24,7 @@ When invoked (e.g., `/context-checkpoint` or `/context-checkpoint about-to-start
    - **Files read or modified**
    - **Pending tasks / next steps**
    - **Dependencies / blockers**
-   - **References to relevant docs (00-91)**
+   - **References to relevant docs (00-93)**
 3. Append the summary to `.devin/SESSION_MEMORY.md`.
 4. If supported (Cascade memory tool or Devin equivalent), save the same summary as a memory entry with tags: `pustaka`, `context_checkpoint`, `market`, `<active-topic>`.
 5. Notify the user that a checkpoint has been written and remind them to read it at the start of the next session.

@@ -1,6 +1,6 @@
 # MEGAPLAN — Aplikasi Pasar Modal Single-User (Pustaka 00–93)
 
-**Ringkasan 1 kalimat:** Membangun aplikasi pasar modal personal yang lengkap di `/home/petrick/projects/market/` dari nol, mengikuti 94 dokumen `pustaka/` dan mengadopsi pola dari `trading-system` v0.1.11 sebagai referensi, dengan fase-fase dari MVP saham Indonesia menuju multi-pasar/multi-aset dan AI self-evolution, serta environment lifecycle Research → Paper → Live yang ketat.
+**Ringkasan 1 kalimat:** Membangun aplikasi pasar modal personal yang lengkap di `/opt/lampp/htdocs/market/` dari nol, mengikuti 94 dokumen `pustaka/` dan mengadopsi pola dari `trading-system` v0.1.11 sebagai referensi, dengan fase-fase dari MVP saham Indonesia menuju multi-pasar/multi-aset dan AI self-evolution, serta environment lifecycle Research → Paper → Live yang ketat.
 
 ---
 
@@ -303,9 +303,9 @@ Membuat satu aplikasi desktop/web single-user untuk analisis, rekomendasi, simul
 
 AI (Devin/Cascade) memperlakukan MEGAPLAN.md sebagai **source of truth** proyek. Setiap sesi dimulai dengan:
 
-1. Baca `@/home/petrick/projects/market/MEGAPLAN.md`.
-2. Baca `@/home/petrick/projects/market/AGENTS.md`.
-3. Baca `@/home/petrick/projects/market/.devin/SESSION_MEMORY.md`.
+1. Baca `@/opt/lampp/htdocs/market/MEGAPLAN.md`.
+2. Baca `@/opt/lampp/htdocs/market/AGENTS.md`.
+3. Baca `@/opt/lampp/htdocs/market/.devin/SESSION_MEMORY.md`.
 4. Identifikasi fase dengan marker `[ ]` atau `[~]` paling awal.
 5. Baca dokumen `pustaka/` yang tercantum dalam fase tersebut.
 6. Jalankan prompting-cycle di bawah ini.
@@ -351,7 +351,7 @@ Setiap iterasi (biasanya 1-3 hari kerja) mengikuti loop berikut:
 
 **6. CHECKPOINT — Context preservation**
 - Jika context window mendekati ~70% ATAU sebelum topik besar berganti, jalankan `/context-checkpoint`.
-- Simpan ringkasan ke `@/home/petrick/projects/market/.devin/SESSION_MEMORY.md` dan memory system.
+- Simpan ringkasan ke `@/opt/lampp/htdocs/market/.devin/SESSION_MEMORY.md` dan memory system.
 - Jika sesi berakhir, tulis status fase aktif, file yang diubah, pending tasks, dan dependensi.
 
 ### 6.3 Aturan Autonomous yang Wajib
@@ -425,17 +425,31 @@ AI wajib berhenti dan minta approval jika:
 
 **Total estimasi:** 32 minggu (8 bulan). Dapat dikompresi menjadi 24-28 minggu dengan parallel work, tetapi **tidak disarankan memangkas fase Paper Trading atau eval-gate**.
 
-## 9. Next Steps Segera (Status Pasca-Sync)
+## 9. Next Steps Segera (Status Pasca-Data Enrichment)
 
-Semua fase 0–11 sudah selesai dari sisi kode dan test (760+ passed, coverage 76%+). Langkah nyata berikutnya adalah mengisi data, menjadikan aplikasi berjalan end-to-end, dan memulai paper trading:
+Semua fase 0–11 sudah selesai dari sisi kode dan test (760+ passed, coverage 76%+). Data enrichment passca-audit juga selesai: delisting/merger/name change logic, DTS backfill, free_float backfill, dan ticker_util standardisasi. Langkah nyata berikutnya adalah menjadikan aplikasi berjalan end-to-end dan memulai paper trading:
 
 1. **Persiapan Environment**: buat `.env` dari `.env.example`, pilih `ENV=paper` untuk validasi live-market tanpa uang nyata.
 2. **Database**: migrate & seed `market_research.db` dan `market_paper.db`; isi dari parquet archive (`/media/petrick/Parquet/trading_data/archive/tables/`).
-3. **Scheduler**: daftarkan task harian — EOD fetch, intraday poll (15-min), quality check, feature store refresh, drift detection, report generation.
-4. **Frontend Security**: atasi 3 high severity vulnerabilities (postcss/sharp via next).
-5. **Wire-up API**: sambungkan `/api/portfolio`, `/api/watchlist`, dan `/api/backtest/run` ke database, bukan mock/synthetic.
+3. **Scheduler**: daftarkan task harian — EOD fetch, intraday poll (15-min), quality check, feature store refresh, drift detection, report generation, fundamental fetch (weekly).
+4. **Frontend Security**: atasi 3 high severity vulnerabilities (postcss/sharp via next). ✅ Selesai (Next.js 16.3.0).
+5. **Wire-up API**: sambungkan `/api/portfolio`, `/api/watchlist`, dan `/api/backtest/run` ke database, bukan mock/synthetic. ✅ Selesai.
 6. **Intraday Polling**: aktifkan `fetch_intraday` task untuk polling yfinance setiap 15 menit selama jam trading (09:00-15:50 WIB). Endpoint `/api/prices/latest` menyediakan snapshot harga real-time untuk FE dashboard.
 7. **Prediction vs Actual Comparison**: gunakan endpoint `/api/prices/compare/{ticker}` untuk membandingkan hasil prediksi aplikasi dengan harga aktual dari yfinance. Berguna untuk evaluasi akurasi model selama paper trading.
 8. **Paper Trading 30 Hari**: jalankan minimal 30 hari simulasi sebelum membuka human-gate broker real / model champion live.
 9. **Model Champion Pertama**: latih baseline LSTM/LightGBM di Paper environment, daftarkan ke model registry, dan promosikan setelah eval-gate pass.
 10. **Live Gate**: setelah paper period memadai, ajukan approval untuk broker real dan/atau deploy local-only production.
+
+### Data Enrichment Completed (6 Agustus 2026)
+
+- ✅ **Delisting logic**: 62 tickers ditandai `is_active=0` + `delisting_date`; 211 tickers dengan `delisting_risk_reason`.
+- ✅ **Merger logic**: 3 tickers dengan `underlying_ticker` (FREN→EXCL, MFIN→ADMF, dll); 2 `corporate_actions` rows dengan `action_type='merger'`.
+- ✅ **Name changes**: 34 tickers dengan `former_name` diisi (2024–2026 IDX name changes).
+- ✅ **Ticker suffix standardization**: `src/market/data/ticker_util.py` menggantikan hardcoded `.JK` di `data_fetch.py`, `scheduler_tasks.py`, `yahoo_adapter.py`, `recompute_internal.py`, `data_health.py`, `profiling.py`.
+- ✅ **Screener enhancement**: `excluded_merged` filter untuk ticker yang sudah merged.
+- ✅ **DTS backfill**: 4,928 rows untuk 25 IPO baru dari OHLCV (source: `yfinance_derived`).
+- ✅ **free_float backfill**: 922/923 (99.9%) — hanya GOTOM tanpa data.
+- ✅ **listed_shares/tradeable_shares**: 25 IPO baru di-backfill dari yfinance info.
+- ✅ **Migration 0006**: Kolom `listed_shares`, `tradeable_shares`, `delisting_risk_score`, `delisting_risk_reason`, `former_ticker`, `former_name`.
+- ⏳ **DTS gap Feb 2025–Aug 2026**: Butuh CSV IDX (tidak tersedia dari yfinance — hanya bid/offer/frequency/value).
+- ⏳ **Fundamental time-series**: Scheduler weekly sudah aktif, data historis terbangun secara gradual.

@@ -17,7 +17,7 @@ triggers:
   - model
 ---
 
-You are the autonomous execution assistant for the **Market Trading Application** project in `/home/petrick/projects/market/`.
+You are the autonomous execution assistant for the **Market Trading Application** project in `/opt/lampp/htdocs/market/`.
 
 When invoked (e.g. `/megaplan-executor`, `/megaplan-executor next`, `/megaplan-executor 0`), perform the following steps:
 
@@ -25,9 +25,9 @@ When invoked (e.g. `/megaplan-executor`, `/megaplan-executor next`, `/megaplan-e
 
 Always begin by loading context:
 
-1. Read `@/home/petrick/projects/market/MEGAPLAN.md`.
-2. Read `@/home/petrick/projects/market/AGENTS.md`.
-3. Read `@/home/petrick/projects/market/.devin/SESSION_MEMORY.md`.
+1. Read `@/opt/lampp/htdocs/market/MEGAPLAN.md`.
+2. Read `@/opt/lampp/htdocs/market/AGENTS.md`.
+3. Read `@/opt/lampp/htdocs/market/.devin/SESSION_MEMORY.md`.
 4. Read relevant system memory entries tagged `market`, `trading_system`, `pustaka`, `megaplan`, `multi_market`, `multi_asset`, `lifecycle_environment`.
 5. Identify the active phase from MEGAPLAN.md markers (`[~]` = in-progress, first `[ ]` = next candidate).
 
@@ -59,7 +59,7 @@ If the user supplied an argument (e.g. `0`, `1`, `paper`), use that phase as the
 
 ### 2.4 COMMIT / MARKER UPDATE
 
-- Update completion markers in `@/home/petrick/projects/market/MEGAPLAN.md`:
+- Update completion markers in `@/opt/lampp/htdocs/market/MEGAPLAN.md`:
   - `[ ]` → `[~]` when work starts.
   - `[~]` → `[x]` only after tests pass and user approval (if required).
 - Use commit messages like: `[Fase-X] <short description>`.
@@ -104,7 +104,7 @@ You must stop and ask the user for explicit approval before:
 When all markers for a phase are `[x]` (or `[~]` only for human-gate items awaiting approval):
 
 1. Update the phase heading in MEGAPLAN.md to show `(SELESAI)`.
-2. Update `@/home/petrick/projects/market/.devin/SESSION_MEMORY.md` with phase summary.
+2. Update `@/opt/lampp/htdocs/market/.devin/SESSION_MEMORY.md` with phase summary.
 3. Run a lightweight integration smoke test for that phase.
 4. Move to the next phase automatically or report readiness to the user.
 
