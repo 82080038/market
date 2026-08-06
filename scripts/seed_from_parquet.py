@@ -19,6 +19,7 @@ from __future__ import annotations
 
 import argparse
 import logging
+import os
 import sys
 from pathlib import Path
 
@@ -28,14 +29,16 @@ from sqlalchemy.orm import Session
 
 from market.db.engine import get_sessionmaker
 from market.db.models import Base
+from market.paths import default_parquet_seed
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(levelname)s] %(message)s")
 logger = logging.getLogger(__name__)
 
 # Seed directory: external Parquet data source
-# Contributors copy Parquet files here (or point --seed-dir to their path)
-# Default: /media/petrick/Parquet/pustaka_data/archive/tables/
-SEED_DIR = Path("/media/petrick/Parquet/pustaka_data/archive/tables")
+# Priority: PARQUET_SEED_PATH env var > OS-aware default > --seed-dir CLI flag
+# OS-aware default: Linux /media/petrick/Parquet/pustaka_data/archive/tables/
+#                   Windows E:\pustaka_data\archive\tables\
+SEED_DIR = Path(os.environ.get("PARQUET_SEED_PATH", default_parquet_seed()))
 
 # Export directory: for exporting existing DB to Parquet
 EXPORT_DIR = Path(__file__).resolve().parent.parent / "data" / "parquet_export"
@@ -70,6 +73,10 @@ SEEDABLE_TABLES = [
     "trading_suspensions",
     "data_watermark",
     "source_health",
+    # Time-series data tables (Hive-partitioned by sync_to_parquet.py)
+    "daily_trading_stats",
+    "ml_labels",
+    "market_regimes",
 ]
 
 # Required columns per table (subset for validation)
@@ -86,6 +93,9 @@ REQUIRED_COLUMNS: dict[str, list[str]] = {
     "scores": ["ticker", "engine", "score", "as_of"],
     "technical_indicators": ["ticker", "date", "indicator", "value"],
     "fear_greed": ["tanggal", "nilai"],
+    "daily_trading_stats": ["ticker", "date"],
+    "ml_labels": ["ticker", "date", "horizon", "direction"],
+    "market_regimes": ["date"],
 }
 
 # Column name mapping: Parquet column → DB column
@@ -122,6 +132,75 @@ SEED_ORDER = [
     "instrument_master",
 ]
 
+# Tables that sync_to_parquet.py writes as Hive-partitioned directories
+# (year=YYYY/month=MM/data.parquet) instead of flat .parquet files.
+# See src/market/data/sync_to_parquet.py PARTITIONED_TABLES.
+_HIVE_PARTITIONED_TABLES: frozenset[str] = frozenset({
+    "ohlcv", "corporate_actions", "dividends", "market_calendar", "fx_rates",
+    "fundamental_data", "macro_data", "foreign_flow", "daily_trading_stats",
+    "technical_indicators", "broker_flow", "pattern_analysis", "valuation_cache",
+    "ml_labels", "market_regimes", "policy_events", "external_events",
+    "fear_greed", "audit_log",
+})
+
+
+def _resolve_parquet_source(seed_dir: Path, table_name: str) -> Path | None:
+    """Find the parquet source for a table — Hive dir or flat file.
+
+    sync_to_parquet.py writes time-series tables as Hive-partitioned
+    directories (``table/year=YYYY/month=MM/data.parquet``) and reference
+    tables as flat files (``table.parquet``). This helper resolves either
+    format, preferring Hive directory when both exist.
+
+    Returns:
+        Path to the directory (Hive) or file (flat), or None if not found.
+    """
+    # Try Hive-partitioned directory first.
+    hive_root = seed_dir / table_name
+    if hive_root.is_dir():
+        return hive_root
+    # Fallback: flat file.
+    flat = seed_dir / f"{table_name}.parquet"
+    if flat.exists():
+        return flat
+    return None
+
+
+def _read_parquet_schema(path: Path) -> "pa.Schema":
+    """Read parquet schema from a flat file or Hive-partitioned directory."""
+    if path.is_dir():
+        import pyarrow.dataset as ds
+        dataset = ds.dataset(path, format="parquet", partitioning="hive")
+        return dataset.schema
+    return pq.read_schema(path)
+
+
+def _read_parquet_table(path: Path) -> "pa.Table":
+    """Read a pyarrow Table from a flat file or Hive-partitioned directory."""
+    if path.is_dir():
+        import pyarrow.dataset as ds
+        dataset = ds.dataset(path, format="parquet", partitioning="hive")
+        return dataset.to_table()
+    return pq.read_table(path)
+
+
+def _discover_parquet_sources(seed_dir: Path) -> dict[str, Path]:
+    """Discover all parquet sources in seed_dir (flat files + Hive dirs).
+
+    Returns:
+        Dict mapping table_name → Path (directory for Hive, file for flat).
+    """
+    sources: dict[str, Path] = {}
+    # Flat files: <table>.parquet
+    for f in seed_dir.glob("*.parquet"):
+        sources[f.stem] = f
+    # Hive-partitioned directories: <table>/year=YYYY/...
+    for d in seed_dir.iterdir():
+        if d.is_dir() and d.name in _HIVE_PARTITIONED_TABLES:
+            # Directory takes precedence over flat file for partitioned tables.
+            sources[d.name] = d
+    return sources
+
 
 def get_table_columns(session: Session, table_name: str) -> list[str]:
     """Get column names for a table from the database schema."""
@@ -133,14 +212,17 @@ def get_table_columns(session: Session, table_name: str) -> list[str]:
 def validate_parquet_schema(
     parquet_path: Path, table_name: str, db_columns: list[str],
 ) -> tuple[bool, list[str]]:
-    """Validate Parquet file schema against database table.
+    """Validate Parquet schema against database table.
+
+    Handles both flat files (``table.parquet``) and Hive-partitioned
+    directories (``table/year=YYYY/month=MM/data.parquet``).
 
     Checks:
-    1. Required columns exist in Parquet file
+    1. Required columns exist in Parquet source
     2. All Parquet columns exist in DB schema (extra columns will be skipped)
 
     Args:
-        parquet_path: Path to Parquet file.
+        parquet_path: Path to Parquet file or Hive-partitioned directory.
         table_name: Target database table name.
         db_columns: List of DB column names.
 
@@ -150,11 +232,11 @@ def validate_parquet_schema(
     errors: list[str] = []
 
     if not parquet_path.exists():
-        errors.append(f"File not found: {parquet_path}")
+        errors.append(f"Source not found: {parquet_path}")
         return False, errors
 
     try:
-        schema = pq.read_schema(parquet_path)
+        schema = _read_parquet_schema(parquet_path)
     except Exception as e:
         errors.append(f"Cannot read Parquet schema: {e}")
         return False, errors
@@ -190,7 +272,10 @@ def seed_table(
     parquet_path: Path,
     batch_size: int = 5000,
 ) -> int:
-    """Seed a database table from a Parquet file.
+    """Seed a database table from a Parquet source.
+
+    Handles both flat files (``table.parquet``) and Hive-partitioned
+    directories (``table/year=YYYY/month=MM/data.parquet``).
 
     Uses INSERT OR REPLACE for upsert behavior (SQLite).
     Only inserts columns that exist in both Parquet and DB schema.
@@ -198,7 +283,7 @@ def seed_table(
     Args:
         session: SQLAlchemy session.
         table_name: Target table name.
-        parquet_path: Path to Parquet file.
+        parquet_path: Path to Parquet file or Hive-partitioned directory.
         batch_size: Rows per batch insert.
 
     Returns:
@@ -212,8 +297,8 @@ def seed_table(
             logger.error(e)
         return 0
 
-    # Read Parquet table
-    table = pq.read_table(parquet_path)
+    # Read Parquet table (flat file or Hive-partitioned directory)
+    table = _read_parquet_table(parquet_path)
 
     # Apply column mapping
     mapping = COLUMN_MAPPING.get(table_name, {})
@@ -397,7 +482,9 @@ def main() -> int:
             logger.info(
                 "\nTo use the seeder:\n"
                 "1. Create the directory: mkdir -p data/parquet_seeds\n"
-                "2. Copy Parquet files there (named <table_name>.parquet)\n"
+                "2. Copy Parquet sources there:\n"
+                "   - Flat files: <table_name>.parquet\n"
+                "   - Hive-partitioned: <table_name>/year=YYYY/month=MM/data.parquet\n"
                 "3. Run: uv run python scripts/seed_from_parquet.py\n"
             )
             return 1
@@ -409,30 +496,36 @@ def main() -> int:
         cursor.execute("PRAGMA foreign_keys = OFF")
         cursor.close()
 
-        # Find Parquet files
+        # Find Parquet sources (flat files + Hive-partitioned directories)
+        all_sources = _discover_parquet_sources(args.seed_dir)
+
         if args.table:
-            parquet_files = list(args.seed_dir.glob(f"{args.table}.parquet"))
+            # Single table: resolve its source (Hive dir or flat file)
+            src = _resolve_parquet_source(args.seed_dir, args.table)
+            if src is None:
+                logger.error("No Parquet source for table '%s' in %s",
+                             args.table, args.seed_dir)
+                return 1
+            parquet_sources = {args.table: src}
         else:
-            all_files = {f.stem: f for f in args.seed_dir.glob("*.parquet")}
             # Build ordered list: SEED_ORDER first, then rest alphabetically
             ordered_names = []
             for name in SEED_ORDER:
-                if name in all_files:
+                if name in all_sources:
                     ordered_names.append(name)
-            for name in sorted(all_files.keys()):
+            for name in sorted(all_sources.keys()):
                 if name not in ordered_names:
                     ordered_names.append(name)
-            parquet_files = [all_files[n] for n in ordered_names]
+            parquet_sources = {n: all_sources[n] for n in ordered_names}
 
-        if not parquet_files:
-            logger.error("No Parquet files found in %s", args.seed_dir)
+        if not parquet_sources:
+            logger.error("No Parquet sources found in %s", args.seed_dir)
             return 1
 
-        logger.info("Found %d Parquet files", len(parquet_files))
+        logger.info("Found %d Parquet sources", len(parquet_sources))
 
         total_inserted = 0
-        for pq_file in parquet_files:
-            table_name = pq_file.stem  # filename without .parquet
+        for table_name, pq_source in parquet_sources.items():
 
             if table_name not in SEEDABLE_TABLES:
                 logger.warning("Skipping %s: not a seedable table", table_name)
@@ -442,7 +535,7 @@ def main() -> int:
                 # Validate only
                 db_cols = get_table_columns(session, table_name)
                 is_valid, errors = validate_parquet_schema(
-                    pq_file, table_name, db_cols,
+                    pq_source, table_name, db_cols,
                 )
                 if is_valid:
                     logger.info("  ✓ %s: schema valid", table_name)
@@ -452,7 +545,7 @@ def main() -> int:
                         logger.error("    %s", e)
                 continue
 
-            count = seed_table(session, table_name, pq_file)
+            count = seed_table(session, table_name, pq_source)
             total_inserted += count
 
         # Re-enable FK constraints via raw DBAPI connection

@@ -63,6 +63,7 @@ from market.api.routes_instruments import router as instruments_router
 from market.api.routes_portfolio import router as portfolio_router
 from market.api.routes_prediction import router as prediction_router
 from market.api.routes_prices import router as prices_router
+from market.api.routes_recompute import router as recompute_router
 from market.api.routes_system import router as system_router
 
 
@@ -85,6 +86,7 @@ def create_app() -> FastAPI:
     app.include_router(instruments_router)
     app.include_router(data_router)
     app.include_router(prices_router)
+    app.include_router(recompute_router)
 
     return app
 

@@ -30,3 +30,5 @@ When invoked (e.g., `/knowledge-base-curator 23-machine-learning-trading.md` or 
 5. If a new numbered doc is warranted (e.g., filling a major gap not covered by 01-93), add it and update the index in `00-README.md`. Number new docs sequentially starting from 94 unless there is a strong reason to insert within the 00-93 range.
 6. Summarize changes, references updated, and any remaining open questions.
 7. Follow project rules in `AGENTS.md` and `00-README.md`.
+8. **Cross-OS (AGENTS.md §7):** Use OS-aware paths (`market.paths`); never hardcode Linux-only paths in pustaka docs.
+9. **Terminal (AGENTS.md §8):** Never use `tail`/`head`/`Select-Object -Last` to truncate command output when auditing files.

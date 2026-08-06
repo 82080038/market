@@ -35,3 +35,5 @@ Rules:
 - Prefer Indonesian language, English technical terms unchanged.
 - Never include secrets, API keys, or credentials.
 - Always update `.devin/SESSION_MEMORY.md` in the project root.
+- **Cross-OS (AGENTS.md §7):** Use OS-aware paths (`market.paths`); never hardcode Linux-only paths in checkpoint entries.
+- **Terminal (AGENTS.md §8):** Never use `tail`/`head`/`Select-Object -Last` to truncate command output.

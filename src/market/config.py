@@ -7,6 +7,8 @@ from pathlib import Path
 from pydantic import Field, ValidationInfo, field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
+from market.paths import default_parquet_archive
+
 
 class Settings(BaseSettings):
     """Runtime settings selected by ENV environment variable.
@@ -36,7 +38,7 @@ class Settings(BaseSettings):
     yfinance_enabled: bool = True
     yfinance_rate_limit_per_second: float = 1.0
     idx_scraper_enabled: bool = True
-    parquet_archive_path: str = "/media/petrick/Parquet/pustaka_data"
+    parquet_archive_path: str = Field(default_factory=default_parquet_archive)
 
     # Broker / execution
     broker_adapter: str = "mock"

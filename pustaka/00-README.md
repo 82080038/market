@@ -156,6 +156,8 @@ Berikut adalah keputusan desain tetap yang berlaku untuk seluruh dokumen di pust
 | 91 | `91-komoditas-spesifik-idx.md` | **Komoditas Spesifik IDX** | Hubungan harga komoditas dan saham emiten di IDX — 10 komoditas (CPO, batubara, nikel, tembaga, emas, perak, timah, aluminium, gas, crude oil), mapping ke emiten, mekanisme transmisi, time lag, faktor driver, cara analisis dan scoring, roadmap implementasi 6-8 hari |
 | 92 | `92-multi-market-multi-asset-trading-system.md` | **Multi-Market & Multi-Asset Trading System** | Ekstensi aplikasi single-user dari saham Indonesia ke multi-pasar (US, HK, SG, JP, dll.) dan multi-aset (saham, ETF, obligasi, komoditas, forex, kripto, derivatif) — instrument master, market registry, timezone/DST, multi-currency, AI/ML cross-market, decision engine multi-aset, advisory engine, OMS multi-pasar, risk & compliance per yurisdiksi, roadmap implementasi |
 | 93 | `93-lifecycle-environments-real-testing-ai.md` | **Lifecycle Environment: Real, Testing & AI/ML Development** | Analisis konsep 3 environment (Research/Development, Paper/Staging, Live/Production) untuk aplikasi trading — arsitektur environment, promotion gates (backtest → paper → live), isolasi data/kode/model, CI/CD & model registry alias, 7 live auto-pause metrics, rollback rules, governance & approval workflow, penerapan pada project ini |
+| 94 | `94-aiml-knowledge-architecture-analysis.md` | **AI/ML Knowledge Architecture Analysis** | Audit data aktual database untuk 5 pilar AI/ML (Asset Mapping, Correlation, Price Drivers, Anomaly Detection, Data Structuring), 7 prioritas tindakan implementasi (triple-barrier labels, fundamental quarterly, macro Indonesia, global macro repopulate, multi-window relationship, global calendar, regime labels), kode dan script yang dibuat |
+| 95 | `95-sync-db-to-parquet.md` | **Sync DB → Parquet (Hybrid Incremental)** | Desain dan implementasi sinkronisasi incremental dari SQLite ke Parquet archive — hybrid strategy (19 tabel time-series partitioned Hive year/month + 12 reference full-rewrite + 10 runtime skip), tabel `parquet_sync_state` (migration 0008), safety window 7 hari, kompatibilitas dengan `migrate_parquet.py`, CLI `scripts/sync_db_to_parquet.py` |
 
 ---
 
@@ -363,7 +365,7 @@ Berikut adalah keputusan desain tetap yang berlaku untuk seluruh dokumen di pust
 
 ## Statistik
 
-- **Total dokumen:** 94 file Markdown (00-93)
+- **Total dokumen:** 95 file Markdown (00-94)
 - **Total konten:** ~75000+ baris pengetahuan terstruktur
 - **Topik mencakup:** 93 area pengetahuan pasar modal
 - **Kode contoh:** Python (pandas, numpy, scikit-learn, FastAPI)

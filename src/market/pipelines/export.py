@@ -1,10 +1,20 @@
-"""Export pipeline — exports DB to parquet backup.
+"""Export pipeline — syncs DB to parquet backup (incremental hybrid).
 
-SRP: This pipeline ONLY exports data to parquet and manages WAL checkpoint.
-It does NOT fetch or recompute. It listens for "data.recompute.completed"
-and emits "data.export.completed" when done.
+SRP: This pipeline ONLY syncs data to parquet and manages WAL checkpoint.
+It does NOT fetch or recompute. It listens for "data.export.requested"
+(emitted by the scheduler after recompute completes) and emits
+"data.export.completed" when done.
 
-Listens to: data.recompute.completed, data.export.requested
+Previously this auto-synced after every recompute (which itself fired after
+every fetch), causing 5x redundant writes to the flashdisk per night. Now
+export runs ONCE per night on its own schedule, after recompute is done.
+
+Uses ``sync_to_parquet.sync_all()`` (hybrid incremental: Hive-partitioned
+for time-series, full-rewrite for reference, skip empty runtime) instead
+of the legacy ``export_to_parquet.export_all()`` (full rewrite every run).
+See pustaka/95-sync-db-to-parquet.md for the full design.
+
+Listens to: data.export.requested
 Emits:      data.export.completed
 """
 
@@ -23,22 +33,23 @@ logger = logging.getLogger(__name__)
 
 
 class ExportPipeline:
-    """Exports DB to parquet archive after data is recomputed.
+    """Syncs DB to parquet archive on schedule.
 
     Pre-flight checks flashdisk mount and disk space.
-    Post-export runs WAL checkpoint to keep DB compact.
+    Post-sync runs WAL checkpoint to keep DB compact.
     """
 
-    def on_recompute_done(self, event: Event) -> None:
-        """Handle data.recompute.completed — auto-export to parquet."""
-        self._run_export(trigger="recompute")
-
     def on_export_requested(self, event: Event) -> None:
-        """Handle data.export.requested — manual export trigger."""
-        self._run_export(trigger="manual")
+        """Handle data.export.requested — sync to parquet.
+
+        Triggered by the scheduler (scheduled or startup catch-up).
+        Also can be triggered manually via the same event.
+        """
+        trigger = event.payload.get("source", "manual")
+        self._run_export(trigger=trigger)
 
     def _run_export(self, trigger: str) -> None:
-        """Run the actual export with pre-flight checks and WAL checkpoint."""
+        """Run the actual sync with pre-flight checks and WAL checkpoint."""
         from market.core.events import broker
         from market.data.data_health import check_disk_space, wal_checkpoint
 
@@ -49,7 +60,7 @@ class ExportPipeline:
         critical = [i for i in disk_issues if i.severity == "critical"]
         if critical:
             for issue in critical:
-                logger.error("Export aborted: %s", issue.message)
+                logger.error("Sync aborted: %s", issue.message)
             broker.emit("data.export.completed", {
                 "success": False,
                 "reason": "disk_critical",
@@ -60,13 +71,15 @@ class ExportPipeline:
         for issue in disk_issues:
             logger.warning("%s", issue.message)
 
-        # Export
-        from market.data.export_to_parquet import export_all
+        # Sync (incremental hybrid — pustaka/95)
+        from market.data.sync_to_parquet import sync_all
 
-        logger.info("Parquet export: starting (trigger=%s)", trigger)
-        results = export_all()
-        total = sum(results.values())
-        logger.info("Parquet export: %d rows across %d tables", total, len(results))
+        logger.info("Parquet sync: starting (trigger=%s)", trigger)
+        results = sync_all()
+        total = sum(stats.get("rows", 0) for stats in results.values())
+        parts = sum(stats.get("partitions_written", 0) for stats in results.values())
+        logger.info("Parquet sync: %d rows, %d partitions across %d tables",
+                    total, parts, len(results))
 
         # WAL checkpoint
         db_path = Path(settings.resolved_db_path)
@@ -78,5 +91,6 @@ class ExportPipeline:
             "success": True,
             "tables": len(results),
             "total_rows": total,
+            "partitions": parts,
             "trigger": trigger,
         })

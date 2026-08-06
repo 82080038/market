@@ -8,23 +8,23 @@ No module imports another module directly. Instead:
 
 Event naming convention:  "<domain>.<action>.<result>"
   Examples:
-    "data.fetch.requested"   — someone wants data fetched
-    "data.fetch.completed"   — data has been fetched and stored
+    "data.fetch.requested"     — someone wants data fetched
+    "data.fetch.stored"        — data has been fetched and stored (no auto-recompute)
     "data.recompute.requested" — someone wants indicators recomputed
     "data.recompute.completed" — indicators have been recomputed
-    "data.export.requested"  — someone wants parquet export
-    "data.export.completed"  — parquet export done
-    "health.check.requested" — someone wants health checks
-    "health.check.completed" — health checks done (with report)
+    "data.export.requested"    — someone wants parquet export
+    "data.export.completed"    — parquet export done
+    "health.check.requested"   — someone wants health checks
+    "health.check.completed"   — health checks done (with report)
 
 Usage:
     from market.core.events import broker
 
     # Subscribe (anywhere, at startup)
-    broker.subscribe("data.fetch.completed", my_handler)
+    broker.subscribe("data.fetch.stored", my_handler)
 
     # Emit (anywhere, when something happens)
-    broker.emit("data.fetch.completed", {"ticker": "BBCA.JK", "rows": 100})
+    broker.emit("data.fetch.stored", {"ticker": "BBCA.JK", "rows": 100})
 
 Design principles:
   - Synchronous delivery (simple, deterministic for single-user app)

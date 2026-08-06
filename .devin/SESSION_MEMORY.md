@@ -1,5 +1,42 @@
 # Session Memory — Pustaka Pasar Modal
 
+## Update Rules 2026-08-06 (Sesi Pendek) — PowerShell Quoting
+
+- **Pemicu:** User minta "Solusi praktis PowerShell quoting" diaktifkan untuk Devin di komputer Windows ini.
+- **Aksi:** Tambah **AGENTS.md §9 "Aturan PowerShell Quoting (Wajib di Windows)"** — 9 sub-aturan + referensi cepat.
+- **Kunci aturan:**
+  1. Path Windows selalu single-quote (`'C:\...'`).
+  2. Hindari `python -c "..."` kompleks — tulis ke `_tmp_<tujuan>.py`.
+  3. Multi-command: `;` atau `if ($?) { }`, bukan `&&` (kecuali PS7+).
+  4. Escape `"` dalam `"..."` pakai backtick `` `" `` atau gandakan `""` — JANGAN `\"`.
+  5. Argumen mentah ke exe: `--%`.
+  6. Exe ber-spasi: `& 'path.exe'`.
+  7. Line continuation: backtick, bukan `\`.
+  8. `$env:VAR`, `$(...)` untuk ekspansi di double-quote.
+  9. Ragu → tulis `.ps1` sementara, jalankan, hapus.
+- **File berubah:** `AGENTS.md` (tambah §9, 69 baris baru setelah §8).
+- **Tidak ada perubahan kode Python.** Hanya rules behavior Devin.
+
+## Checkpoint Sesi 2026-08-06 19:30 WIB (Windows Port)
+
+- **Alasan:** Porting aplikasi dari Linux ke Windows selesai + cross-platform OS awareness.
+- **Topik aktif:** Cross-platform path handling, Windows environment setup, AGENTS.md §7-8.
+
+### Yang selesai di sesi Windows ini:
+- DB `market_research.db` dirakit dari 3 part flashdisk (6083.81 MB) → `data/`.
+- `uv` 0.12.2 terinstall, `uv sync --all-extras --dev` sukses (torch 2.13.0, pytest, ruff).
+- `npm install` + `npm run build` sukses (frontend 12 halaman).
+- `.env` dibuat dengan path Windows (`E:/pustaka_data`, `E:/projects/market`).
+- Dataset-Saham-IDX disalin ke `data/dataset-saham-idx/`.
+- Alembic verified: `0006 (head)`. Test screener: 9/9 pass.
+- **Cross-platform path helper BARU:** `src/market/paths.py` — OS-aware defaults via `sys.platform`.
+- **5 file diupdate untuk OS-aware:** `config.py`, `import_missing_tables.py`, `export_to_parquet.py`, `seed_from_parquet.py`, `.env.example`.
+- **AGENTS.md §7 (Cross-Platform) + §8 (Aturan Terminal) BARU.**
+
+### Aturan baru (AGENTS.md §7-8):
+- §7: Jangan hardcode path OS-spesifik; gunakan `market.paths`; prioritas env > OS-default > CLI.
+- §8: Jangan gunakan `tail`/`head`/`Select-Object -Last` di terminal; output harus langsung terlihat penuh.
+
 ## Checkpoint Sesi 2026-08-06 17:55 WIB
 
 - **Alasan:** Selesai update seluruh file MD + `.devin` untuk portabilitas ke komputer lain.
@@ -28,7 +65,7 @@
 - `docs/DATABASE-ISSUES.md` — Tambah masalah #8-#12, update stats, update summary table
 - `docs/AUDIT-FINDINGS.md` — Fix path, tambah section 6 Data Enrichment, update stats
 - `.devin/SESSION_MEMORY.md` — Update lengkap (this file)
-- `.devin/skills/megaplan-executor/SKILL.md` — Fix path ke `/opt/lampp/htdocs/market/`
+- `.devin/skills/megaplan-executor/SKILL.md` — Fix path ke `C:\xampp\htdocs\market\`
 - `.devin/skills/context-checkpoint/SKILL.md` — Update referensi 00-91 → 00-93
 - `.devin/skills/knowledge-base-curator/SKILL.md` — Update referensi 00-91 → 00-93
 
@@ -46,9 +83,9 @@
 ## Ringkasan Proyek
 
 - Pustaka ini adalah knowledge base untuk membangun aplikasi pasar modal (global & Indonesia), terutama decision-support EOD untuk single-user.
-- Path aplikasi: `/opt/lampp/htdocs/market/` — database utama: `data/market_research.db`.
+- Path aplikasi: `C:\xampp\htdocs\market\` — database utama: `data/market_research.db` (~6 GB, dirakit dari part backup di flashdisk `E:\projects\market\database\`).
 - Keputusan desain tetap: UI Bahasa Indonesia + tooltip, timezone WIB display / UTC storage, single-user (no RBAC/JWT), GPU `cuda:1` untuk komputasi berat, `.env` untuk kredensial.
-- Implementasi referensi: `trading-system` v0.1.11 di `/home/petrick/projects/global/` (boleh diadopsi/dicopy).
+- Implementasi referensi: `trading-system` v0.1.11 (Linux: `/home/petrick/projects/global/`; Windows: `E:\trading_data\` — baca saja, jangan tulis/modifikasi). Lihat AGENTS.md §7 untuk path OS-aware.
 
 ## Database Stats Final (6 Agustus 2026)
 

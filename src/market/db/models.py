@@ -778,6 +778,56 @@ class AIWeight(Base):
     created_at: Mapped[datetime] = mapped_column(DateTime, default=_utcnow)
 
 
+class MLLabel(Base):
+    """Triple-barrier labels for ML training (pustaka/23 §4, pustaka/84 Stage 6).
+
+    Implements López de Prado's triple-barrier method:
+    - Take-profit barrier: +vol_multiple * ATR
+    - Stop-loss barrier: -vol_multiple * ATR
+    - Time barrier: horizon trading days
+
+    Label is 'up' if TP hit first, 'down' if SL hit first, 'static' if time expired.
+    """
+
+    __tablename__ = "ml_labels"
+    __table_args__ = (
+        UniqueConstraint("ticker", "date", "horizon", name="uq_mllabel_pk"),
+        Index("ix_mllabel_ticker_date", "ticker", "date"),
+    )
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    ticker: Mapped[str] = mapped_column(String(30), nullable=False, index=True)
+    date: Mapped[date] = mapped_column(Date, nullable=False, index=True)
+    horizon: Mapped[int] = mapped_column(Integer, nullable=False)
+    direction: Mapped[str] = mapped_column(String(10), nullable=False)
+    barrier_hit: Mapped[str | None] = mapped_column(String(20), nullable=True)
+    return_pct: Mapped[float | None] = mapped_column(Numeric(10, 4), nullable=True)
+    vol_adjusted_return: Mapped[float | None] = mapped_column(Numeric(10, 4), nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=_utcnow)
+
+
+class MarketRegime(Base):
+    """Market regime labels for regime-aware ML (pustaka/23 §5, pustaka/35 §2).
+
+    Daily regime classification based on HMM states or heuristic rules:
+    'bull', 'bear', 'sideways', 'crisis'.
+    """
+
+    __tablename__ = "market_regimes"
+    __table_args__ = (
+        UniqueConstraint("date", name="uq_regime_pk"),
+    )
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    date: Mapped[date] = mapped_column(Date, nullable=False, index=True)
+    regime: Mapped[str | None] = mapped_column(String(30), nullable=True)
+    vix_level: Mapped[str | None] = mapped_column(String(20), nullable=True)
+    fear_greed_label: Mapped[str | None] = mapped_column(String(30), nullable=True)
+    foreign_flow_trend: Mapped[str | None] = mapped_column(String(20), nullable=True)
+    source: Mapped[str] = mapped_column(String(50), default="computed")
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=_utcnow)
+
+
 class SystemState(Base):
     """System state key-value store (pustaka/18 §13 #10)."""
 
@@ -802,4 +852,47 @@ class SchedulerState(Base):
     last_status: Mapped[str] = mapped_column(String(20), default="pending")
     last_error: Mapped[str | None] = mapped_column(Text, nullable=True)
     run_count: Mapped[int] = mapped_column(Integer, default=0)
+    updated_at: Mapped[datetime] = mapped_column(DateTime, default=_utcnow, onupdate=_utcnow)
+
+
+class RecomputeWatermark(Base):
+    """Watermark for incremental recompute — tracks last-processed date per ticker per table.
+
+    When incremental recompute runs, it checks this table to determine
+    the cutoff date for each ticker. Only OHLCV data after (last_processed_date - lookback)
+    is loaded, and only labels/indicators for dates > last_processed_date are computed.
+    """
+
+    __tablename__ = "recompute_watermark"
+
+    ticker: Mapped[str] = mapped_column(String(20), primary_key=True)
+    table_name: Mapped[str] = mapped_column(String(50), primary_key=True)
+    last_processed_date: Mapped[date | None] = mapped_column(Date, nullable=True)
+    last_ohlcv_date: Mapped[date | None] = mapped_column(Date, nullable=True)
+    rows_processed: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    updated_at: Mapped[datetime] = mapped_column(DateTime, default=_utcnow, onupdate=_utcnow)
+
+
+class ParquetSyncState(Base):
+    """Incremental sync state for DB → Parquet archive (pustaka/94).
+
+    Tracks the last-synced date per table so that sync_to_parquet.py can
+    resume incrementally instead of doing a full export every run.
+
+    - partitioned tables: last_synced_date is the max date_col value synced;
+      the next run only rewrites partitions within a safety window after
+      last_synced_date.
+    - full_rewrite tables: last_synced_date is NULL; the whole file is
+      rewritten each run (tables are small / mutable).
+    """
+
+    __tablename__ = "parquet_sync_state"
+
+    table_name: Mapped[str] = mapped_column(String(50), primary_key=True)
+    sync_mode: Mapped[str] = mapped_column(String(20), nullable=False)
+    partition_col: Mapped[str | None] = mapped_column(String(50), nullable=True)
+    last_synced_date: Mapped[date | None] = mapped_column(Date, nullable=True)
+    last_synced_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+    last_row_count: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    total_partitions_written: Mapped[int | None] = mapped_column(Integer, nullable=True)
     updated_at: Mapped[datetime] = mapped_column(DateTime, default=_utcnow, onupdate=_utcnow)

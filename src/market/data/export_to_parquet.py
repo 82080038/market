@@ -1,7 +1,8 @@
 """Export cleaned data from market_paper.db to parquet archive.
 
 Creates a portable parquet backup of all database tables at the configured
-parquet archive path (default: /media/petrick/Parquet/pustaka_data/).
+parquet archive path (OS-aware default: Linux /media/petrick/Parquet/pustaka_data/,
+Windows E:/pustaka_data/).
 
 This is the inverse of migrate_parquet.py: it writes the application's own
 cleaned data to parquet so the data can be carried to another machine and

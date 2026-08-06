@@ -1,7 +1,8 @@
 """Import 15 missing tables + re-import 4 altered tables from parquet global.
 
-Reads from project global's parquet archive (read-only) at
-/media/petrick/Parquet/trading_data/ and imports into market_paper.db.
+Reads from project global's parquet archive (read-only) at the OS-aware
+trading_data path (Linux: /media/petrick/Parquet/trading_data/,
+Windows: E:\\trading_data\\) and imports into market_paper.db.
 
 Tables imported:
   - 15 new tables: news, broker_flow, policy_events, external_events,
@@ -25,12 +26,17 @@ import pandas as pd
 from sqlalchemy import text
 
 from market.db.engine import get_sessionmaker
+from market.paths import (
+    default_global_archive_tables,
+    default_global_sqlite_backup,
+    default_global_trading_suspensions,
+)
 
 logger = logging.getLogger(__name__)
 
-GLOBAL_ARCHIVE = Path("/media/petrick/Parquet/trading_data/archive/tables")
-GLOBAL_SQLITE_BACKUP = Path("/media/petrick/Parquet/trading_data/raw/sqlite_backup")
-GLOBAL_SUSP = Path("/media/petrick/Parquet/trading_data/archive/trading_suspensions")
+GLOBAL_ARCHIVE = Path(default_global_archive_tables())
+GLOBAL_SQLITE_BACKUP = Path(default_global_sqlite_backup())
+GLOBAL_SUSP = Path(default_global_trading_suspensions())
 
 
 def _find_parquet(name: str) -> Path | None:

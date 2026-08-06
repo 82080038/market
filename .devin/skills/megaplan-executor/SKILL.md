@@ -17,7 +17,9 @@ triggers:
   - model
 ---
 
-You are the autonomous execution assistant for the **Market Trading Application** project in `/opt/lampp/htdocs/market/`.
+You are the autonomous execution assistant for the **Market Trading Application** project.
+
+> **Cross-OS note (AGENTS.md §7):** Project dir is OS-aware — Linux `/opt/lampp/htdocs/market/`, Windows `C:\xampp\htdocs\market\`. All paths below are relative to the project root. Use `pathlib` and `market.paths` for OS-aware defaults; never hardcode a single-OS path.
 
 When invoked (e.g. `/megaplan-executor`, `/megaplan-executor next`, `/megaplan-executor 0`), perform the following steps:
 
@@ -25,9 +27,9 @@ When invoked (e.g. `/megaplan-executor`, `/megaplan-executor next`, `/megaplan-e
 
 Always begin by loading context:
 
-1. Read `@/opt/lampp/htdocs/market/MEGAPLAN.md`.
-2. Read `@/opt/lampp/htdocs/market/AGENTS.md`.
-3. Read `@/opt/lampp/htdocs/market/.devin/SESSION_MEMORY.md`.
+1. Read `@MEGAPLAN.md`.
+2. Read `@AGENTS.md`.
+3. Read `@.devin/SESSION_MEMORY.md`.
 4. Read relevant system memory entries tagged `market`, `trading_system`, `pustaka`, `megaplan`, `multi_market`, `multi_asset`, `lifecycle_environment`.
 5. Identify the active phase from MEGAPLAN.md markers (`[~]` = in-progress, first `[ ]` = next candidate).
 
@@ -49,6 +51,8 @@ If the user supplied an argument (e.g. `0`, `1`, `paper`), use that phase as the
 - Use Indonesian for UI/narrative; English for code, constants, and symbols.
 - Never commit secrets or API keys; use `.env` only.
 - For AI-generated code: run AST scan and a sandbox test before integrating.
+- **Cross-OS paths (AGENTS.md §7):** Never hardcode OS-specific paths. Use `src/market/paths.py` for OS-aware defaults; `pathlib.Path` for all path operations.
+- **Terminal output (AGENTS.md §8):** Never use `tail`, `head -n`, `Select-Object -Last N`, or `| head` to truncate command output. Output must be fully visible in terminal.
 
 ### 2.3 TEST
 
@@ -59,7 +63,7 @@ If the user supplied an argument (e.g. `0`, `1`, `paper`), use that phase as the
 
 ### 2.4 COMMIT / MARKER UPDATE
 
-- Update completion markers in `@/opt/lampp/htdocs/market/MEGAPLAN.md`:
+- Update completion markers in `@MEGAPLAN.md`:
   - `[ ]` → `[~]` when work starts.
   - `[~]` → `[x]` only after tests pass and user approval (if required).
 - Use commit messages like: `[Fase-X] <short description>`.
@@ -104,7 +108,7 @@ You must stop and ask the user for explicit approval before:
 When all markers for a phase are `[x]` (or `[~]` only for human-gate items awaiting approval):
 
 1. Update the phase heading in MEGAPLAN.md to show `(SELESAI)`.
-2. Update `@/opt/lampp/htdocs/market/.devin/SESSION_MEMORY.md` with phase summary.
+2. Update `@.devin/SESSION_MEMORY.md` with phase summary.
 3. Run a lightweight integration smoke test for that phase.
 4. Move to the next phase automatically or report readiness to the user.
 

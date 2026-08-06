@@ -2,11 +2,19 @@
 
 SRP: This pipeline ONLY fetches data from external sources and stores it.
 It does NOT recompute indicators, export, or check health.
-After fetching, it emits "data.fetch.completed" and the recompute pipeline
-picks it up automatically.
+After fetching, it emits "data.fetch.stored" — a lightweight event that
+does NOT auto-trigger recompute. Recompute is triggered separately by
+the scheduler (data.recompute.requested) after ALL fetch phases complete.
 
-Listens to: data.fetch.requested, data.fetch_global.requested, data.fetch_macro.requested
-Emits:      data.fetch.completed
+This decoupling prevents redundant recompute+export cycles: previously
+each fetch (eod, global, macro) triggered a full recompute+export chain,
+resulting in 4x recompute and 5x export per night. Now fetch only stores;
+recompute and export run once after all fetches are done.
+
+Listens to: data.fetch.requested, data.fetch_global.requested,
+             data.fetch_macro.requested, data.fetch.intraday.requested
+Emits:      data.fetch.stored (eod/global/macro — no auto-recompute)
+            data.fetch.intraday.completed (intraday — price snapshot only)
 """
 
 from __future__ import annotations
@@ -22,9 +30,14 @@ if TYPE_CHECKING:
 
 logger = logging.getLogger(__name__)
 
-# Retry config
+# Retry config — exponential backoff for transient errors (yfinance 429,
+# network timeouts). yfinance raises YFRateLimitError on HTTP 429 "Too Many
+# Requests" (see yfinance/data.py _get_crumb_basic). Yahoo has no documented
+# rate limit, but empirical evidence shows ~1 req/sec is safe; bursts get 429.
+# Backoff: 5s, 10s, 20s — enough for Yahoo's sliding window to reset.
 MAX_RETRIES = 2
 RETRY_DELAY_SEC = 5
+RATE_LIMIT_EXTRA_DELAY_SEC = 15  # extra delay when YFRateLimitError detected
 
 # Global reference tickers (pustaka/18 §3.4)
 # Used as fallback when DB has no non-XIDX instruments registered
@@ -33,20 +46,58 @@ GLOBAL_TICKERS = [
     "^TNX", "^VIX", "GC=F", "CL=F", "SI=F", "^JKSE",
 ]
 
-# Macro series (pustaka/18 §3.3)
-MACRO_SERIES = ["DGS10", "VIXCLS", "CPIAUCSL", "FEDFUNDS", "UNRATE"]
+# Macro series via yfinance (pustaka/18 §3.3)
+# Maps macro_data series_name → yfinance ticker
+MACRO_YF_TICKERS: dict[str, str] = {
+    "US10Y": "^TNX",
+    "VIX": "^VIX",
+    "GOLD": "GC=F",
+    "CRUDE_OIL": "CL=F",
+    "USD_IDR": "IDR=X",
+    "DXY": "DX-Y.NYB",
+}
+
+# FRED series (fetched via CSV download, not yfinance)
+MACRO_FRED_SERIES: list[str] = ["DGS10", "VIXCLS", "CPIAUCSL", "FEDFUNDS", "UNRATE"]
 
 
 def _retry(func: Callable[[], Any], label: str, max_retries: int = MAX_RETRIES) -> Any:
-    """Retry a function with backoff. Returns result or None."""
+    """Retry a function with exponential backoff. Returns result or None.
+
+    Handles yfinance YFRateLimitError (HTTP 429) with longer backoff:
+    base_delay * 2^attempt + extra delay for rate limit specifically.
+    This follows the pattern recommended by yfinance maintainers
+    (PR #2627) and TradingAgents project (yf_retry wrapper).
+
+    See:
+        - https://github.com/ranaroussi/yfinance/pull/2627
+        - https://github.com/ranaroussi/yfinance/issues/2422
+    """
     for attempt in range(max_retries + 1):
         try:
             return func()
         except Exception as e:
+            # Detect yfinance rate limit error (HTTP 429)
+            is_rate_limit = (
+                "RateLimit" in type(e).__name__
+                or "429" in str(e)
+                or "Too Many Requests" in str(e)
+            )
             if attempt < max_retries:
-                delay = RETRY_DELAY_SEC * (attempt + 1)
-                logger.warning("%s attempt %d/%d failed: %s — retry in %ds",
-                              label, attempt + 1, max_retries + 1, e, delay)
+                if is_rate_limit:
+                    # Longer backoff for rate limit: 2^attempt * base + extra
+                    delay = (RETRY_DELAY_SEC * (2 ** attempt)) + RATE_LIMIT_EXTRA_DELAY_SEC
+                    logger.warning(
+                        "%s attempt %d/%d rate-limited (429) — retry in %ds",
+                        label, attempt + 1, max_retries + 1, delay,
+                    )
+                else:
+                    # Standard exponential backoff for transient network errors
+                    delay = RETRY_DELAY_SEC * (attempt + 1)
+                    logger.warning(
+                        "%s attempt %d/%d failed: %s — retry in %ds",
+                        label, attempt + 1, max_retries + 1, e, delay,
+                    )
                 time.sleep(delay)
             else:
                 logger.error("%s failed after %d attempts: %s", label, max_retries + 1, e)
@@ -67,7 +118,7 @@ class DataFetchPipeline:
         Uses TickerScreener to filter out delisted/suspended/blocked
         tickers before fetching. Handles partial failures: failed
         tickers are logged but don't abort the batch.
-        Emits data.fetch.completed with summary.
+        Emits data.fetch.stored with summary (does NOT auto-trigger recompute).
         """
         from sqlalchemy import func, select
 
@@ -120,8 +171,9 @@ class DataFetchPipeline:
             logger.info("EOD fetch: %d success, %d failed, %d skipped",
                         success, failed, skipped)
 
-            # Emit completion event — recompute pipeline will pick this up
-            broker.emit("data.fetch.completed", {
+            # Emit stored event — does NOT auto-trigger recompute.
+            # Recompute is triggered by scheduler after all fetch phases done.
+            broker.emit("data.fetch.stored", {
                 "source": "eod",
                 "tickers_success": success,
                 "tickers_failed": failed,
@@ -194,7 +246,8 @@ class DataFetchPipeline:
                     failed += 1
 
             logger.info("Global fetch: %d success, %d failed", success, failed)
-            broker.emit("data.fetch.completed", {
+            # Emit stored event — does NOT auto-trigger recompute.
+            broker.emit("data.fetch.stored", {
                 "source": "global",
                 "tickers_success": success,
                 "tickers_failed": failed,
@@ -203,7 +256,11 @@ class DataFetchPipeline:
             session.close()
 
     def on_fetch_macro_requested(self, event: Event) -> None:
-        """Handle data.fetch_macro.requested — fetch macro economic data."""
+        """Handle data.fetch_macro.requested — fetch macro economic data.
+
+        Fetches global macro series (US10Y, VIX, GOLD, OIL, USD/IDR, DXY)
+        from yfinance using the correct ticker symbols.
+        """
         from sqlalchemy import desc, select
 
         from market.core.events import broker
@@ -217,10 +274,10 @@ class DataFetchPipeline:
             today = date.today()
             success = 0
 
-            for series in MACRO_SERIES:
+            for series_name, yf_ticker in MACRO_YF_TICKERS.items():
                 latest = session.execute(
                     select(MacroData.date)
-                    .where(MacroData.series_name == series)
+                    .where(MacroData.series_name == series_name)
                     .order_by(desc(MacroData.date))
                     .limit(1)
                 ).scalar_one_or_none()
@@ -229,27 +286,31 @@ class DataFetchPipeline:
                     continue
 
                 result = _retry(
-                    lambda s=series: adapter.fetch_ohlcv(
-                        ticker=f"^{s}" if not s.startswith("^") else s,
-                        period="1mo", market_mic="XNYS", currency="USD",
+                    lambda t=yf_ticker: adapter.fetch_ohlcv(
+                        ticker=t,
+                        period="1mo",
+                        market_mic="XNYS",
+                        currency="USD",
                     ),
-                    label=f"macro {series}",
+                    label=f"macro {series_name} ({yf_ticker})",
                     max_retries=1,
                 )
 
                 if result:
                     for record in result:
                         session.add(MacroData(
-                            series_name=series,
+                            series_name=series_name,
                             date=record.timestamp.date(),
                             value=float(record.close),
                             source="yahoo_finance",
+                            frequency="daily",
                         ))
                     session.commit()
                     success += 1
 
-            logger.info("Macro fetch: %d/%d series updated", success, len(MACRO_SERIES))
-            broker.emit("data.fetch.completed", {
+            logger.info("Macro fetch: %d/%d series updated", success, len(MACRO_YF_TICKERS))
+            # Emit stored event — does NOT auto-trigger recompute.
+            broker.emit("data.fetch.stored", {
                 "source": "macro",
                 "series_updated": success,
             })

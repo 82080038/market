@@ -84,3 +84,7 @@ frontend/playwright-report/
 
 # Alembic local override (keep version files, ignore local env if any)
 alembic.ini.local
+
+# Temporary scripts (konvensi AGENTS.md §9: _tmp_<tujuan>.py / .ps1)
+_tmp_*.py
+_tmp_*.ps1

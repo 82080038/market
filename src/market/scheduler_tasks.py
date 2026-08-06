@@ -98,10 +98,18 @@ def _task_quality_check() -> None:
 def _task_recompute() -> None:
     """Emit recompute request — recompute pipeline handles the rest.
 
-    Note: normally recompute is auto-triggered by data.fetch.completed,
-    but this task allows manual recompute without fetching.
+    Recompute runs ONCE after all fetch phases (eod, global, macro) are done.
+    Previously this emitted a fake "data.fetch.completed" event to trick the
+    recompute pipeline into running. Now it emits the proper
+    "data.recompute.requested" event that the recompute pipeline listens to.
+
+    Scheduled daily runs use incremental=True (only append new dates for
+    time-series tables). Manual recompute via dashboard can use full mode.
     """
-    broker.emit("data.fetch.completed", {"source": "manual_recompute"})
+    broker.emit("data.recompute.requested", {
+        "source": "scheduled_recompute",
+        "incremental": True,
+    })
 
 
 def _task_feature_store() -> None:
@@ -122,6 +130,81 @@ def _task_generate_reports() -> None:
 def _task_export_parquet() -> None:
     """Emit export request — export pipeline handles the rest."""
     broker.emit("data.export.requested", {"source": "scheduled"})
+
+
+def _task_startup_catchup() -> None:
+    """Check data staleness on startup and catch up if needed.
+
+    This task runs ONCE when the application starts. It checks whether
+    the latest OHLCV data is stale (older than 1 trading day). If stale,
+    it triggers the full fetch → recompute → export chain to catch up
+    on missed runs while the computer was off.
+
+    This handles the real-world scenario where the developer's machine
+    is not always on at scheduled times (17:30 WIB fetch, 18:00 recompute,
+    19:30 export). When the machine boots up, this task detects the gap
+    and backfills automatically.
+
+    Idempotency: fetch pipelines already skip tickers whose latest OHLCV
+    is within 1 day (on_fetch_requested) or 3 days (macro). So re-running
+    fetch after a missed day only fetches the missing data, not duplicates.
+    Recompute is DELETE+INSERT (idempotent). Export is incremental hybrid
+    (only writes changed partitions). Safe to re-run.
+
+    See:
+        - pustaka/95-sync-db-to-parquet.md §4.1 (incremental sync)
+        - https://datadriven.io/pipeline/backfill (idempotent backfill)
+        - https://muhammadamal.my.id/blog/etl-idempotent-watermarks/
+    """
+    from sqlalchemy import func, select
+
+    from market.db.engine import get_sessionmaker
+    from market.db.models import OHLCV
+
+    session = get_sessionmaker()()
+    try:
+        latest = session.execute(
+            select(func.max(OHLCV.timestamp)).where(OHLCV.timeframe == "1d")
+        ).scalar()
+
+        if latest is None:
+            logger.warning("Startup catch-up: no OHLCV data found — triggering full fetch")
+            stale = True
+        else:
+            # Check if latest daily OHLCV is older than 1 day.
+            # Use naive datetime comparison (DB stores UTC naive).
+            from datetime import UTC, datetime
+            now = datetime.now(UTC).replace(tzinfo=None)
+            age_hours = (now - latest).total_seconds() / 3600
+            stale = age_hours > 26  # >26h = missed at least 1 trading day
+            logger.info(
+                "Startup catch-up: latest OHLCV=%s (%.1f hours ago, stale=%s)",
+                latest, age_hours, stale,
+            )
+
+        if stale:
+            logger.info("Startup catch-up: data is stale — triggering fetch chain")
+            # Phase 1: fetch all data sources (idempotent — skips fresh tickers)
+            broker.emit("data.fetch.requested", {"source": "startup_catchup"})
+            broker.emit("data.fetch_global.requested", {"source": "startup_catchup"})
+            broker.emit("data.fetch_macro.requested", {"source": "startup_catchup"})
+            # Phase 2: recompute (runs after fetch via scheduler, or manually)
+            # NOTE: We don't auto-chain here. The scheduler's run_all_due()
+            # will pick up recompute and export tasks if they're also due.
+            # If not due (e.g., last_run within 20h), user can trigger manually.
+            # For immediate catch-up, emit recompute after a short delay
+            # to let fetch phases complete. In practice, fetch is synchronous
+            # (event broker is sync), so by the time we get here, fetch is done.
+            broker.emit("data.recompute.requested", {"source": "startup_catchup", "incremental": True})
+            # Phase 3: export (after recompute completes)
+            broker.emit("data.export.requested", {"source": "startup_catchup"})
+            logger.info("Startup catch-up: fetch → recompute → export chain emitted")
+        else:
+            logger.info("Startup catch-up: data is fresh — no action needed")
+    except Exception as e:
+        logger.error("Startup catch-up failed: %s", e)
+    finally:
+        session.close()
 
 
 def _task_fetch_fundamental() -> None:
@@ -236,27 +319,43 @@ def register_default_tasks(scheduler: DailyScheduler) -> None:
     The scheduler only controls WHEN things happen, not HOW.
 
     Task schedule (WIB):
-        09:00-15:50  fetch_intraday   — poll yfinance every 15 min (market hours)
+        STARTUP  startup_catchup   — check staleness, catch up if missed (once)
+        09:00-15:50  fetch_intraday — poll yfinance every 15 min (market hours)
         17:00  health_check      — pre-flight checks
         17:30  fetch_eod         — fetch IDX equity OHLCV
         17:35  fetch_global      — fetch global indices/commodities/bonds
         17:40  fetch_macro       — fetch macro economic data
         17:45  quality_check     — validate fetched data
-        18:00  recompute         — recompute indicators/scores
+        18:00  recompute         — recompute indicators/scores (ONCE, not per-fetch)
         18:30  feature_store     — refresh feature store
         18:45  drift_detection   — check model drift
         19:00  generate_reports  — daily reports
-        19:30  export_parquet    — backup DB to parquet + WAL checkpoint
+        19:30  export_parquet    — backup DB to parquet + WAL checkpoint (ONCE)
         Sat 10:00 fetch_fundamental — weekly fundamental snapshot from yfinance
 
-    Event chain (automatic, after fetch):
-        fetch_eod emits → data.fetch.requested
-        → DataFetchPipeline fetches → emits data.fetch.completed
-        → RecomputePipeline recomputes → emits data.recompute.completed
-        → ExportPipeline exports → emits data.export.completed
-        → HealthPipeline checks → emits health.check.completed
-        → AlertPipeline evaluates alerts (terminal)
+    Decoupled event flow (fetch does NOT auto-trigger recompute/export):
+        PHASE 1: fetch_eod/global/macro → data.fetch.stored (no auto-recompute)
+        PHASE 2: recompute → data.recompute.requested → data.recompute.completed
+        PHASE 3: export → data.export.requested → data.export.completed
+        PHASE 4: health → data.export.completed → health.check.completed
+        ALERTS:  data.recompute.completed → AlertPipeline (terminal)
+
+    Startup catch-up (handles computer was off at scheduled times):
+        On startup, if latest OHLCV > 26 hours old, triggers full
+        fetch → recompute → export chain. Idempotent: fetch skips fresh
+        tickers, recompute is DELETE+INSERT, export is incremental hybrid.
     """
+    # ── Startup catch-up: runs once on application start ──────────
+    # Checks if data is stale (>26h since last OHLCV) and backfills.
+    # This handles the case where the computer was off at 17:30 WIB.
+    scheduler.register_task(
+        task_id="startup_catchup",
+        name="Startup data staleness check & catch-up",
+        func=_task_startup_catchup,
+        schedule="daily",  # _is_due returns True if never run or >20h ago
+        time_of_day="00:00",  # nominal time; actual trigger is run_all_due() on startup
+    )
+
     scheduler.register_task(
         task_id="fetch_intraday",
         name="Intraday price poll (15-min interval)",
@@ -301,7 +400,7 @@ def register_default_tasks(scheduler: DailyScheduler) -> None:
     )
     scheduler.register_task(
         task_id="recompute",
-        name="Recompute indicators & scores",
+        name="Recompute indicators & scores (after all fetches)",
         func=_task_recompute,
         schedule="EOD",
         time_of_day="18:00",
@@ -329,7 +428,7 @@ def register_default_tasks(scheduler: DailyScheduler) -> None:
     )
     scheduler.register_task(
         task_id="export_parquet",
-        name="Export DB to parquet + WAL checkpoint",
+        name="Export DB to parquet + WAL checkpoint (after recompute)",
         func=_task_export_parquet,
         schedule="daily",
         time_of_day="19:30",
