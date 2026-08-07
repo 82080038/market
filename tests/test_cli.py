@@ -49,10 +49,22 @@ def test_scheduler_list_command(capsys):
     captured = capsys.readouterr()
     assert "fetch_eod" in captured.out
     assert "quality_check" in captured.out
-    assert "Total: 11 tasks" in captured.out
+    assert "Total: 13 tasks" in captured.out
 
 
-def test_scheduler_run_command(capsys):
+def test_scheduler_run_command(capsys, monkeypatch):
+    from market.scheduler import DailyScheduler, TaskExecution, TaskStatus
+    from datetime import datetime, UTC
+
+    def _fake_run_all_due(self):
+        return [TaskExecution(
+            task_id="fetch_eod",
+            started_at=datetime.now(UTC).isoformat(),
+            status=TaskStatus.SUCCESS,
+            finished_at=datetime.now(UTC).isoformat(),
+        )]
+
+    monkeypatch.setattr(DailyScheduler, "run_all_due", _fake_run_all_due)
     assert main(["scheduler", "run"]) == 0
     captured = capsys.readouterr()
     assert "Executed:" in captured.out

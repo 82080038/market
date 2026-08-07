@@ -364,6 +364,13 @@ def register_default_tasks(scheduler: DailyScheduler) -> None:
         time_of_day="09:00",
     )
     scheduler.register_task(
+        task_id="fetch_fundamental",
+        name="Weekly fundamental data snapshot (yfinance)",
+        func=_task_fetch_fundamental,
+        schedule="weekly",
+        time_of_day="10:00",
+    )
+    scheduler.register_task(
         task_id="health_check",
         name="Pre-flight health checks",
         func=_task_health_check,
@@ -432,11 +439,4 @@ def register_default_tasks(scheduler: DailyScheduler) -> None:
         func=_task_export_parquet,
         schedule="daily",
         time_of_day="19:30",
-    )
-    scheduler.register_task(
-        task_id="fetch_fundamental",
-        name="Weekly fundamental data snapshot (yfinance)",
-        func=_task_fetch_fundamental,
-        schedule="weekly",
-        time_of_day="10:00",
     )

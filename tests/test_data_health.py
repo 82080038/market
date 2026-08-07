@@ -106,6 +106,7 @@ def test_check_all_returns_report(tmp_path: Path):
         )
     """)
     con.execute("CREATE TABLE source_health (source TEXT, status TEXT, total_failures INTEGER, last_error_msg TEXT)")
+    con.execute("CREATE TABLE instrument_master (ticker TEXT, market_mic TEXT, asset_class TEXT, is_active INTEGER)")
     con.close()
 
     parquet_path = tmp_path / "parquet"
