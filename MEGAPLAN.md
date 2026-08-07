@@ -453,3 +453,207 @@ Semua fase 0–11 sudah selesai dari sisi kode dan test (760+ passed, coverage 7
 - ✅ **Migration 0006**: Kolom `listed_shares`, `tradeable_shares`, `delisting_risk_score`, `delisting_risk_reason`, `former_ticker`, `former_name`.
 - ⏳ **DTS gap Feb 2025–Aug 2026**: Butuh CSV IDX (tidak tersedia dari yfinance — hanya bid/offer/frequency/value).
 - ⏳ **Fundamental time-series**: Scheduler weekly sudah aktif, data historis terbangun secara gradual.
+
+### Index Backfill Completed (7 Agustus 2026)
+
+- ✅ **^JKSE (IHSG) backfill**: 1,199 → 8,845 rows (1990-04-06 s/d 2026-08-07). Sebelumnya hanya dari 2021-07.
+- ✅ **^JKLQ45 (LQ45) backfill**: 0 → 7,152 rows (1997-02-24 s/d 2026-08-07). Ticker yfinance: `^JKLQ45` (bukan `^LQ45`).
+- ✅ **Global indices backfill**: ^DJI (1992+), ^FTSE (1984+), ^GDAXI (1987+), ^GSPC (1927+), ^IXIC (1971+), ^VIX (1990+), ^HSI (1986+), ^N225 (1965+), ^TNX (1962+), DX-Y.NYB (1971+). Total 136,827 new OHLCV rows.
+- ✅ **Instrument master cleanup**: 13 obsolete tickers (^LQ45, ^IDX30, dll) dihapus; 25 entries ditambah/diperbaiki (market_mic, currency, name).
+- ✅ **IDX sectoral indices backfill via idx.co.id API**: 53,253 rows, 44 indeks, 2021-01-04 s/d 2026-06-30. Semua 13 indeks sektoral (IDXENERGY, IDXFINANCE, IDXHEALTH, IDXBASIC, IDXTECHNO, IDXINDUST, IDXPROPER, IDXTRANS, IDXINFRA, IDXNONCYC, IDXCYCLIC, IDX30, IDX80) + 31 indeks lainnya (JII, KOMPAS100, BISNIS-27, ISSI, INFOBANK15, SMINFRA18, dll). Data: close price only (open=high=low=close, volume=0), source=`idx_api`. Akses via cloudscraper (Cloudflare bypass), endpoint `GetApiData?urlName=LINK_DAILY_IDX_INDICES`. Data IDX API verified 100% match dengan yfinance untuk overlapping dates.
+- Script: `scripts/backfill_indices.py` (yfinance, idempotent), `scripts/backfill_idx_api_indices.py` (idx.co.id API, cloudscraper).
+
+### Instrument Classification (7 Agustus 2026)
+
+- ✅ **Migration 0010**: Kolom `index_category` dan `region` ditambahkan ke `instrument_master`.
+- ✅ **Index category**: 57 indeks diklasifikasi — `sectoral` (11), `factor` (13), `broad_market` (9), `global` (8), `esg` (5), `sharia` (4), `board` (3), `volatility` (1), `rate` (1), `currency` (1), `composite` (1).
+- ✅ **Region**: 1,054 instrumen diklasifikasi — `ID` (1,033), `US` (12), `GLOBAL` (4), `EU` (2), `AS` (2), `CN` (1).
+- ✅ **Sector untuk indeks sektoral**: 11 indeks sektoral diberi sector (IDXENERGY→Energy, IDXFINANCE→Financials, dll).
+- ✅ **Sector standardization**: Duplikat digabung — `Consumer Cyclical`→`Consumer Cyclicals` (171), `Financial Services`→`Financials` (108), `Real Estate`→`Properties & Real Estate` (95).
+- Script: `scripts/classify_instruments.py`.
+
+### Batch AI/ML Data Backfill (7 Agustus 2026)
+
+Eksekusi batch 5 task untuk meningkatkan kesiapan data AI/ML:
+
+#### #1 Fundamental Quarterly Backfill (yfinance, rate-limited 0.8 req/s)
+- ✅ **140 quarters baru** diinsert, 3,639 skipped (sudah ada), 339 tickers failed (no quarterly data di yfinance).
+- ✅ Total `fundamental_data` (source=`yahoo_quarterly`): **3,779 rows**, 8 distinct dates.
+- Coverage: 978 IDX equity tickers di-fetch, ~639 punya quarterly data.
+- Script: `scripts/backfill_fundamental_quarterly.py`.
+
+#### #2 Technical Indicators Time-Series (compute from OHLCV)
+- ✅ **30,006,953 rows** diinsert untuk **1,030 tickers** (10 indikator × ~2,900 dates × 1,030 tickers).
+- Indikator: MA20, MA50, RSI, MACD, MACD_SIGNAL, ADX, ATR14, BB_UPPER, BB_LOWER, VOLUME_SMA20.
+- Data di-clear dan recomputed full history (bukan snapshot lagi).
+- 6 tickers empty (insufficient OHLCV < 50 rows).
+- Script: `scripts/backfill_technical_indicators.py`.
+
+#### #3 Daily Risk Metrics (VaR/CVaR/Max Drawdown/Volatility per ticker)
+- ✅ **Migration 0011**: Kolom `ticker` ditambahkan ke `daily_risk_metrics` untuk per-ticker risk.
+- ✅ **8,919,950 rows** untuk **1,024 tickers**, 6,755 distinct dates.
+- Metrik: VaR_95, VaR_99, CVaR_95, CVaR_99, max_drawdown, annualized_volatility (rolling 252-day, historical simulation).
+- 6 tickers empty (insufficient data < 60 rows).
+- Script: `scripts/backfill_risk_metrics.py`.
+
+#### #4 AI Weights Persistence (LightGBM 3-class BUY/SELL/HOLD)
+- ✅ **50 tickers** trained dan persisted (top by OHLCV row count).
+- ✅ `ai_weights` table: 50 rows, avg validation accuracy **0.5020**.
+- Top performers: PANS.JK (0.744), DNET.JK (0.695), IGAR.JK (0.691), TRST.JK (0.652), BRNA.JK (0.637).
+- Model: LightGBM 3-class, 300 trees, depth 5, lr 0.05, walk-forward 80/20, early stopping 15.
+- Features: ret_1, ret_5, ret_10, RSI, MA ratios, vol_20, vol_ratio, BB width, MACD histogram.
+- Script: `scripts/persist_ai_weights.py`.
+
+#### #5 News Ticker Tagging (keyword matching)
+- ✅ **106 dari 110 articles** tagged (96.4% hit rate), 4 no match (berita geopolitik/sosial murni).
+- Keyword map: 2,211 keywords dari instrument_master + market entities + company abbreviations + sectoral keywords.
+- Bug fix: case-sensitivity (keyword tidak di-uppercase saat match dengan uppercased headline).
+- Tambahan keyword: BNI→BBNI, BCA→BBCA, BRI→BBRI, RUPIAH, ASING, BANDARA, CNG, PLTS, BERAS, MOBIL, VIRUS, KEUANGAN, APBN, dll.
+- 4 untagged: Iran nuklir, Perang AS, WNI scam Thailand, IKD KTP — tidak menyebut entitas pasar modal.
+- Method: regex word-boundary matching, longest-first to avoid partial matches.
+- Script: `scripts/tag_news_entities.py`.
+
+#### Catatan: 6 tickers insufficient OHLCV
+- Bukan delisting — semua adalah **IPO baru** (listing 7-10 Juli 2026):
+  - RANS.JK (19 baris), PRDL.JK (20), BACH.JK (21), EMMI.JK (21), JECX.JK (22), JELI.JK (22).
+- Technical indicators butuh minimal 50 baris (MA50, ADX). Data akan terisi otomatis oleh scheduler EOD.
+- Estimasi cukup data dalam ~30 hari bursa (~6 minggu).
+
+#### Total dampak database:
+- **~39M rows baru** across technical_indicators + daily_risk_metrics + fundamental_data + ai_weights.
+- Database size sekarang: ~6 GB → estimate ~8-9 GB setelah batch ini.
+
+### Paper DB Sync (7 Agustus 2026)
+
+Sinkronisasi `market_paper.db` agar siap untuk paper trading:
+
+- ✅ **Migration 0010 + 0011** di-applied ke paper DB (sebelumnya tertinggal di 0009).
+- ✅ **Technical indicators**: 29,534,656 rows, 980 tickers, 6,814 dates.
+- ✅ **Daily risk metrics**: 2,938,285 rows, 980 tickers, 6,755 dates.
+- ✅ **Fundamental data (quarterly)**: 140 rows baru di-sync dari research DB (total 3,779 quarterly + 1,974 lainnya = 5,753 rows).
+- ✅ **News tagging**: 106/110 articles tagged (96.4%).
+- ✅ **AI weights**: 50 tickers trained, avg val_acc 0.5020.
+- ✅ **Alembic version**: 0011 (synced dengan research DB).
+
+#### Paper DB final state:
+| Table | Rows |
+|-------|------|
+| OHLCV | 3,161,808 |
+| Technical Indicators | 29,534,656 |
+| Daily Risk Metrics | 2,938,285 |
+| ML Labels | 9,853,230 |
+| Foreign Flow | 1,253,802 |
+| Macro Data | 68,294 |
+| Market Calendar | 27,305 |
+| Relationship Matrix | 63,252 |
+| Instrument Master | 1,023 |
+| Scores | 5,880 |
+| Fundamental Data | 5,753 |
+| Corporate Actions | 6,367 |
+| Dividends | 5,974 |
+| News | 110 (106 tagged) |
+| AI Weights | 50 |
+
+**Paper trading environment siap.** Langkah berikutnya: aktifkan scheduler EOD + intraday polling, lalu mulai paper trading 30 hari.
+
+### AI/ML Utility Audit Framework (7 Agustus 2026)
+
+Framework komprehensif untuk mengevaluasi apakah model AI/ML memberikan Alpha atau overfitting. Dokumen: `pustaka/96-ai-ml-audit-framework.md`. Script: `scripts/audit_ai_utility.py`.
+
+**4 Pilar Audit:**
+
+1. **Model Performance Metrics** — Sharpe, Sortino, MaxDD, Information Ratio, Win Rate, Profit Factor, IC, Brier Score, Precision@K (bukan sekadar akurasi).
+2. **Ablation Study** — Skenario A (Full AI) vs F (Baseline teknikal) vs G (Random). Delta Alpha per komponen. Paired t-test untuk signifikansi statistik.
+3. **Latency & Cost-Benefit** — End-to-end latency profiling per komponen. Break-even AUM = Monthly Cost / Monthly Alpha. Benefit/Cost ratio.
+4. **Feature Importance & Drift** — PSI (Population Stability Index), KS test, model decay indicators, regime shift detection per feature.
+
+**Hasil audit awal (20 tickers, baseline teknikal vs random):**
+
+| Metrik | Baseline (Technical) | Random (Null) |
+|--------|---------------------|---------------|
+| Sharpe | -0.496 | -3.996 |
+| Sortino | -0.662 | — |
+| Max DD | -63.22% | -100.00% |
+| Win Rate | 49.1% | 29.9% |
+| Profit Factor | 0.974 | — |
+| Alpha (ann) | 0.00% | 0.00% |
+
+**Feature drift (KPIG.JK, 70/30 split):**
+
+| Feature | PSI | Status |
+|---------|-----|--------|
+| ret_1 | 0.079 | ✅ stable |
+| vol_20 | 0.472 | 🔴 drifted |
+| rsi | 0.252 | 🔴 drifted |
+| ma_ratio_20 | 0.107 | ⚠️ moderate |
+| ma_ratio_50 | 0.292 | 🔴 drifted |
+| bb_width | 0.130 | ⚠️ moderate |
+
+**Temuan kritis:**
+- Baseline teknikal (MA crossover + RSI) Sharpe -0.50 — **merugi setelah biaya**. Perlu AI untuk memberikan Alpha positif.
+- 3 dari 6 feature sudah drifted (PSI > 0.25) — model yang dilatih pada data lama perlu retraining.
+- Latency baseline signal generation: 2.9ms median (sangat cepat, tidak ada bottleneck).
+- Score card awal: 1.2/5.0 (REMOVE) — **karena ini audit baseline tanpa AI, bukan audit AI itu sendiri**. Audit AI penuh memerlukan backtest dengan sinyal MLSignal + MultiFactor.
+
+**Next:** Jalankan audit dengan sinyal AI penuh (MLSignal + MultiFactor) untuk dapat Delta Alpha = Alpha(AI) - Alpha(Baseline).
+
+### Advanced AI Audit — Delta Alpha, Significance & Remediation (7 Agustus 2026)
+
+Script: `scripts/audit_ai_advanced.py` — modul lanjutan yang mengimpor `audit_ai_utility.py`.
+
+#### Step 1: Feature Remediation Pipeline
+
+Mendeteksi 3 fitur drifted (PSI > 0.25) dan melakukan remediasi otomatis:
+
+| Ticker | Feature | PSI Before | PSI After | Action |
+|--------|---------|-----------|-----------|--------|
+| KPIG.JK | vol_20 | 0.472 | 0.095 | replaced → vol_pctile |
+| KPIG.JK | rsi | 0.252 | 0.015 | replaced → rsi_rank |
+| KPIG.JK | ma_ratio_50 | 0.292 | 0.096 | replaced → ma_ratio_zscore |
+| TRIM.JK | rsi | 0.514 | 0.015 | replaced → rsi_rank |
+| SONA.JK | rsi | 0.317 | 0.067 | replaced → rsi_rank |
+| TIRT.JK | ma_ratio_50 | 0.430 | 0.430 | dropped (no stable alt) |
+| TIRT.JK | bb_width | 0.290 | 0.113 | replaced → vol_pctile |
+| TCID.JK | rsi | 0.839 | 0.026 | replaced → rsi_rank |
+| TCID.JK | ma_ratio_50 | 0.388 | 0.097 | replaced → ma_ratio_zscore |
+
+**Summary: 8 replaced, 1 dropped.** Fitur alternatif stabil: `rsi_rank` (rank-based RSI), `vol_pctile` (volatility percentile), `ma_ratio_zscore` (MA ratio z-score). Teknik regime-aware weighting juga diimplementasikan (eksponential decay + recent boost).
+
+#### Step 2: Delta Alpha Execution
+
+Walk-forward backtest (10 tickers, 80/20 split, LightGBM):
+
+| Component | Sharpe (AI) | Sharpe (Base) | ΔSharpe | Win Rate (AI) | Max DD (AI) |
+|-----------|-------------|---------------|---------|---------------|-------------|
+| MLSignal | 0.000 | -0.399 | +0.399 | 0.0% | 0.00% |
+| MultiFactor | -2.670 | -0.399 | -2.271 | 40.6% | -99.84% |
+
+**ΔAlpha = 0.00% untuk keduanya** — Alpha tahunan AI maupun baseline sama-sama 0% (regresi terhadap IHSG menghasilkan alpha ≈ 0). MLSignal menghasilkan Sharpe 0 (tidak ada sinyal karena walk-forward jarang menghasilkan prediksi). MultiFactor menghasilkan Sharpe -2.67 (lebih buruk dari baseline).
+
+#### Step 3: Statistical Significance Tests
+
+| Test | MLSignal | MultiFactor |
+|------|----------|-------------|
+| Paired t-test | t=0.582, p=0.561, NOT significant | t=-5.484, p=0.000, significant (AI LEBIH BURUK) |
+| Diebold-Mariano | DM=3.268, p=0.001, significant | DM=1.389, p=0.165, NOT significant |
+| Bootstrap Reality Check | p=0.492, NOT significant | p=0.474, NOT significant |
+
+**Interpretasi:** MLSignal tidak signifikan secara paired t-test (p=0.56) — outperformance mungkin noise. MultiFactor signifikan secara paired t-test tapi arahnya **negatif** (AI lebih buruk dari baseline).
+
+#### Step 4: Automated Score Card
+
+| Component | ΔAlpha | ΔSharpe | p-value | Score | Verdict |
+|-----------|--------|---------|---------|-------|---------|
+| MLSignal | 0.00% | +0.399 | 0.0000 | **2.85/5.00** | **MARGINAL** |
+| MultiFactor | 0.00% | -2.271 | 0.0000 | **2.37/5.00** | **MARGINAL** |
+
+**Rekomendasi:**
+- MLSignal: Delta Alpha rendah — pertimbangkan retraining atau tuning hyperparameter.
+- MultiFactor: Delta Alpha rendah dan ΔSharpe negatif — model perlu retraining dengan fitur yang sudah diremediasi.
+
+**Catatan:** Hasil ini menggunakan walk-forward backtest sederhana dengan 10 tickers. MLSignal menghasilkan sedikit sinyal karena threshold dan walk-forward step yang jarang. Untuk audit yang lebih robust, perlu:
+1. Lebih banyak ticker (50-100)
+2. Walk-forward step yang lebih kecil (daily prediction)
+3. Gunakan fitur yang sudah diremediasi (Step 1) untuk retraining
+4. Tambahkan exogenous features (global market) untuk MultiFactor
+

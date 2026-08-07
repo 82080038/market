@@ -40,6 +40,7 @@ data/*.db
 data/*.db-journal
 data/*.db-wal
 data/*.db-shm
+data/database/*.part.*
 data/backups/
 data/backtest_simulation_report.json
 data/parquet_export/*.parquet
@@ -47,6 +48,18 @@ logs/
 *.log
 .cache/
 models/
+
+# Pipeline output JSON (generated artifacts, not source code)
+best_ticker_quant_config.json
+best_ticker_quant_config_mock.json
+final_portfolio_verdict.json
+final_portfolio_verdict_mock.json
+portfolio_data_remediation_report.json
+audit_advanced_report.json
+audit_report.json
+database_profile_report.json
+best_quant_config.json
+alpha_hyper_tuner_report.json
 
 # Large external datasets (233 MB+ — clone from external drive, do NOT commit)
 data/dataset-saham-idx/

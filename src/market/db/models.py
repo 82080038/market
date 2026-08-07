@@ -88,6 +88,8 @@ class InstrumentMaster(Base):
     delisting_risk_reason: Mapped[str | None] = mapped_column(Text, nullable=True)
     former_ticker: Mapped[str | None] = mapped_column(String(30), nullable=True)
     former_name: Mapped[str | None] = mapped_column(String(200), nullable=True)
+    index_category: Mapped[str | None] = mapped_column(String(30), nullable=True)
+    region: Mapped[str | None] = mapped_column(String(10), nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime, default=_utcnow)
     updated_at: Mapped[datetime] = mapped_column(DateTime, default=_utcnow, onupdate=_utcnow)
 
@@ -733,6 +735,7 @@ class DailyRiskMetric(Base):
     __tablename__ = "daily_risk_metrics"
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    ticker: Mapped[str | None] = mapped_column(String(30), nullable=True, index=True)
     date: Mapped[date] = mapped_column(Date, nullable=False, index=True)
     var_95: Mapped[float | None] = mapped_column(Numeric(10, 4), nullable=True)
     var_99: Mapped[float | None] = mapped_column(Numeric(10, 4), nullable=True)

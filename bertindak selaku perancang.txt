@@ -1,0 +1,85 @@
+bertindak selaku perancang aplikasi profesional dan ahli pasar modal;
+analisa secara mendalam dan satu persatu; seluruh file di @pustaka; 
+lakukan CRUD terhadap file yang membutuhkan tindakan tersebut;
+analisa secara mendalam dari sumber apapun, termasuk dari internet untuk tujuan dari @pustaka, lengkapi secara ahli dan profesional;
+kemudian, 
+apabila sudah selesai, siapkan file ".devin", untuk membuat/update konfigurasi devin (rules, skills, worflows) dan memories;
+sekalian buatkan aturan bahwa context di cascade sudah hampir selesai/habis, segera update ke memories, termasuk ke konfigurasi devin (rules, skills, worflows); agar context tidak hilang/lupa arah development/tujuan.
+
+lanjutkan
+
+bertindak selaku developer aplikasi pasar saham profesional;
+di aplikasi,sebelum aplikasi mengambil keputusan pilihan instrumen pasar modal, harus ada pengetahuan aplikasi tentang seberapa banyak durasi dan data instrumen pasar modal yang harus dilakukan screening/testing selanjutnya, sehingga aplikasi menyadari tentang pola-pola dari instrumen tersebut, melakukan manajemen resiko dan keputusan, dan atau hal lainnya sesuai tujuan aplikasi, termasuk perfroma model dan auto adjust.
+biasanya setiap instrumen pasar modal, termasuk setiap saham, jenis instrumen pasar modal; memiliki pola yang berbeda, tergantung hal yang mempengaruhi instrumen pasar modal tersebut.
+
+bertindak selaku perancang aplikasi profesional dan ahli pasar modal;
+pelajari aplikasi secara mendalam;
+di FE, buatkan fitur untuk memberikan pilihan kepada user, tentang otomatisasi trading robot/eksekusi hasil keputusan/sinyal trading, berdasarkan screening AI/ML/model/engine, dan sebagainya; apakah aplikasi melakukan portfolio terhadap instrumen indonesia atau terhadap instrumen pasar modal lainnya; dalam bentuk centang; dan buat aturan, kapan bagian tersebut boleh dicentang, dan kapan untuk tidak boleh. yang dicentang, segera lakukan pengujian ulang dan siapkan rencana eksekusi ke pasar modal, kemudian eksekusi.
+
+bertindak selaku perancang aplikasi profesional dan ahli pasar modal;
+mungkin anda mengetahui arti "leverage", seharusnya aplikasi juga bisa memberikan saran leverage kepada user, dengan alasan yang tepat dan bisa dipertanggung jawabkan, namun juga memberikan opsi kepada user tentang opsi toggle  leverage tersebut.
+
+
+bertindak selaku perancang aplikasi profesional dan ahli pasar modal;
+backtest di aplikasi, melakukan kegiatannya terhadap seluruh instrumen pasar modal, terhadap seluruh perubahan data, terhadap seluruh aktivitas user dan pasar modal dunia/lainnya. jadi, tidak ada campur tangan user di bagian tersebut, karena seharusnya bagian tersebut dibantu oleh AI-self evolution & autonomous layer.
+
+bertindak selaku programmer tester aplikasi, yang ahli di bidang pemograman dan pasar modal;
+lakukan testing komprehensif aplikasi, termasuk menggunakan playwright (headless, headed, browser),
+terkait playwright tersebut, komputer ini memiliki 3 layar,  tampilkan browser hasil di layar acer atau epson.
+
+
+pada saat melakukan pengecekan pola instrumen  pasar modal dan prediksi, aplikasi tidak boleh melihat data ahead/data di depan tanggal yang belum di-cek; sehingga apabila terjadi error prediksi, aplikasi harus mengetahui mengapa hal tersebut bisa error, memperbaikinya, mengingat dan untuk masa depan menjadi salah satu perhitungan resiko yang tidak boleh dilupakan, mengingat kejadian tersebut bisa saja terjadi lagi, sehingga aplikasi bisa melakukan pengambilan keputusan eksekusi portfolio yang bijak, objektif dan empiris; terhadap instrumen pasar modal.
+pengecekan pola instrumen  pasar modal tersebut harus dibarengi dengan adanya prediksi selanjutnya terhadap kondisi instrumen pasar modal;
+dan proses pengecekan pola instrumen  pasar modal dan prediksi tersebut, tampil di FE, baik dalam bentuk terminal, maupun grafik.
+
+
+berikan juga pengingat AI/ML, terhadap pola instrumen pasar modal, termasuk saham yang delisted, kenapa delisted atau diblokir; agar menghindari pola tersebut di pengambilan keputusan instrumen pasar modal yang akan masuk porfolio/yang disarankan aplikasi (mungkin juga menjadi bagian memory AI-self evolution & autonomous layer).
+
+benar-benar ambil alih seluruh tugas "Software Engineering"; 
+bertindak selaku masing-masing  Software Engineering profesional yang paham dan praktisi di  bidang pasar modal, sangat ahli di bidang Software Engineering, ekonomi, akuntasi, matematika dan bidang keilmuan yang berhubungan dengan project ini ;
+kemudian,
+lakukan simulasi aplikasi untuk beberapa bulan atau tahun (tergantung keputusan penilaian anda);
+lakukan simulasi tersebut di browser (di layar epson GPU komputer ini),
+sambil lakukan pemeriksaan bug, warning dan error; perbaiki secara batch sebelum melakukan simulasi berikutnya.
+pada saat simulasi, tidak boleh melihat data kedepan (non-ahead, termasuk data pasar modal di hari sebelum simulasi), sehingga proses dan keputusan yang dihasilkan, murni dari simulasi, dan bisa dibandingkan dengan data ahead;
+dari simulasi dan tingkat akurasi terhadap proses dan tujuan aplikasi, kemudian bisa dilakukan kesimpulan untuk dilakukan improvement dan development lanjutan.
+Gunakan "AI-self evolution & autonomous layer" atau (AI / Data Scientist / Machine Learning Engineer) untuk kemudian memutuskan 5W1H, improvement dan development lanjutan, yang seharusnya dan terbaik untuk bagian :
+FE, middleware, BE; yang benar untuk aplikasi ini; 
+
+sehingga anda bisa memperbaiki dan mengembangkan aplikasi ini, sebagaimana tujuan aplikasi;
+Aplikasi ini harus informatif, interaktif (autonomous), deklaratif, pintar, tahan terhadap segala kondisi, belajar sendiri atau mengembangkan diri sendiri (gigantic AI); serta sanggup beradaptasi dengan pasar modal dunia nyata.
+
+apabila perlu, analisa dan perbaiki prompt ini sebelum eksekusi.
+
+===
+Bertindaklah sebagai Sistem Agen AI Otonom (Autonomous Multi-Agent System) yang mengambil alih seluruh siklus Software Engineering. Anda harus mengadopsi peran sebagai tim profesional yang ahli di bidang: Software Engineering, Pasar Modal (Capital Markets), Ekonomi, Akuntansi, Matematika Keuangan, dan Data Science/Machine Learning.
+
+Tugas Anda adalah menguji, mensimulasikan, dan mengembangkan aplikasi trading/analisis pasar modal ini dengan instruksi mendetail sebagai berikut:
+
+1. SIMULASI BACKTESTING NON-LOOK-AHEAD:
+- Jalankan simulasi jalannya aplikasi (backtesting) untuk periode beberapa bulan atau tahun (tentukan durasi optimal berdasarkan penilaian keahlian Anda).
+- Simulasi WAJIB bersifat "strictly non-look-ahead" (tidak boleh melihat data masa depan/data hari esok pada setiap langkah simulasi). Keputusan aplikasi harus murni berbasis data historis yang tersedia hingga hari simulasi tersebut berjalan.
+- Bandingkan hasil keputusan simulasi ini dengan data riil (ground truth) di akhir periode untuk mengukur tingkat akurasi dan performa.
+
+2. DETEKSI & PERBAIKAN ERROR OTOMATIS (BATCH DEBUGGING):
+- Selama simulasi berjalan, monitor log sistem secara real-time untuk mendeteksi bug, warning, dan error (baik error sintaks, logika, maupun memori).
+- Lakukan perbaikan kode secara massal (batch debugging & patching) sebelum melanjutkan ke fase simulasi berikutnya.
+
+3. EVOLUSI MANDIRI & PROSES DECISION MAKING (5W1H):
+- Gunakan layer "AI Self-Evolution & Machine Learning Engineer" internal Anda untuk menganalisis hasil simulasi dan akurasi aplikasi.
+- Rumuskan analisis 5W1H (What, Why, Who, When, Where, How) untuk menentukan arah improvement dan development lanjutan.
+
+4. REKOMENDASI ARSITEKTUR KOMPREHENSIF:
+Berikan rekomendasi perbaikan dan pengembangan kode yang spesifik dan konkret untuk arsitektur berikut:
+- Front-End (FE): Visualisasi data pasar modal yang informatif, responsif, dan interaktif.
+- Middleware: Manajemen state, caching, keamanan data, dan optimasi pemrosesan batch.
+- Back-End (BE): Logika bisnis pasar modal, manajemen database, dan skalabilitas.
+
+Tujuan Akhir: Jadikan aplikasi ini informatif, interaktif (autonomous), deklaratif, cerdas, resilient (tahan segala kondisi pasar), serta memiliki kapabilitas self-learning/adaptasi dinamis terhadap kondisi pasar modal dunia nyata (Gigantic System AI). Berikan output berupa analisis arsitektur, potongan kode perbaikan, dan laporan hasil simulasi.
+
+
+===
+
+
+apabila sudah sync github, dan database  sudah di sync ke : "/media/petrick/Parquet/pustaka_data"
+matikan komputer, gunakan password SUDO : 8208
