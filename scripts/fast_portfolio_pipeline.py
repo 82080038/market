@@ -1,0 +1,453 @@
+#!/usr/bin/env python3
+"""Fast portfolio pipeline using PyPortfolioOpt HRP + walk-forward validation.
+
+Menggantikan pipeline lama (14 jam, 20 ticker) dengan:
+- HRP (Hierarchical Risk Parity) untuk weighting robust
+- Walk-forward out-of-sample validation
+- Pre-filter: drop zero-variance & low-data tickers
+- Proses 100+ ticker dalam <30 menit
+
+Usage:
+    python scripts/fast_portfolio_pipeline.py [--tickers T1,T2,...] [--limit N]
+"""
+
+import argparse
+import json
+import logging
+import sqlite3
+import sys
+import time
+from datetime import datetime
+from pathlib import Path
+
+import numpy as np
+import pandas as pd
+from pypfopt import expected_returns, risk_models
+from pypfopt.hierarchical_portfolio import HRPOpt
+from pypfopt.efficient_frontier import EfficientFrontier
+
+logging.basicConfig(
+    level=logging.INFO,
+    format="%(asctime)s [%(levelname)s] %(message)s",
+)
+logger = logging.getLogger(__name__)
+
+PROJECT_DIR = Path(__file__).resolve().parent.parent
+DB_PATH = PROJECT_DIR / "data" / "market_research.db"
+OUTPUT_CONFIG = PROJECT_DIR / "best_ticker_quant_config.json"
+OUTPUT_VERDICT = PROJECT_DIR / "final_portfolio_verdict.json"
+
+OOS_START = "2024-01-01"
+OOS_END = "2026-08-31"
+TRAIN_LOOKBACK_YEARS = 3
+MIN_BARS = 500
+MAX_WEIGHT = 0.15
+KEEP_SCORE_TARGET = 3.5
+
+
+def load_ohlcv_from_db(conn: sqlite3.Connection, ticker: str) -> pd.DataFrame:
+    """Load daily OHLCV for a ticker, sorted by date."""
+    df = pd.read_sql_query(
+        "SELECT ticker, timestamp as date, open, high, low, close, volume, adjusted_close "
+        "FROM ohlcv WHERE ticker = ? AND timeframe = '1d' ORDER BY timestamp",
+        conn, params=(ticker,),
+    )
+    if df.empty:
+        return df
+    df["date"] = pd.to_datetime(df["date"])
+    df = df.set_index("date")
+    return df
+
+
+def get_all_tickers(conn: sqlite3.Connection, limit: int = 0) -> list[str]:
+    """Get tickers with sufficient data (>MIN_BARS bars, active in 2026).
+    Only .JK tickers (exclude indices like ^GSPC, ^JKSE, FX pairs, etc.)."""
+    df = pd.read_sql_query(
+        "SELECT ticker, COUNT(*) as n_bars, MAX(timestamp) as last_date "
+        "FROM ohlcv WHERE timeframe = '1d' "
+        "AND ticker LIKE '%.JK' "
+        "GROUP BY ticker HAVING n_bars > ? AND last_date >= '2026-01-01' "
+        "ORDER BY n_bars DESC",
+        conn, params=(MIN_BARS,),
+    )
+    tickers = df["ticker"].tolist()
+    if limit > 0:
+        tickers = tickers[:limit]
+    return tickers
+
+
+def compute_sharpe(returns: pd.Series) -> float:
+    """Annualized Sharpe ratio."""
+    if returns.empty or returns.std() == 0:
+        return 0.0
+    return float(np.sqrt(252) * returns.mean() / returns.std())
+
+
+def compute_max_drawdown(returns: pd.Series) -> float:
+    """Max drawdown as negative fraction."""
+    cum = (1 + returns).cumprod()
+    peak = cum.expanding().max()
+    dd = (cum - peak) / peak
+    return float(dd.min())
+
+
+def compute_alpha(port_returns: pd.Series, bench_returns: pd.Series) -> float:
+    """Simple alpha = mean(port) - beta * mean(bench), annualized."""
+    if port_returns.empty or bench_returns.empty:
+        return 0.0
+    aligned = pd.concat([port_returns, bench_returns], axis=1, join="inner").dropna()
+    if len(aligned) < 20:
+        return 0.0
+    pr, br = aligned.iloc[:, 0], aligned.iloc[:, 1]
+    if br.var() == 0:
+        return 0.0
+    beta = float(pr.cov(br) / br.var())
+    alpha_daily = float(pr.mean() - beta * br.mean())
+    return alpha_daily * 252
+
+
+def donchian_signals(close: pd.Series, period: int = 20) -> pd.Series:
+    """Donchian Channel breakout: +1 when close > upper, -1 when close < lower."""
+    upper = close.rolling(period).max().shift(1)
+    lower = close.rolling(period).min().shift(1)
+    signal = pd.Series(0, index=close.index)
+    signal[close > upper] = 1
+    signal[close < lower] = -1
+    return signal
+
+
+def strategy_returns(close: pd.Series, signal: pd.Series) -> pd.Series:
+    """Daily returns from position signals (shifted to avoid look-ahead)."""
+    pos = signal.shift(1).fillna(0)
+    ret = close.astype(float).pct_change()
+    return pos * ret
+
+
+def walk_forward_backtest(
+    prices: pd.DataFrame,
+    train_years: int = TRAIN_LOOKBACK_YEARS,
+    test_months: int = 6,
+) -> dict:
+    """Walk-forward backtest with HRP weighting.
+
+    Returns dict with OOS returns, Sharpe, alpha, max DD, weights.
+    """
+    # prices here is actually a DataFrame of strategy returns
+    returns_df = prices.replace([np.inf, -np.inf], np.nan).fillna(0.0)
+
+    train_days = train_years * 252
+    test_days = test_months * 21
+
+    oos_returns_list = []
+    weights_history = []
+    param_history = []
+
+    start = train_days
+    while start + test_days <= len(returns_df):
+        train_slice = returns_df.iloc[start - train_days : start]
+        test_slice = returns_df.iloc[start : start + test_days]
+
+        # Drop columns with zero variance in training
+        train_var = train_slice.var()
+        valid_cols = train_var[train_var > 1e-10].index.tolist()
+        if len(valid_cols) < 2:
+            start += test_days
+            continue
+
+        train_valid = train_slice[valid_cols]
+        test_valid = test_slice[valid_cols]
+
+        # HRP weighting on training data
+        try:
+            hrp = HRPOpt(returns_df=train_valid)
+            hrp.optimize()
+            weights = hrp.clean_weights()
+        except Exception:
+            # Fallback: inverse volatility
+            vols = train_valid.std()
+            inv_vol = 1.0 / vols.replace(0, 1e-10)
+            weights = (inv_vol / inv_vol.sum()).to_dict()
+
+        # Cap max weight
+        weights = {k: min(v, MAX_WEIGHT) for k, v in weights.items()}
+        total_w = sum(weights.values())
+        if total_w > 0:
+            weights = {k: v / total_w for k, v in weights.items()}
+
+        # Apply weights to test period
+        w_series = pd.Series(weights, index=test_valid.columns).fillna(0.0)
+        port_ret = (test_valid * w_series).sum(axis=1)
+        oos_returns_list.append(port_ret)
+        weights_history.append({
+            "date": str(test_slice.index[0].date()),
+            "weights": {k: round(v, 4) for k, v in weights.items()},
+        })
+        param_history.append(str(test_slice.index[0].date()))
+
+        start += test_days
+
+    if not oos_returns_list:
+        return {"sharpe": 0.0, "alpha": 0.0, "max_dd": 0.0, "oos_returns": pd.Series(), "avg_weights": {}, "n_windows": 0, "weights_history": []}
+
+    oos_returns = pd.concat(oos_returns_list)
+
+    # Benchmark: equal-weight
+    bench = returns_df.mean(axis=1)
+    bench_oos = bench.loc[oos_returns.index]
+
+    sharpe = compute_sharpe(oos_returns)
+    alpha = compute_alpha(oos_returns, bench_oos)
+    max_dd = compute_max_drawdown(oos_returns)
+
+    # Average weights across windows
+    all_weights = {}
+    for wh in weights_history:
+        for k, v in wh["weights"].items():
+            all_weights.setdefault(k, []).append(v)
+    avg_weights = {k: float(np.mean(v)) for k, v in all_weights.items()}
+
+    return {
+        "sharpe": sharpe,
+        "alpha": alpha,
+        "max_dd": max_dd,
+        "oos_returns": oos_returns,
+        "avg_weights": avg_weights,
+        "n_windows": len(weights_history),
+        "weights_history": weights_history,
+    }
+
+
+def compute_score_card(sharpe: float, alpha: float, max_dd: float, n_tickers: int) -> dict:
+    """Compute score card (0-5 scale, KEEP threshold 3.5)."""
+    # Sharpe score (0-1.5): Sharpe > 1 = 1.5, > 0.5 = 1.0, > 0 = 0.5, else 0
+    sharpe_score = 1.5 if sharpe > 1.0 else 1.0 if sharpe > 0.5 else 0.5 if sharpe > 0 else 0.0
+    # Alpha score (0-1.5): alpha > 0.05 = 1.5, > 0.02 = 1.0, > 0 = 0.5, else 0
+    alpha_score = 1.5 if alpha > 0.05 else 1.0 if alpha > 0.02 else 0.5 if alpha > 0 else 0.0
+    # MaxDD score (0-1.0): > -0.2 = 1.0, > -0.4 = 0.7, > -0.6 = 0.4, else 0.2
+    dd_score = 1.0 if max_dd > -0.2 else 0.7 if max_dd > -0.4 else 0.4 if max_dd > -0.6 else 0.2
+    # Diversification score (0-1.0): > 50 tickers = 1.0, > 20 = 0.7, > 10 = 0.5, else 0.3
+    div_score = 1.0 if n_tickers > 50 else 0.7 if n_tickers > 20 else 0.5 if n_tickers > 10 else 0.3
+
+    total = sharpe_score + alpha_score + dd_score + div_score
+    verdict = "KEEP" if total >= KEEP_SCORE_TARGET and alpha > 0 else "MARGINAL"
+
+    return {
+        "sharpe_score": sharpe_score,
+        "alpha_score": alpha_score,
+        "max_dd_score": dd_score,
+        "diversification_score": div_score,
+        "weighted_total": round(total, 2),
+        "verdict": verdict,
+    }
+
+
+def main():
+    parser = argparse.ArgumentParser(description="Fast portfolio pipeline (HRP + walk-forward)")
+    parser.add_argument("--tickers", type=str, default="", help="Comma-separated tickers (default: all)")
+    parser.add_argument("--limit", type=int, default=100, help="Max tickers to process (default: 100)")
+    parser.add_argument("--db", type=str, default=str(DB_PATH), help="Database path")
+    parser.add_argument("--oos-start", type=str, default=OOS_START)
+    parser.add_argument("--oos-end", type=str, default=OOS_END)
+    args = parser.parse_args()
+
+    db = Path(args.db)
+    if not db.exists():
+        logger.error("Database not found: %s", db)
+        sys.exit(1)
+
+    conn = sqlite3.connect(str(db))
+
+    # Get tickers
+    if args.tickers:
+        tickers = [t.strip() for t in args.tickers.split(",")]
+    else:
+        tickers = get_all_tickers(conn, limit=args.limit)
+
+    logger.info("═══════════════════════════════════════════════════════════════")
+    logger.info("  FAST PORTFOLIO PIPELINE — HRP + Walk-Forward")
+    logger.info("  DB: %s", db)
+    logger.info("  Tickers: %d", len(tickers))
+    logger.info("  OOS: %s → %s", args.oos_start, args.oos_end)
+    logger.info("═══════════════════════════════════════════════════════════════")
+
+    # Load close prices for all tickers
+    t0 = time.time()
+    logger.info("Loading OHLCV data for %d tickers...", len(tickers))
+
+    prices_dict = {}
+    skipped = []
+    for i, ticker in enumerate(tickers):
+        ohlcv = load_ohlcv_from_db(conn, ticker)
+        if len(ohlcv) < MIN_BARS:
+            skipped.append(ticker)
+            continue
+        # Use adjusted_close if available, else close
+        price_col = "adjusted_close" if "adjusted_close" in ohlcv.columns and not ohlcv["adjusted_close"].isna().all() else "close"
+        prices_dict[ticker] = ohlcv[price_col].rename(ticker)
+        if (i + 1) % 50 == 0:
+            logger.info("  Loaded %d/%d tickers (%.1fs)", i + 1, len(tickers), time.time() - t0)
+
+    if skipped:
+        logger.info("  Skipped %d tickers (insufficient data)", len(skipped))
+
+    if len(prices_dict) < 5:
+        logger.error("Not enough tickers with sufficient data (%d). Need at least 5.", len(prices_dict))
+        sys.exit(1)
+
+    # Build price matrix (aligned dates)
+    prices = pd.DataFrame(prices_dict)
+    prices = prices.dropna(how="all")
+    # Forward fill small gaps
+    prices = prices.ffill().dropna(how="all")
+
+    # Filter to OOS period + training lookback
+    train_start = (pd.Timestamp(args.oos_start) - pd.DateOffset(years=TRAIN_LOOKBACK_YEARS)).strftime("%Y-%m-%d")
+    prices = prices.loc[train_start:args.oos_end]
+
+    logger.info("Price matrix: %d days × %d tickers (%.1fs)", len(prices), prices.shape[1], time.time() - t0)
+
+    # Per-ticker strategy returns (Donchian baseline)
+    logger.info("Computing per-ticker Donchian strategy returns...")
+    strategy_returns_dict = {}
+    per_ticker_metrics = []
+
+    for ticker in prices.columns:
+        close = prices[ticker].dropna()
+        if len(close) < MIN_BARS:
+            continue
+        signal = donchian_signals(close, period=20)
+        rets = strategy_returns(close, signal)
+        strategy_returns_dict[ticker] = rets
+
+        # OOS metrics
+        oos_rets = rets.loc[args.oos_start:args.oos_end]
+        if len(oos_rets) > 0:
+            sh = compute_sharpe(oos_rets)
+            dd = compute_max_drawdown(oos_rets)
+            per_ticker_metrics.append({
+                "ticker": ticker,
+                "sharpe": round(sh, 4),
+                "max_dd": round(dd, 4),
+                "n_bars": len(oos_rets),
+            })
+
+    logger.info("  %d tickers with strategy returns", len(strategy_returns_dict))
+
+    # Walk-forward portfolio backtest with HRP
+    logger.info("")
+    logger.info("Running walk-forward HRP portfolio optimization...")
+    t1 = time.time()
+
+    # Use strategy returns for portfolio (not raw returns)
+    strat_df = pd.DataFrame(strategy_returns_dict)
+    strat_df = strat_df.dropna(how="all").fillna(0.0)
+    strat_df = strat_df.loc[train_start:args.oos_end]
+
+    result = walk_forward_backtest(strat_df)
+
+    logger.info("  Walk-forward complete: %d windows (%.1fs)", result["n_windows"], time.time() - t1)
+    logger.info("  OOS Sharpe:  %+.4f", result["sharpe"])
+    logger.info("  OOS Alpha:   %+.4f", result["alpha"])
+    logger.info("  OOS MaxDD:   %.2f%%", result["max_dd"] * 100)
+
+    # Score card
+    n_valid = len(strategy_returns_dict)
+    score_card = compute_score_card(result["sharpe"], result["alpha"], result["max_dd"], n_valid)
+
+    logger.info("")
+    logger.info("  Score Card:")
+    logger.info("    Sharpe:          %.1f / 1.5", score_card["sharpe_score"])
+    logger.info("    Alpha:           %.1f / 1.5", score_card["alpha_score"])
+    logger.info("    MaxDD:           %.1f / 1.0", score_card["max_dd_score"])
+    logger.info("    Diversification: %.1f / 1.0", score_card["diversification_score"])
+    logger.info("    Total:           %.2f / 5.0", score_card["weighted_total"])
+    logger.info("    Verdict:         %s", score_card["verdict"])
+
+    # Top weights
+    avg_w = result["avg_weights"]
+    top_weights = sorted(avg_w.items(), key=lambda x: -x[1])[:10]
+    logger.info("")
+    logger.info("  Top 10 HRP weights (OOS average):")
+    for ticker, w in top_weights:
+        logger.info("    %-12s %6.2f%%", ticker, w * 100)
+
+    # Per-ticker summary (top/bottom 5 by Sharpe)
+    per_ticker_sorted = sorted(per_ticker_metrics, key=lambda x: -x["sharpe"])
+    logger.info("")
+    logger.info("  Top 5 tickers by OOS Sharpe:")
+    for t in per_ticker_sorted[:5]:
+        logger.info("    %-12s Sharpe=%+.3f  MaxDD=%.1f%%", t["ticker"], t["sharpe"], t["max_dd"] * 100)
+    logger.info("  Bottom 5 tickers by OOS Sharpe:")
+    for t in per_ticker_sorted[-5:]:
+        logger.info("    %-12s Sharpe=%+.3f  MaxDD=%.1f%%", t["ticker"], t["sharpe"], t["max_dd"] * 100)
+
+    # Save config JSON
+    config = {
+        "pipeline": "fast_hrp_walkforward",
+        "generated_at": datetime.now().isoformat(),
+        "n_tickers": n_valid,
+        "n_tickers_total_db": len(tickers),
+        "n_tickers_skipped": len(skipped),
+        "oos_start": args.oos_start,
+        "oos_end": args.oos_end,
+        "train_lookback_years": TRAIN_LOOKBACK_YEARS,
+        "max_weight": MAX_WEIGHT,
+        "portfolio_validation": {
+            "sharpe": round(result["sharpe"], 4),
+            "alpha": round(result["alpha"], 6),
+            "max_drawdown": round(result["max_dd"], 4),
+            "n_windows": result["n_windows"],
+            "weights": {k: round(v, 4) for k, v in avg_w.items()},
+            "score": score_card["weighted_total"],
+            "verdict": score_card["verdict"],
+        },
+        "score_card": score_card,
+        "tickers": {
+            t["ticker"]: {
+                "oos_sharpe": t["sharpe"],
+                "oos_max_dd": t["max_dd"],
+                "avg_weight": round(avg_w.get(t["ticker"], 0.0), 4),
+            }
+            for t in per_ticker_metrics
+        },
+        "weights_history": result["weights_history"],
+    }
+
+    with open(OUTPUT_CONFIG, "w") as f:
+        json.dump(config, f, indent=2)
+    logger.info("")
+    logger.info("  Config saved: %s (%d bytes)", OUTPUT_CONFIG, OUTPUT_CONFIG.stat().st_size)
+
+    # Save verdict JSON
+    verdict = {
+        "generated_at": datetime.now().isoformat(),
+        "pipeline": "fast_hrp_walkforward",
+        "score_card": score_card,
+        "promoted_to_keep": score_card["verdict"] == "KEEP",
+        "portfolio_metrics": {
+            "sharpe": round(result["sharpe"], 4),
+            "alpha": round(result["alpha"], 6),
+            "max_drawdown": round(result["max_dd"], 4),
+        },
+        "portfolio_weights": {k: round(v, 4) for k, v in avg_w.items()},
+        "n_tickers": n_valid,
+        "n_windows": result["n_windows"],
+        "per_ticker": per_ticker_sorted,
+    }
+
+    with open(OUTPUT_VERDICT, "w") as f:
+        json.dump(verdict, f, indent=2)
+    logger.info("  Verdict saved: %s (%d bytes)", OUTPUT_VERDICT, OUTPUT_VERDICT.stat().st_size)
+
+    logger.info("")
+    logger.info("═══════════════════════════════════════════════════════════════")
+    logger.info("  PIPELINE COMPLETE — %.1fs total", time.time() - t0)
+    logger.info("  Score: %.2f/5.0 — Verdict: %s", score_card["weighted_total"], score_card["verdict"])
+    logger.info("═══════════════════════════════════════════════════════════════")
+
+    conn.close()
+    sys.exit(0 if score_card["verdict"] == "KEEP" else 1)
+
+
+if __name__ == "__main__":
+    main()
