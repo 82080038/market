@@ -62,12 +62,17 @@ def load_ohlcv_from_db(conn: sqlite3.Connection, ticker: str) -> pd.DataFrame:
 
 def get_all_tickers(conn: sqlite3.Connection, limit: int = 0) -> list[str]:
     """Get tickers with sufficient data (>MIN_BARS bars, active in 2026).
-    Only .JK tickers (exclude indices like ^GSPC, ^JKSE, FX pairs, etc.)."""
+    Only .JK tickers (exclude indices like ^GSPC, ^JKSE, FX pairs, etc.).
+    Excludes delisted/inactive tickers via instrument_master."""
     df = pd.read_sql_query(
-        "SELECT ticker, COUNT(*) as n_bars, MAX(timestamp) as last_date "
-        "FROM ohlcv WHERE timeframe = '1d' "
-        "AND ticker LIKE '%.JK' "
-        "GROUP BY ticker HAVING n_bars > ? AND last_date >= '2026-01-01' "
+        "SELECT o.ticker, COUNT(*) as n_bars, MAX(o.timestamp) as last_date "
+        "FROM ohlcv o "
+        "JOIN instrument_master im ON o.ticker = im.ticker "
+        "WHERE o.timeframe = '1d' "
+        "AND o.ticker LIKE '%.JK' "
+        "AND im.is_active = 1 "
+        "AND im.delisting_date IS NULL "
+        "GROUP BY o.ticker HAVING n_bars > ? AND last_date >= '2026-01-01' "
         "ORDER BY n_bars DESC",
         conn, params=(MIN_BARS,),
     )
