@@ -147,7 +147,7 @@ fi
 cd "${PROJECT_DIR}"
 
 if ! DB_PATH="${REAL_DB}" "${PYTHON}" scripts/portfolio_data_remediation.py \
-    ${REMEDIATION_ARGS} 2>&1 | tee -a "${LOG_FILE}"; then
+    ${REMEDIATION_ARGS} 2>&1 | grep -v "^1 warning generated\.$" | tee -a "${LOG_FILE}"; then
     log_error "Step 1 GAGAL — portfolio_data_remediation.py exit non-zero"
     exit 1
 fi
@@ -250,7 +250,7 @@ if ! DB_PATH="${REAL_DB}" "${PYTHON}" scripts/portfolio_final_execution.py \
     --db "${REAL_DB}" \
     --oos-start "${OOS_START}" \
     --oos-end "${OOS_END}" \
-    2>&1 | tee -a "${LOG_FILE}"; then
+    2>&1 | grep -v "^1 warning generated\.$" | tee -a "${LOG_FILE}"; then
     log_error "Step 3 selesai dengan exit code non-zero (mungkin belum KEEP)"
     # Step 3 exit 1 jika belum KEEP — tidak fatal, lanjut ke summary
 fi
