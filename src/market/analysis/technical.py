@@ -112,6 +112,23 @@ class TechnicalAnalysisEngine:
         indicators["vol_ratio"] = vol_ratio
         vol_ratio_score = min(25.0, vol_ratio * 12.5)
 
+        # EMA (50) — used by ema_envelope strategy
+        ema50 = close.ewm(span=50, adjust=False).mean().iloc[-1]
+        indicators["ema50"] = float(ema50)
+
+        # EMA Envelope (50, 3%) — used by ema_envelope strategy
+        ema_series = close.ewm(span=50, adjust=False).mean()
+        indicators["ema_env_upper"] = float(ema_series.iloc[-1] * 1.03)
+        indicators["ema_env_lower"] = float(ema_series.iloc[-1] * 0.97)
+
+        # Donchian Channel (20) — used by donchian strategy
+        dc_period = 20
+        dc_upper = high.rolling(dc_period).max().iloc[-1]
+        dc_lower = low.rolling(dc_period).min().iloc[-1]
+        indicators["donchian_upper"] = float(dc_upper)
+        indicators["donchian_lower"] = float(dc_lower)
+        indicators["donchian_mid"] = float((dc_upper + dc_lower) / 2)
+
         # Volume Profile (POC, VAH, VAL)
         poc, vah, val = self._compute_volume_profile(
             high, low, close, volume,

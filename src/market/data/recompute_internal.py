@@ -212,6 +212,12 @@ def recompute_technical_indicators(
             "bb_upper": "BB_UPPER",
             "bb_lower": "BB_LOWER",
             "vol_ratio": "VOLUME_SMA20",
+            "ema50": "EMA50",
+            "ema_env_upper": "EMA_ENV_UPPER",
+            "ema_env_lower": "EMA_ENV_LOWER",
+            "donchian_upper": "DONCHIAN_UPPER",
+            "donchian_lower": "DONCHIAN_LOWER",
+            "donchian_mid": "DONCHIAN_MID",
         }
 
         for key, label in indicator_map.items():
@@ -611,6 +617,9 @@ def recompute_fear_greed(
     # Load IHSG data — bounded load for incremental
     if incremental and wm is not None:
         ihsg_df = _load_ohlcv_df_since(session, IHSG_TICKER, wm, buffer_days=50)
+        if len(ihsg_df) < 50:
+            logger.info("fear_greed: bounded load too small (%d rows), falling back to full load", len(ihsg_df))
+            ihsg_df = _load_ohlcv_df(session, IHSG_TICKER)
     else:
         ihsg_df = _load_ohlcv_df(session, IHSG_TICKER)
     if ihsg_df.empty or len(ihsg_df) < 50:
@@ -673,13 +682,10 @@ def recompute_fear_greed(
         else:
             label = "Extreme Fear"
 
-        session.add(
-            FearGreed(
-                tanggal=date_val,
-                nilai=fgi,
-                label=label,
-            )
-        )
+        session.execute(text(
+            "INSERT OR REPLACE INTO fear_greed (tanggal, nilai, label) "
+            "VALUES (:d, :n, :l)"
+        ), {"d": date_val, "n": fgi, "l": label})
         count += 1
 
     # Update watermark
@@ -1058,6 +1064,9 @@ def recompute_market_regimes(
     # Load IHSG data — bounded load for incremental
     if incremental and wm is not None:
         ihsg_df = _load_ohlcv_df_since(session, IHSG_TICKER, wm, buffer_days=250)
+        if len(ihsg_df) < 250:
+            logger.info("market_regimes: bounded load too small (%d rows), falling back to full load", len(ihsg_df))
+            ihsg_df = _load_ohlcv_df(session, IHSG_TICKER)
     else:
         ihsg_df = _load_ohlcv_df(session, IHSG_TICKER)
     if ihsg_df.empty or len(ihsg_df) < 60:
@@ -1159,14 +1168,19 @@ def recompute_market_regimes(
         else:
             regime = "sideways"
 
-        session.add(MarketRegime(
-            date=date_val,
-            regime=regime,
-            vix_level=vix_level,
-            fear_greed_label=fg_label,
-            foreign_flow_trend=ff_trend,
-            source="computed",
-        ))
+        session.execute(text(
+            "INSERT OR REPLACE INTO market_regimes "
+            "(date, regime, vix_level, fear_greed_label, foreign_flow_trend, source, created_at) "
+            "VALUES (:d, :r, :v, :f, :ff, :s, :c)"
+        ), {
+            "d": date_val,
+            "r": regime,
+            "v": vix_level,
+            "f": fg_label,
+            "ff": ff_trend,
+            "s": "computed",
+            "c": datetime.now().isoformat(),
+        })
         count += 1
 
     # Update watermark
