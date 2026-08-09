@@ -444,7 +444,7 @@ def _generate_vol_targeted_with_baseline(
         model.fit(
             X_tr, y_tr,
             sample_weight=weights,
-            eval_set=[(X_val, y_val)],
+            eval_X=X_val, eval_y=y_val,
             callbacks=[lgb.early_stopping(15, verbose=False)],
         )
 
@@ -731,7 +731,7 @@ def _generate_adaptive_meta_labeled_signals(
         model.fit(
             X_tr, y_tr,
             sample_weight=weights,
-            eval_set=[(X_val, y_val)],
+            eval_X=X_val, eval_y=y_val,
             callbacks=[lgb.early_stopping(15, verbose=False)],
         )
 

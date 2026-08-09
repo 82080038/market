@@ -425,7 +425,7 @@ def generate_volatility_targeted_signals(
         model.fit(
             X_tr, y_tr,
             sample_weight=weights,
-            eval_set=[(X_val, y_val)],
+            eval_X=X_val, eval_y=y_val,
             callbacks=[lgb.early_stopping(15, verbose=False)],
         )
 
@@ -621,7 +621,7 @@ def generate_meta_labeled_signals(
         model.fit(
             X_tr, y_tr,
             sample_weight=weights,
-            eval_set=[(X_val, y_val)],
+            eval_X=X_val, eval_y=y_val,
             callbacks=[lgb.early_stopping(15, verbose=False)],
         )
 
@@ -905,7 +905,7 @@ def generate_pruned_multifactor_signals(
         model.fit(
             X_tr, y_tr,
             sample_weight=weights,
-            eval_set=[(X_val, y_val)],
+            eval_X=X_val, eval_y=y_val,
             callbacks=[lgb.early_stopping(20, verbose=False)],
         )
 

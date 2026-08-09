@@ -230,26 +230,36 @@ class DailySignalReport:
 def load_verdict_config(verdict_path: str) -> dict[str, Any]:
     """Muat final_portfolio_verdict.json dan validasi gate KEEP.
 
+    Supports both new format (fast_portfolio_pipeline) and old format
+    (alpha_rescue_pipeline) for backward compatibility.
+
+    New format:
+        - score_card.weighted_total (not score)
+        - promoted_to_keep at top-level (not inside score_card)
+        - per_ticker list (not tickers)
+
     Returns:
         Dict dengan keys:
           - score_card: {score, verdict, promoted_to_keep}
           - portfolio_weights: {ticker: weight}
-          - tickers: list[dict] per-ticker results
+          - per_ticker / tickers: list[dict] per-ticker results
           - portfolio_metrics: {sharpe, alpha, ...}
     """
     path = Path(verdict_path)
     if not path.exists():
         raise FileNotFoundError(
             f"Verdict file tidak ditemukan: {path}. "
-            "Jalankan portfolio_final_execution.py terlebih dahulu."
+            "Jalankan fast_portfolio_pipeline.py terlebih dahulu."
         )
     with path.open("r") as f:
         data = json.load(f)
 
     score_card = data.get("score_card", {})
-    score = score_card.get("score", 0.0)
+    # New format: weighted_total; Old format: score
+    score = score_card.get("weighted_total", score_card.get("score", 0.0))
     verdict = score_card.get("verdict", "UNKNOWN")
-    promoted = score_card.get("promoted_to_keep", False)
+    # New format: top-level; Old format: inside score_card
+    promoted = data.get("promoted_to_keep", score_card.get("promoted_to_keep", False))
 
     logger.info("Verdict loaded: %s", path.name)
     logger.info("  Score: %.2f | Verdict: %s | KEEP: %s",
@@ -271,22 +281,29 @@ def extract_ticker_params(
 ) -> dict[str, dict[str, Any]]:
     """Ekstrak parameter per-ticker dari verdict JSON.
 
-    Verdict JSON berisi ``tickers`` list dengan field: ticker, adapt_kappa,
-    baseline_mode, best_params, portfolio_weight, gk_volatility, dll.
+    Supports both formats:
+      - New (fast_portfolio_pipeline): per_ticker list with ticker/strategy/sharpe,
+        portfolio_weights dict at top level, config tickers as dict keyed by ticker.
+      - Old (alpha_rescue_pipeline): tickers list with adapt_kappa/best_params/etc.
 
-    Jika best_params kosong di verdict (ticker di-skip saat eksekusi),
-    fallback ke best_ticker_quant_config.json.
+    Fallback ke best_ticker_quant_config.json untuk best_params, baseline_mode, adapt_kappa.
 
     Returns:
         {ticker: {adapt_kappa, baseline_mode, best_params, baseline_params,
                   portfolio_weight, gk_volatility, sector}}
     """
-    # Build lookup dari verdict tickers list
+    # Build lookup dari verdict — support both "tickers" (old) and "per_ticker" (new)
     verdict_tickers: dict[str, dict[str, Any]] = {}
-    for t in verdict_data.get("tickers", []):
-        ticker = t.get("ticker", "")
-        if ticker:
-            verdict_tickers[ticker] = t
+    for key in ("tickers", "per_ticker"):
+        raw = verdict_data.get(key, [])
+        if isinstance(raw, list):
+            for t in raw:
+                ticker = t.get("ticker", "")
+                if ticker:
+                    verdict_tickers[ticker] = t
+        elif isinstance(raw, dict):
+            # Already a dict keyed by ticker
+            verdict_tickers.update(raw)
 
     # Portfolio weights dari top-level
     portfolio_weights = verdict_data.get("portfolio_weights", {})
@@ -298,7 +315,14 @@ def extract_ticker_params(
         if fb_path.exists():
             with fb_path.open("r") as f:
                 fb_data = json.load(f)
-            fallback_tickers = fb_data.get("tickers", {})
+            fb_raw = fb_data.get("tickers", {})
+            if isinstance(fb_raw, dict):
+                fallback_tickers = fb_raw
+            elif isinstance(fb_raw, list):
+                for t in fb_raw:
+                    ticker = t.get("ticker", "")
+                    if ticker:
+                        fallback_tickers[ticker] = t
             logger.info("  Fallback config loaded: %s (%d tickers)",
                         fb_path.name, len(fallback_tickers))
 
@@ -313,13 +337,14 @@ def extract_ticker_params(
             best_params = fb.get("best_params", {})
             baseline_params = fb.get("baseline_params", {})
             adapt_kappa = fb.get("adapt_kappa", vt.get("adapt_kappa", 0.15))
-            baseline_mode = fb.get("baseline_mode", vt.get("baseline_mode", "donchian"))
+            baseline_mode = fb.get("baseline_mode", vt.get("baseline_mode", vt.get("strategy", "donchian")))
             gk_vol = fb.get("gk_volatility", vt.get("gk_volatility", 0.0))
             sector = fb.get("sector", vt.get("sector", "Unknown"))
         else:
             baseline_params = vt.get("baseline_params", {})
             adapt_kappa = vt.get("adapt_kappa", 0.15)
-            baseline_mode = vt.get("baseline_mode", "donchian")
+            # New format uses "strategy" field; old uses "baseline_mode"
+            baseline_mode = vt.get("baseline_mode", vt.get("strategy", "donchian"))
             gk_vol = vt.get("gk_volatility", 0.0)
             sector = vt.get("sector", "Unknown")
 
@@ -338,7 +363,7 @@ def extract_ticker_params(
         if ticker not in result:
             result[ticker] = {
                 "adapt_kappa": fb.get("adapt_kappa", 0.15),
-                "baseline_mode": fb.get("baseline_mode", "donchian"),
+                "baseline_mode": fb.get("baseline_mode", fb.get("strategy", "donchian")),
                 "best_params": fb.get("best_params", {}),
                 "baseline_params": fb.get("baseline_params", {}),
                 "portfolio_weight": portfolio_weights.get(ticker, 0.0),
@@ -724,7 +749,7 @@ def process_ticker_signal(
         config = build_config_from_ticker_params(base_config, ticker_params)
     else:
         config = base_config
-        logger.warning("  %s — best_params kosong, menggunakan default config", ticker)
+        logger.debug("  %s — best_params kosong, menggunakan default config", ticker)
 
     baseline_candidate = build_baseline_candidate(ticker_params)
     adapt_kappa = ticker_params.get("adapt_kappa", 0.15)
@@ -809,9 +834,10 @@ def run_daily_signal(
     logger.info("MODULE 1 — Production Config Loader")
     logger.info("-" * 76)
     verdict_data = load_verdict_config(verdict_path)
-    report.keep_score = verdict_data.get("score_card", {}).get("score", 0.0)
-    report.keep_verdict = verdict_data.get("score_card", {}).get("verdict", "UNKNOWN")
-    report.promoted_to_keep = verdict_data.get("score_card", {}).get("promoted_to_keep", False)
+    sc = verdict_data.get("score_card", {})
+    report.keep_score = sc.get("weighted_total", sc.get("score", 0.0))
+    report.keep_verdict = sc.get("verdict", "UNKNOWN")
+    report.promoted_to_keep = verdict_data.get("promoted_to_keep", sc.get("promoted_to_keep", False))
 
     ticker_params = extract_ticker_params(verdict_data, fallback_config_path)
     logger.info("  Ticker params extracted: %d", len(ticker_params))

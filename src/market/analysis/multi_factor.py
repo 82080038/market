@@ -799,7 +799,7 @@ class MultiFactorModel:
 
         model.fit(
             X_tr, y_tr,
-            eval_set=[(X_val, y_val)],
+            eval_X=X_val, eval_y=y_val,
             callbacks=[lgb.early_stopping(15, verbose=False)],
         )
 
