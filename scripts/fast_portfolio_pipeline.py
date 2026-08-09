@@ -116,11 +116,77 @@ def donchian_signals(close: pd.Series, period: int = 20) -> pd.Series:
     return signal
 
 
+def rsi_mean_reversion_signals(close: pd.Series, rsi_period: int = 14,
+                                 oversold: float = 30, overbought: float = 70) -> pd.Series:
+    """RSI mean-reversion: buy when RSI < oversold, sell when RSI > overbought.
+    Best for range-bound stocks that oscillate in a channel."""
+    delta = close.diff()
+    gain = delta.clip(lower=0).rolling(rsi_period).mean()
+    loss = (-delta.clip(upper=0)).rolling(rsi_period).mean()
+    rs = gain / loss.replace(0, 1e-10)
+    rsi = 100 - (100 / (1 + rs))
+
+    signal = pd.Series(0, index=close.index)
+    signal[rsi < oversold] = 1       # oversold → buy (expect bounce)
+    signal[rsi > overbought] = -1    # overbought → sell (expect revert)
+    return signal
+
+
+def ema_envelope_signals(close: pd.Series, ema_period: int = 50,
+                          envelope_pct: float = 0.03) -> pd.Series:
+    """EMA envelope: buy when close touches lower band, sell when touches upper.
+    Best for gradual trends — captures slow drift without needing dramatic breakouts."""
+    ema = close.ewm(span=ema_period, adjust=False).mean()
+    upper = ema * (1 + envelope_pct)
+    lower = ema * (1 - envelope_pct)
+
+    signal = pd.Series(0, index=close.index)
+    signal[close < lower] = 1        # below lower band → buy (oversold relative to trend)
+    signal[close > upper] = -1       # above upper band → sell
+    return signal
+
+
 def strategy_returns(close: pd.Series, signal: pd.Series) -> pd.Series:
     """Daily returns from position signals (shifted to avoid look-ahead)."""
     pos = signal.shift(1).fillna(0)
     ret = close.astype(float).pct_change()
     return pos * ret
+
+
+def select_best_strategy(close: pd.Series, train_end: str) -> tuple[str, pd.Series]:
+    """Select best strategy for a ticker based on in-sample Sharpe.
+    Returns (strategy_name, strategy_returns_series).
+    Uses only training period (before OOS) for selection — no look-ahead."""
+    train_close = close.loc[:train_end]
+    if len(train_close) < 100:
+        # Not enough data, default to Donchian
+        sig = donchian_signals(close, period=20)
+        return "donchian", strategy_returns(close, sig)
+
+    strategies = {
+        "donchian": donchian_signals(train_close, period=20),
+        "rsi_meanrev": rsi_mean_reversion_signals(train_close),
+        "ema_envelope": ema_envelope_signals(train_close),
+    }
+
+    best_name = "donchian"
+    best_sharpe = -999.0
+    for name, sig in strategies.items():
+        rets = strategy_returns(train_close, sig)
+        sh = compute_sharpe(rets)
+        if sh > best_sharpe:
+            best_sharpe = sh
+            best_name = name
+
+    # Generate signals on full close with best strategy
+    if best_name == "rsi_meanrev":
+        sig = rsi_mean_reversion_signals(close)
+    elif best_name == "ema_envelope":
+        sig = ema_envelope_signals(close)
+    else:
+        sig = donchian_signals(close, period=20)
+
+    return best_name, strategy_returns(close, sig)
 
 
 def walk_forward_backtest(
@@ -306,17 +372,19 @@ def main():
 
     logger.info("Price matrix: %d days × %d tickers (%.1fs)", len(prices), prices.shape[1], time.time() - t0)
 
-    # Per-ticker strategy returns (Donchian baseline)
-    logger.info("Computing per-ticker Donchian strategy returns...")
+    # Per-ticker strategy returns (auto-select best strategy)
+    logger.info("Computing per-ticker strategy returns (multi-strategy selection)...")
     strategy_returns_dict = {}
     per_ticker_metrics = []
+    strategy_usage = {"donchian": 0, "rsi_meanrev": 0, "ema_envelope": 0}
 
     for ticker in prices.columns:
         close = prices[ticker].dropna()
         if len(close) < MIN_BARS:
             continue
-        signal = donchian_signals(close, period=20)
-        rets = strategy_returns(close, signal)
+
+        strat_name, rets = select_best_strategy(close, args.oos_start)
+        strategy_usage[strat_name] += 1
         strategy_returns_dict[ticker] = rets
 
         # OOS metrics
@@ -326,12 +394,15 @@ def main():
             dd = compute_max_drawdown(oos_rets)
             per_ticker_metrics.append({
                 "ticker": ticker,
+                "strategy": strat_name,
                 "sharpe": round(sh, 4),
                 "max_dd": round(dd, 4),
                 "n_bars": len(oos_rets),
             })
 
     logger.info("  %d tickers with strategy returns", len(strategy_returns_dict))
+    logger.info("  Strategy selection: donchian=%d, rsi_meanrev=%d, ema_envelope=%d",
+                strategy_usage["donchian"], strategy_usage["rsi_meanrev"], strategy_usage["ema_envelope"])
 
     # Walk-forward portfolio backtest with HRP
     logger.info("")
@@ -406,6 +477,7 @@ def main():
             t["ticker"]: {
                 "oos_sharpe": t["sharpe"],
                 "oos_max_dd": t["max_dd"],
+                "strategy": t.get("strategy", "donchian"),
                 "avg_weight": round(avg_w.get(t["ticker"], 0.0), 4),
             }
             for t in per_ticker_metrics
