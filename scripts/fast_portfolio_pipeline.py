@@ -162,8 +162,10 @@ def strategy_returns(close: pd.Series, signal: pd.Series) -> pd.Series:
 def select_best_strategy(close: pd.Series, train_end: str) -> tuple[str, pd.Series]:
     """Select best strategy for a ticker based on in-sample Sharpe.
     Returns (strategy_name, strategy_returns_series).
-    Uses only training period (before OOS) for selection — no look-ahead."""
-    train_close = close.loc[:train_end]
+    Uses only training period (strictly before OOS) for selection — no look-ahead."""
+    # Exclusive boundary: train_end is the first OOS day, so training data
+    # must be strictly BEFORE that date to avoid 1-day overlap.
+    train_close = close.loc[:pd.Timestamp(train_end) - pd.Timedelta(days=1)]
     if len(train_close) < 100:
         # Not enough data, default to Donchian
         sig = donchian_signals(close, period=20)
@@ -231,20 +233,25 @@ def walk_forward_backtest(
 
         # HRP weighting on training data
         try:
-            hrp = HRPOpt(returns_df=train_valid)
+            hrp = HRPOpt(returns=train_valid)
             hrp.optimize()
             weights = hrp.clean_weights()
-        except Exception:
+        except Exception as e:
             # Fallback: inverse volatility
+            logger.debug("HRP failed for window starting %s: %s — using inverse-vol fallback",
+                        str(test_slice.index[0].date()), e)
             vols = train_valid.std()
             inv_vol = 1.0 / vols.replace(0, 1e-10)
             weights = (inv_vol / inv_vol.sum()).to_dict()
 
-        # Cap max weight
-        weights = {k: min(v, MAX_WEIGHT) for k, v in weights.items()}
-        total_w = sum(weights.values())
-        if total_w > 0:
-            weights = {k: v / total_w for k, v in weights.items()}
+        # Cap max weight (iterative — naive cap+renormalize can exceed MAX_WEIGHT)
+        for _ in range(10):
+            weights = {k: min(v, MAX_WEIGHT) for k, v in weights.items()}
+            total_w = sum(weights.values())
+            if total_w > 0:
+                weights = {k: v / total_w for k, v in weights.items()}
+            if all(v <= MAX_WEIGHT + 1e-6 for v in weights.values()):
+                break
 
         # Apply weights to test period
         w_series = pd.Series(weights, index=test_valid.columns).fillna(0.0)
