@@ -657,3 +657,34 @@ Walk-forward backtest (10 tickers, 80/20 split, LightGBM):
 3. Gunakan fitur yang sudah diremediasi (Step 1) untuk retraining
 4. Tambahkan exogenous features (global market) untuk MultiFactor
 
+### Production Pipeline — Real DB Execution (8-9 Agustus 2026)
+
+Pipeline orkestrasi produksi dijalankan pada real DB (9.23 GB) dengan 20 ticker fokus IDX.
+
+**Script:** `scripts/run_production_pipeline.sh` + `scripts/daily_signal_cron.py`
+
+**Hasil Step 1 — Remediation (14 jam, 20 ticker):**
+
+| Metrik | Mock DB | Real DB | Status |
+|--------|---------|---------|--------|
+| Score | 4.19/5.00 | 3.71/5.00 | ✓ (≥ 3.5) |
+| Alpha | +0.0021 | ~0.0 | ✗ (> 0) |
+| Sharpe | +0.85 | -10.0 | ✗ (> 0) |
+| Max DD | -3.98% | ~0.0% | ✓ |
+| Promoted KEEP | True | False | ✗ |
+| Durasi | ~3 menit | ~14 jam | — |
+
+**Root cause:** Inverse-variance weighting collapse — BVIC.JK (AcceptRate=0%, zero variance) mendapat 100% bobot. Portfolio Sharpe = -10.0, Alpha ≈ 0.
+
+**Top 4 ticker dengan Alpha positif:**
+- UNTR.JK: Sharpe=+0.263, Alpha=+0.115, Accept=70.9%
+- SONA.JK: Sharpe=+0.188, Alpha=+0.090, Accept=12.2%
+- BCIC.JK: Sharpe=+0.093, Alpha=+0.068, Accept=52.8%
+- APLI.JK: Sharpe=+0.075, Alpha=+0.087, Accept=40.4%
+
+**Step 2 & 3:** Tidak berjalan (bash `set -euo pipefail` abort pada Step 1 exit code 1).
+
+**File generated:** `best_ticker_quant_config.json` (26 KB), `portfolio_data_remediation_report.json` (31 KB).
+
+**Rencana lanjutan:** Lihat `RENCANA-LANJUTAN-PRODUCTION-PIPELINE.md` untuk detail fix weighting, re-run pipeline, dan evaluasi model quality.
+

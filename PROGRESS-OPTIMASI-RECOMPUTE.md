@@ -208,3 +208,50 @@ Buffer days per table:
 | Data loaded per ticker | ~1000 rows | ~250 rows | 4x |
 | Python iterations | ~4M (per date) | ~84 (per offset) | 47,619x |
 | Insert method | ORM add() | executemany() | ~10x |
+
+---
+
+## Production Pipeline — Real DB Execution (8-9 Agustus 2026)
+
+### Eksekusi
+
+Pipeline `run_production_pipeline.sh` dijalankan pada real DB (9.23 GB) dengan 20 ticker fokus IDX.
+
+- **Durasi:** ~14 jam (01:19 → 15:18 WIB, 8 Agu 2026)
+- **Metode:** DE optimization + walk-forward LightGBM per ticker, 20 n_calls
+- **CPU:** 99% sustained, RAM 2.9% (~270 MB) — tidak ada OOM
+- **Rata-rata per ticker:** ~45 menit (BNBR.JK tercepat 8 menit, KPIG.JK terlama ~47 menit)
+
+### Hasil Portfolio
+
+| Metrik | Nilai | Target | Status |
+|--------|-------|--------|--------|
+| Score | 3.71/5.00 | ≥ 3.5 | ✓ |
+| Alpha | ~0.0 (3.2e-7) | > 0 | ✗ |
+| Sharpe | -10.0 | > 0 | ✗ |
+| Max DD | ~0.0% | > -10% | ✓ |
+| Win Rate | 48.4% | > 50% | moderat |
+| Promoted KEEP | False | True | ✗ |
+
+### Root Cause
+
+Inverse-variance weighting collapse: BVIC.JK (AcceptRate=0%, zero variance) mendapat 100% bobot → portfolio Sharpe = -10.0, Alpha ≈ 0.
+
+### Top 4 Ticker (Alpha positif)
+
+| Ticker | Sharpe | Alpha | Accept% | Baseline |
+|--------|--------|-------|---------|----------|
+| UNTR.JK | +0.263 | +0.115 | 70.9% | donchian |
+| SONA.JK | +0.188 | +0.090 | 12.2% | donchian |
+| BCIC.JK | +0.093 | +0.068 | 52.8% | vwap |
+| APLI.JK | +0.075 | +0.087 | 40.4% | donchian |
+
+### File Generated
+
+- `best_ticker_quant_config.json` (26 KB) — 20 ticker, best_params, baseline, cluster
+- `portfolio_data_remediation_report.json` (31 KB) — full report
+- `final_portfolio_verdict.json` — **belum ada** (Step 3 abort)
+
+### Rencana Lanjutan
+
+Lihat `RENCANA-LANJUTAN-PRODUCTION-PIPELINE.md` untuk detail fix weighting, re-run, dan evaluasi model.

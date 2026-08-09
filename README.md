@@ -318,6 +318,46 @@ uv run python scripts/backfill_data.py
 
 ---
 
+## Production Pipeline
+
+Pipeline orkestrasi produksi untuk generate sinyal trading harian dari real DB.
+
+```bash
+# Jalankan full pipeline (remediation → guard → final execution)
+bash scripts/run_production_pipeline.sh --n-calls 20
+
+# Generate daily signal (insert ke app_notifications table)
+DB_PATH=data/market_research.db uv run python scripts/daily_signal_cron.py
+
+# Dry-run (tanpa DB insert)
+DB_PATH=data/market_research.db uv run python scripts/daily_signal_cron.py --dry-run
+```
+
+### Hasil Production Pipeline (Real DB 9.23 GB, 8 Agu 2026)
+
+| Metrik | Nilai | Target |
+|--------|-------|--------|
+| Score | 3.71/5.00 | ≥ 3.5 ✓ |
+| Alpha | ~0.0 | > 0 ✗ |
+| Sharpe | -10.0 | > 0 ✗ |
+| Ticker diproses | 20/20 | — |
+| Durasi | ~14 jam | — |
+
+**Detail:** Lihat [RENCANA-LANJUTAN-PRODUCTION-PIPELINE.md](RENCANA-LANJUTAN-PRODUCTION-PIPELINE.md)
+
+### Crontab (Daily Signal)
+
+```bash
+# 16:15 WIB (09:15 UTC) setiap hari bursa Senin-Jumat
+15 9 * * 1-5 DB_PATH=/home/petrick/projects/market/data/market_research.db \
+    PORTFOLIO_CAPITAL=100000000 \
+    /home/petrick/projects/market/.venv/bin/python3 \
+    /home/petrick/projects/market/scripts/daily_signal_cron.py \
+    >> /home/petrick/projects/market/logs/daily_signal.log 2>&1
+```
+
+---
+
 ## Konvensi
 
 - **UI**: Bahasa Indonesia; istilah teknis pasar modal (`ticker`, `OHLCV`, `RSI`, `MACD`, `VaR`) tetap dalam bahasa asli dengan tooltip.
@@ -349,7 +389,7 @@ Rencana implementasi lengkap tersedia di [MEGAPLAN.md](MEGAPLAN.md) dengan 12 fa
 
 ## Dokumentasi
 
-- [pustaka/00-README.md](pustaka/00-README.md) — indeks pustaka lengkap (94 dokumen).
+- [pustaka/00-README.md](pustaka/00-README.md) — indeks pustaka lengkap (97 dokumen).
 - [AGENTS.md](AGENTS.md) — aturan AI global untuk project ini.
 - [MEGAPLAN.md](MEGAPLAN.md) — rencana implementasi 12 fase.
 - [CONTRIBUTING.md](CONTRIBUTING.md) — panduan kontribusi untuk contributor.
@@ -357,3 +397,5 @@ Rencana implementasi lengkap tersedia di [MEGAPLAN.md](MEGAPLAN.md) dengan 12 fa
 - [docs/DATABASE-ISSUES.md](docs/DATABASE-ISSUES.md) — audit konsistensi data IDX.
 - [docs/AUDIT-FINDINGS.md](docs/AUDIT-FINDINGS.md) — laporan audit aplikasi.
 - [docs/prompting-ai-ml-analysis.md](docs/prompting-ai-ml-analysis.md) — prompt template untuk analisis AI/ML.
+- [RENCANA-LANJUTAN-PRODUCTION-PIPELINE.md](RENCANA-LANJUTAN-PRODUCTION-PIPELINE.md) — rencana lanjutan production pipeline (fix weighting, re-run, evaluasi model).
+- [PROGRESS-OPTIMASI-RECOMPUTE.md](PROGRESS-OPTIMASI-RECOMPUTE.md) — progress optimasi incremental recompute + ML pipeline.

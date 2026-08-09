@@ -288,3 +288,56 @@ Coverage sekarang 83.77% (sebelumnya 83.36%). Test baru ditambah untuk:
 | 0004 | Add scheduler_state |
 | 0005 | Add suspension_date to instrument_master |
 | 0006 | Add listed_shares, tradeable_shares, delisting_risk_score, delisting_risk_reason, former_ticker, former_name |
+
+---
+
+## 7. Production Pipeline Audit (8-9 Agustus 2026)
+
+### Eksekusi Pipeline
+
+Pipeline `run_production_pipeline.sh` dijalankan pada real DB (9.23 GB) dengan 20 ticker fokus IDX.
+
+**Durasi:** ~14 jam | **CPU:** 99% sustained | **RAM:** 2.9% | **OOM:** tidak ada
+
+### Hasil
+
+| Metrik | Mock DB | Real DB | Target |
+|--------|---------|---------|--------|
+| Score | 4.19/5.00 | 3.71/5.00 | ≥ 3.5 ✓ |
+| Alpha | +0.0021 | ~0.0 | > 0 ✗ |
+| Sharpe | +0.85 | -10.0 | > 0 ✗ |
+| Max DD | -3.98% | ~0.0% | > -10% ✓ |
+| Promoted KEEP | True | False | True ✗ |
+
+### Root Cause: Inverse-Variance Weighting Collapse
+
+BVIC.JK (AcceptRate=0%, zero variance) mendapat 100% bobot portfolio. Semua ticker lain weight=0.0. Akibat: portfolio Sharpe=-10.0, Alpha≈0.
+
+**Fix yang diperlukan:**
+1. Filter ticker dengan AcceptRate < 5% dari IV pool
+2. Floor variance dengan epsilon (smoothing)
+3. Cap max weight per ticker (mis. 20%)
+4. Fallback equal-weight untuk ticker dengan Alpha > 0
+
+### Per-Ticker Performance (Real DB)
+
+**Alpha positif (4 ticker):**
+- UNTR.JK: Sharpe=+0.263, Alpha=+0.115, Accept=70.9%
+- SONA.JK: Sharpe=+0.188, Alpha=+0.090, Accept=12.2%
+- BCIC.JK: Sharpe=+0.093, Alpha=+0.068, Accept=52.8%
+- APLI.JK: Sharpe=+0.075, Alpha=+0.087, Accept=40.4%
+
+**Alpha negatif (8 ticker):** ICBP, MEDC, INDF, RBMS, KPIG, ASBI, BNBR, TIRT (lengkap di `RENCANA-LANJUTAN-PRODUCTION-PIPELINE.md`)
+
+### File Generated
+
+- `best_ticker_quant_config.json` (26 KB) — config 20 ticker dengan best_params
+- `portfolio_data_remediation_report.json` (31 KB) — full report
+- `final_portfolio_verdict.json` — **belum ada** (Step 3 abort karena exit code 1)
+
+### Rekomendasi
+
+1. **Immediate:** Fix IV weighting, re-run pipeline
+2. **Short-term:** Jalankan Step 3 manual untuk OOS evaluation
+3. **Long-term:** Evaluasi model quality — 15/20 ticker Sharpe negatif pada real DB
+4. **Crontab:** Install daily signal cron (16:15 WIB / 09:15 UTC, Senin-Jumat)
