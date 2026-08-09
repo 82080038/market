@@ -194,6 +194,13 @@ class TickerSignal:
     unit_lots: int = 0  # jumlah lot (1 lot = 100 saham)
     n_train_rows: int = 0
     error: str = ""
+    # Prediction fields (from PredictionEngine + MarketContextProvider)
+    predicted_direction: str = ""  # up, down, flat
+    predicted_price: float = 0.0
+    predicted_return_pct: float = 0.0
+    prediction_confidence: float = 0.0
+    composite_signal: float = 0.0  # MarketContext composite [-1, 1]
+    factors_summary: dict = field(default_factory=dict)
 
 
 @dataclass
@@ -470,6 +477,125 @@ def compute_vol_60d(ohlcv: pd.DataFrame) -> float:
         return 0.0
     vol_daily = returns.tail(60).std()
     return float(vol_daily * np.sqrt(252))
+
+
+def compute_prediction_for_ticker(
+    ticker: str,
+    ohlcv: pd.DataFrame,
+    as_of: str,
+) -> dict[str, Any]:
+    """Run PredictionEngine + MarketContextProvider for a ticker.
+
+    Returns dict with:
+      - predicted_direction: up/down/flat
+      - predicted_price: float
+      - predicted_return_pct: float
+      - prediction_confidence: float (0-1)
+      - composite_signal: float (-1 to 1)
+      - factors_summary: dict of top factors
+
+    All computations use only data up to as_of (no look-ahead).
+    """
+    result: dict[str, Any] = {
+        "predicted_direction": "",
+        "predicted_price": 0.0,
+        "predicted_return_pct": 0.0,
+        "prediction_confidence": 0.0,
+        "composite_signal": 0.0,
+        "factors_summary": {},
+    }
+
+    if len(ohlcv) < 50:
+        return result
+
+    try:
+        from market.analysis.prediction import PredictionEngine, PredictionMethod
+        from market.analysis.market_context import MarketContextProvider
+        from market.analysis.ml_signal import MLSignalProvider
+        from market.analysis.multi_factor import MultiFactorModel
+
+        # Build providers (lightweight — no GPU needed for daily prediction)
+        ml_provider = MLSignalProvider(horizon=5, min_train_samples=200)
+        mf_model = MultiFactorModel(horizon=5, min_train_samples=200)
+        ctx_provider = MarketContextProvider(
+            ml_provider=ml_provider,
+            multifactor_model=mf_model,
+        )
+
+        engine = PredictionEngine(
+            horizon=5,
+            context_provider=ctx_provider,
+        )
+
+        pred = engine.predict(
+            ticker, ohlcv, as_of=as_of,
+            method=PredictionMethod.ENSEMBLE,
+        )
+
+        result["predicted_direction"] = pred.predicted_direction
+        result["predicted_price"] = pred.predicted_price
+        result["predicted_return_pct"] = pred.predicted_return_pct
+        result["prediction_confidence"] = pred.confidence
+
+        # Extract composite signal from market context
+        if engine.context_provider is not None:
+            try:
+                ctx = engine.context_provider.get_context(
+                    ticker, as_of, df=ohlcv, strict_cutoff=True,
+                )
+                if ctx.is_available:
+                    result["composite_signal"] = round(ctx.composite_signal(), 4)
+                    result["factors_summary"] = {
+                        "fundamental": round(ctx.fundamental_signal(), 3),
+                        "macro": round(ctx.macro_signal(), 3),
+                        "sentiment": round(ctx.sentiment_signal(), 3),
+                        "flow": round(ctx.flow_signal(), 3),
+                        "ml": round(ctx.ml_signal or 0.0, 3),
+                        "pe_ratio": ctx.pe_ratio,
+                        "vix": ctx.vix,
+                        "fear_greed": ctx.fear_greed_index,
+                        "foreign_net_5d": ctx.foreign_net_flow_5d,
+                    }
+            except Exception as e:
+                logger.debug("MarketContext failed for %s: %s", ticker, e)
+
+    except Exception as e:
+        logger.debug("PredictionEngine failed for %s: %s", ticker, e)
+
+    return result
+
+
+def save_prediction_to_db(
+    conn: sqlite3.Connection,
+    ticker: str,
+    pred: dict[str, Any],
+) -> None:
+    """Save prediction results to stock_personality table."""
+    from datetime import datetime
+    now = datetime.now().isoformat()
+    factors_json = json.dumps(pred.get("factors_summary", {})) if pred.get("factors_summary") else None
+
+    conn.execute("""
+        UPDATE stock_personality SET
+            predicted_direction = ?,
+            predicted_price = ?,
+            predicted_return_pct = ?,
+            prediction_confidence = ?,
+            composite_signal = ?,
+            factors_summary = ?,
+            prediction_updated_at = ?
+        WHERE ticker = ?
+    """, (
+        pred.get("predicted_direction", ""),
+        pred.get("predicted_price", 0.0),
+        pred.get("predicted_return_pct", 0.0),
+        pred.get("prediction_confidence", 0.0),
+        pred.get("composite_signal", 0.0),
+        factors_json,
+        now,
+        ticker,
+    ))
+    conn.commit()
 
 
 def compute_daily_inverse_variance_weights(
@@ -785,6 +911,29 @@ def run_daily_signal(
             sig = process_ticker_signal(
                 ticker, params, ohlcv, tech, capital, report.signal_date,
             )
+
+            # Compute prediction (PredictionEngine + MarketContextProvider)
+            if not sig.error and len(ohlcv) >= 50:
+                try:
+                    pred = compute_prediction_for_ticker(
+                        ticker, ohlcv, report.signal_date,
+                    )
+                    sig.predicted_direction = pred["predicted_direction"]
+                    sig.predicted_price = pred["predicted_price"]
+                    sig.predicted_return_pct = pred["predicted_return_pct"]
+                    sig.prediction_confidence = pred["prediction_confidence"]
+                    sig.composite_signal = pred["composite_signal"]
+                    sig.factors_summary = pred["factors_summary"]
+
+                    # Save prediction to DB (need writable connection)
+                    write_conn = sqlite3.connect(db_path)
+                    try:
+                        save_prediction_to_db(write_conn, ticker, pred)
+                    finally:
+                        write_conn.close()
+                except Exception as e:
+                    logger.debug("Prediction failed for %s: %s", ticker, e)
+
             report.signals.append(sig)
 
             # Count signals
@@ -893,7 +1042,7 @@ def build_notification_payload(report: DailySignalReport) -> dict:
 
     signals_payload = []
     for sig in report.signals:
-        signals_payload.append({
+        entry = {
             "ticker": sig.ticker,
             "action": sig.signal_label if not sig.error else "ERROR",
             "signal": sig.signal,
@@ -908,7 +1057,17 @@ def build_notification_payload(report: DailySignalReport) -> dict:
             "adapt_kappa": round(sig.adapt_kappa, 4),
             "baseline_mode": sig.baseline_mode,
             "error": sig.error if sig.error else None,
-        })
+        }
+        if sig.predicted_direction:
+            entry["prediction"] = {
+                "direction": sig.predicted_direction,
+                "predicted_price": round(sig.predicted_price, 2),
+                "return_pct": round(sig.predicted_return_pct, 2),
+                "confidence": round(sig.prediction_confidence, 3),
+                "composite_signal": round(sig.composite_signal, 4),
+                "factors": sig.factors_summary,
+            }
+        signals_payload.append(entry)
 
     return {
         "signal_date": report.signal_date,
@@ -1002,11 +1161,15 @@ def format_signal_table(report: DailySignalReport) -> str:
                 f"{'-':>7} {'-':>5} {'-':>6} {sig.error[:10]}"
             )
             continue
+        pred_str = ""
+        if sig.predicted_direction:
+            arrow = "↑" if sig.predicted_direction == "up" else "↓" if sig.predicted_direction == "down" else "→"
+            pred_str = f" {arrow}{sig.predicted_return_pct:+.1f}%"
         lines.append(
             f"{sig.ticker:<10} {sig.signal_label:<5} {sig.close_price:>10.2f} "
             f"{sig.portfolio_weight*100:>6.2f} {sig.unit_size:>7d} "
             f"{sig.unit_lots:>5d} {sig.adapt_kappa:>6.3f} "
-            f"{sig.baseline_mode:<10}"
+            f"{sig.baseline_mode:<10}{pred_str}"
         )
     lines.append("")
     lines.append(f"{report.execution_timestamp}")

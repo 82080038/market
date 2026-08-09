@@ -17,6 +17,7 @@ import logging
 import sqlite3
 import sys
 import time
+import warnings
 from datetime import datetime
 from pathlib import Path
 
@@ -25,6 +26,8 @@ import pandas as pd
 from pypfopt import expected_returns, risk_models
 from pypfopt.hierarchical_portfolio import HRPOpt
 from pypfopt.efficient_frontier import EfficientFrontier
+
+warnings.filterwarnings("ignore", category=DeprecationWarning, module="lightgbm")
 
 logging.basicConfig(
     level=logging.INFO,
@@ -296,12 +299,58 @@ def walk_forward_backtest(
     }
 
 
+def compute_ml_signals_for_ticker(
+    ticker: str,
+    ohlcv_df: pd.DataFrame,
+    as_of: str,
+) -> dict:
+    """Compute ML signal + MultiFactor signal for a ticker.
+
+    Returns dict with: ml_signal, multifactor_signal, composite_signal, top_factors.
+    All signals range [-1, 1]. 0.0 if model unavailable.
+    """
+    result = {"ml_signal": 0.0, "multifactor_signal": 0.0, "composite_signal": 0.0, "top_factors": {}}
+
+    if len(ohlcv_df) < 200:
+        return result
+
+    try:
+        from market.analysis.ml_signal import MLSignalProvider
+        ml_provider = MLSignalProvider(horizon=5, min_train_samples=200)
+        ml_result = ml_provider.train_and_predict(ticker, ohlcv_df, as_of)
+        if ml_result.model_available:
+            result["ml_signal"] = round(ml_result.signal, 4)
+    except Exception as e:
+        logger.debug("ML signal failed for %s: %s", ticker, e)
+
+    try:
+        from market.analysis.multi_factor import MultiFactorModel
+        mf_model = MultiFactorModel(horizon=5, min_train_samples=200)
+        mf_result = mf_model.train_and_predict(ticker, ohlcv_df, as_of)
+        if mf_result.model_available:
+            result["multifactor_signal"] = round(mf_result.signal, 4)
+            result["top_factors"] = {
+                k: round(v, 2) for k, v in list(mf_result.top_factors.items())[:5]
+            }
+    except Exception as e:
+        logger.debug("MultiFactor failed for %s: %s", ticker, e)
+
+    # Composite: 40% ML + 60% MultiFactor (same blend as MarketContextProvider)
+    if result["ml_signal"] != 0.0 or result["multifactor_signal"] != 0.0:
+        result["composite_signal"] = round(
+            result["ml_signal"] * 0.4 + result["multifactor_signal"] * 0.6, 4
+        )
+
+    return result
+
+
 def save_ticker_profiles_to_db(
     conn: sqlite3.Connection,
     per_ticker_metrics: list[dict],
     avg_weights: dict[str, float],
     prices: pd.DataFrame,
     oos_start: str,
+    ml_signals: dict[str, dict] | None = None,
 ) -> int:
     """Save per-ticker strategy profile to stock_personality table.
 
@@ -348,6 +397,14 @@ def save_ticker_profiles_to_db(
         winrate = float(50.0 + sharpe * 5.0) if sharpe != 0 else 50.0
         winrate = max(0.0, min(100.0, winrate))
 
+        # ML signals (from weekly compute)
+        ml_info = (ml_signals or {}).get(ticker, {})
+        ml_sig = ml_info.get("ml_signal", 0.0)
+        mf_sig = ml_info.get("multifactor_signal", 0.0)
+        comp_sig = ml_info.get("composite_signal", 0.0)
+        top_factors = ml_info.get("top_factors", {})
+        factors_json = json.dumps(top_factors) if top_factors else None
+
         c.execute("""
             UPDATE stock_personality SET
                 best_pattern = ?,
@@ -358,6 +415,10 @@ def save_ticker_profiles_to_db(
                 trend_strength = ?,
                 avg_uptrend_streak = ?,
                 avg_downtrend_streak = ?,
+                ml_signal = ?,
+                multifactor_signal = ?,
+                composite_signal = ?,
+                factors_summary = ?,
                 updated_at = ?
             WHERE ticker = ?
         """, (
@@ -369,6 +430,10 @@ def save_ticker_profiles_to_db(
             round(trend_strength, 2) if trend_strength is not None else None,
             round(avg_up_streak, 4) if avg_up_streak is not None else None,
             round(avg_down_streak, 4) if avg_down_streak is not None else None,
+            ml_sig,
+            mf_sig,
+            comp_sig,
+            factors_json,
             now,
             ticker,
         ))
@@ -381,14 +446,16 @@ def save_ticker_profiles_to_db(
                     ticker, best_pattern, best_pattern_winrate,
                     overall_pattern_winrate, avg_daily_volatility,
                     trend_strength, avg_uptrend_streak, avg_downtrend_streak,
-                    updated_at, profile_date
-                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    ml_signal, multifactor_signal, composite_signal,
+                    factors_summary, updated_at, profile_date
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             """, (
                 ticker, strategy, round(winrate, 2), round(winrate, 2),
                 round(avg_daily_vol, 6) if avg_daily_vol is not None else None,
                 round(trend_strength, 2) if trend_strength is not None else None,
                 round(avg_up_streak, 4) if avg_up_streak is not None else None,
                 round(avg_down_streak, 4) if avg_down_streak is not None else None,
+                ml_sig, mf_sig, comp_sig, factors_json,
                 now, now,
             ))
             n_updated += 1
@@ -455,12 +522,14 @@ def main():
     logger.info("Loading OHLCV data for %d tickers...", len(tickers))
 
     prices_dict = {}
+    ticker_ohlcv: dict[str, pd.DataFrame] = {}
     skipped = []
     for i, ticker in enumerate(tickers):
         ohlcv = load_ohlcv_from_db(conn, ticker)
         if len(ohlcv) < MIN_BARS:
             skipped.append(ticker)
             continue
+        ticker_ohlcv[ticker] = ohlcv
         # Use adjusted_close if available, else close
         price_col = "adjusted_close" if "adjusted_close" in ohlcv.columns and not ohlcv["adjusted_close"].isna().all() else "close"
         prices_dict[ticker] = ohlcv[price_col].rename(ticker)
@@ -517,6 +586,25 @@ def main():
     logger.info("  %d tickers with strategy returns", len(strategy_returns_dict))
     logger.info("  Strategy selection: donchian=%d, rsi_meanrev=%d, ema_envelope=%d",
                 strategy_usage["donchian"], strategy_usage["rsi_meanrev"], strategy_usage["ema_envelope"])
+
+    # Compute ML signals (MLSignalProvider + MultiFactorModel) for each ticker
+    logger.info("")
+    logger.info("Computing ML signals (LightGBM MLSignal + MultiFactor)...")
+    t_ml = time.time()
+    ml_signals: dict[str, dict] = {}
+    n_ml_ok = 0
+    for i, ticker in enumerate(prices.columns):
+        ohlcv_df = ticker_ohlcv.get(ticker)
+        if ohlcv_df is None or len(ohlcv_df) < 200:
+            continue
+        ml_sig = compute_ml_signals_for_ticker(ticker, ohlcv_df, args.oos_start)
+        ml_signals[ticker] = ml_sig
+        if ml_sig["composite_signal"] != 0.0:
+            n_ml_ok += 1
+        if (i + 1) % 100 == 0:
+            logger.info("  ML signals: %d/%d tickers (%.1fs)", i + 1, len(prices.columns), time.time() - t_ml)
+    logger.info("  ML signals complete: %d/%d tickers with non-zero composite (%.1fs)",
+                n_ml_ok, len(ml_signals), time.time() - t_ml)
 
     # Walk-forward portfolio backtest with HRP
     logger.info("")
@@ -593,6 +681,10 @@ def main():
                 "oos_max_dd": t["max_dd"],
                 "strategy": t.get("strategy", "donchian"),
                 "avg_weight": round(avg_w.get(t["ticker"], 0.0), 4),
+                "ml_signal": ml_signals.get(t["ticker"], {}).get("ml_signal", 0.0),
+                "multifactor_signal": ml_signals.get(t["ticker"], {}).get("multifactor_signal", 0.0),
+                "composite_signal": ml_signals.get(t["ticker"], {}).get("composite_signal", 0.0),
+                "top_factors": ml_signals.get(t["ticker"], {}).get("top_factors", {}),
             }
             for t in per_ticker_metrics
         },
@@ -628,7 +720,7 @@ def main():
     # Save per-ticker profiles to database
     logger.info("")
     logger.info("Saving ticker profiles to database (stock_personality)...")
-    n_saved = save_ticker_profiles_to_db(conn, per_ticker_metrics, avg_w, prices, args.oos_start)
+    n_saved = save_ticker_profiles_to_db(conn, per_ticker_metrics, avg_w, prices, args.oos_start, ml_signals=ml_signals)
     logger.info("  Updated %d ticker profiles in stock_personality table", n_saved)
 
     logger.info("")
