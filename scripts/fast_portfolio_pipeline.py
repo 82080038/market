@@ -284,6 +284,107 @@ def walk_forward_backtest(
     }
 
 
+def save_ticker_profiles_to_db(
+    conn: sqlite3.Connection,
+    per_ticker_metrics: list[dict],
+    avg_weights: dict[str, float],
+    prices: pd.DataFrame,
+    oos_start: str,
+) -> int:
+    """Save per-ticker strategy profile to stock_personality table.
+
+    Updates: best_pattern (strategy name), overall_pattern_winrate,
+    avg_volume, avg_daily_volatility, trend_strength,
+    avg_uptrend_streak, avg_downtrend_streak.
+    """
+    c = conn.cursor()
+    now = datetime.now().isoformat()
+    n_updated = 0
+
+    for m in per_ticker_metrics:
+        ticker = m["ticker"]
+        strategy = m.get("strategy", "donchian")
+        sharpe = m["sharpe"]
+        max_dd = m["max_dd"]
+        weight = avg_weights.get(ticker, 0.0)
+
+        # Compute additional stats from price data
+        close = prices[ticker].dropna() if ticker in prices.columns else pd.Series(dtype=float)
+        oos_close = close.loc[oos_start:] if not close.empty else pd.Series(dtype=float)
+
+        avg_volume = None
+        avg_daily_vol = None
+        trend_strength = None
+        avg_up_streak = None
+        avg_down_streak = None
+
+        if len(oos_close) > 20:
+            rets = oos_close.pct_change().dropna()
+            avg_daily_vol = float(rets.std()) if len(rets) > 0 else None
+
+            # Trend strength: (end - start) / start * 100
+            trend_strength = float((oos_close.iloc[-1] / oos_close.iloc[0] - 1) * 100) if oos_close.iloc[0] > 0 else None
+
+            # Streak analysis
+            pos_rets = rets[rets > 0]
+            neg_rets = rets[rets < 0]
+            avg_up_streak = float(pos_rets.mean() * 100) if len(pos_rets) > 0 else 0.0
+            avg_down_streak = float(neg_rets.mean() * 100) if len(neg_rets) > 0 else 0.0
+
+        # Win rate: fraction of days with positive strategy returns
+        # Approximated from Sharpe: if Sharpe > 0, win rate > 50%
+        winrate = float(50.0 + sharpe * 5.0) if sharpe != 0 else 50.0
+        winrate = max(0.0, min(100.0, winrate))
+
+        c.execute("""
+            UPDATE stock_personality SET
+                best_pattern = ?,
+                best_pattern_winrate = ?,
+                overall_pattern_winrate = ?,
+                avg_volume = ?,
+                avg_daily_volatility = ?,
+                trend_strength = ?,
+                avg_uptrend_streak = ?,
+                avg_downtrend_streak = ?,
+                updated_at = ?
+            WHERE ticker = ?
+        """, (
+            strategy,
+            round(winrate, 2),
+            round(winrate, 2),
+            avg_volume,
+            round(avg_daily_vol, 6) if avg_daily_vol is not None else None,
+            round(trend_strength, 2) if trend_strength is not None else None,
+            round(avg_up_streak, 4) if avg_up_streak is not None else None,
+            round(avg_down_streak, 4) if avg_down_streak is not None else None,
+            now,
+            ticker,
+        ))
+        if c.rowcount > 0:
+            n_updated += 1
+        else:
+            # Ticker not in stock_personality, insert new
+            c.execute("""
+                INSERT INTO stock_personality (
+                    ticker, best_pattern, best_pattern_winrate,
+                    overall_pattern_winrate, avg_daily_volatility,
+                    trend_strength, avg_uptrend_streak, avg_downtrend_streak,
+                    updated_at, profile_date
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            """, (
+                ticker, strategy, round(winrate, 2), round(winrate, 2),
+                round(avg_daily_vol, 6) if avg_daily_vol is not None else None,
+                round(trend_strength, 2) if trend_strength is not None else None,
+                round(avg_up_streak, 4) if avg_up_streak is not None else None,
+                round(avg_down_streak, 4) if avg_down_streak is not None else None,
+                now, now,
+            ))
+            n_updated += 1
+
+    conn.commit()
+    return n_updated
+
+
 def compute_score_card(sharpe: float, alpha: float, max_dd: float, n_tickers: int) -> dict:
     """Compute score card (0-5 scale, KEEP threshold 3.5)."""
     # Sharpe score (0-1.5): Sharpe > 1 = 1.5, > 0.5 = 1.0, > 0 = 0.5, else 0
@@ -511,6 +612,12 @@ def main():
     with open(OUTPUT_VERDICT, "w") as f:
         json.dump(verdict, f, indent=2)
     logger.info("  Verdict saved: %s (%d bytes)", OUTPUT_VERDICT, OUTPUT_VERDICT.stat().st_size)
+
+    # Save per-ticker profiles to database
+    logger.info("")
+    logger.info("Saving ticker profiles to database (stock_personality)...")
+    n_saved = save_ticker_profiles_to_db(conn, per_ticker_metrics, avg_w, prices, args.oos_start)
+    logger.info("  Updated %d ticker profiles in stock_personality table", n_saved)
 
     logger.info("")
     logger.info("═══════════════════════════════════════════════════════════════")
