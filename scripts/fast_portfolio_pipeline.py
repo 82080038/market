@@ -54,7 +54,8 @@ def load_ohlcv_from_db(conn: sqlite3.Connection, ticker: str) -> pd.DataFrame:
     )
     if df.empty:
         return df
-    df["date"] = pd.to_datetime(df["date"])
+    df["date"] = pd.to_datetime(df["date"], format="mixed")
+    df = df.drop_duplicates(subset="date", keep="last")
     df = df.set_index("date")
     return df
 
