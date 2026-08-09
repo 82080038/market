@@ -116,6 +116,53 @@ warnings.filterwarnings("ignore", category=FutureWarning)
 # ═══════════════════════════════════════════════════════════════════════════
 
 DEFAULT_LOOKBACK_DAYS = 300
+
+
+def load_ticker_strategies_from_db(
+    conn: sqlite3.Connection,
+    limit: int = 0,
+) -> dict[str, str]:
+    """Load best strategy per ticker from stock_personality table.
+
+    Returns:
+        {ticker: strategy_name} for all tickers with best_pattern filled.
+        Strategy: 'donchian', 'rsi_meanrev', or 'ema_envelope'.
+    """
+    sql = (
+        "SELECT ticker, best_pattern FROM stock_personality "
+        "WHERE best_pattern IS NOT NULL ORDER BY ticker"
+    )
+    if limit > 0:
+        sql += f" LIMIT {limit}"
+    rows = conn.execute(sql).fetchall()
+    return {r[0]: r[1] for r in rows}
+
+
+def load_tickers_from_db(
+    conn: sqlite3.Connection,
+    limit: int = 0,
+) -> list[str]:
+    """Load ticker list from stock_personality (best_pattern IS NOT NULL).
+
+    Falls back to DEFAULT_FOCUS_TICKERS if table empty.
+    """
+    sql = (
+        "SELECT ticker FROM stock_personality "
+        "WHERE best_pattern IS NOT NULL ORDER BY ticker"
+    )
+    if limit > 0:
+        sql += f" LIMIT {limit}"
+    rows = conn.execute(sql).fetchall()
+    tickers = [r[0] for r in rows]
+    if not tickers:
+        logger.warning(
+            "  stock_personality kosong — fallback ke DEFAULT_FOCUS_TICKERS (%d)",
+            len(DEFAULT_FOCUS_TICKERS),
+        )
+        return DEFAULT_FOCUS_TICKERS
+    return tickers
+
+
 DEFAULT_PORTFOLIO_CAPITAL = 100_000_000  # 100 juta IDR
 
 # WIB = UTC+7, jam tutup bursa IDX = 16:00 WIB = 09:00 UTC
@@ -650,6 +697,28 @@ def run_daily_signal(
 
     conn = open_db(db_path)
     try:
+        # Load per-ticker strategy from stock_personality (updated by weekly HRP cron)
+        db_strategies = load_ticker_strategies_from_db(conn)
+        logger.info("  Loaded %d ticker strategies from stock_personality", len(db_strategies))
+
+        # Override baseline_mode with DB strategy if available
+        # Map new HRP strategy names to old alpha_rescue_pipeline names
+        STRATEGY_MAP = {
+            "donchian": "donchian",
+            "ema_envelope": "ema_env",
+            "rsi_meanrev": "donchian",  # fallback — old pipeline has no RSI mean-reversion
+        }
+        for ticker, params in ticker_params.items():
+            db_strat = db_strategies.get(ticker)
+            if db_strat:
+                params["baseline_mode"] = STRATEGY_MAP.get(db_strat, "donchian")
+        strategy_counts = {}
+        for p in ticker_params.values():
+            s = p.get("baseline_mode", "donchian")
+            strategy_counts[s] = strategy_counts.get(s, 0) + 1
+        logger.info("  Strategy distribution: %s", strategy_counts)
+        logger.info("")
+
         latest_date = get_latest_trading_date(conn)
         if latest_date is None:
             logger.error("  DB kosong — tidak ada data ohlcv.")
@@ -1001,7 +1070,13 @@ def main() -> None:
     if args.tickers:
         tickers = [t.strip() for t in args.tickers.split(",") if t.strip()]
     else:
-        tickers = DEFAULT_FOCUS_TICKERS
+        # Load tickers from stock_personality (DB-driven, updated by weekly HRP cron)
+        conn = sqlite3.connect(db_path)
+        try:
+            tickers = load_tickers_from_db(conn)
+        finally:
+            conn.close()
+        logger.info("Loaded %d tickers from stock_personality (DB-driven)", len(tickers))
 
     fallback_config = None if args.no_fallback else args.config
 
