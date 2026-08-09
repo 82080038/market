@@ -428,6 +428,8 @@ def compute_vol_60d(ohlcv: pd.DataFrame) -> float:
 def compute_daily_inverse_variance_weights(
     ohlcv_dict: dict[str, pd.DataFrame],
     lookback: int = IV_LOOKBACK_DAYS,
+    max_weight: float = 0.20,
+    var_epsilon: float = 1e-6,
 ) -> dict[str, float]:
     """Hitung bobot Inverse-Variance harian berbasis return 60 hari terakhir.
 
@@ -437,6 +439,11 @@ def compute_daily_inverse_variance_weights(
     Saham dengan variansi tinggi (volatil) mendapat bobot lebih kecil.
     Ini adalah recomputasi harian dari bobot portofolio, tidak bergantung
     pada portfolio_weights statis dari verdict JSON.
+
+    Safeguards:
+    - Variance floor (epsilon) mencegah 1/0 = infinity.
+    - Cap max weight per ticker (default 20%).
+    - Fallback equal-weighting jika tidak ada ticker valid.
 
     Returns:
         {ticker: weight} — bobot normalisasi (sum=1.0)
@@ -449,9 +456,8 @@ def compute_daily_inverse_variance_weights(
         if len(log_rets) < 20:
             continue
         recent_rets = log_rets.tail(lookback)
-        var = float(np.var(recent_rets))
-        if var > 1e-10:
-            variances[ticker] = var
+        var = max(float(np.var(recent_rets)), var_epsilon)
+        variances[ticker] = var
 
     if not variances:
         n = len(ohlcv_dict)
@@ -459,7 +465,21 @@ def compute_daily_inverse_variance_weights(
 
     inv_var = {t: 1.0 / v for t, v in variances.items()}
     total = sum(inv_var.values())
-    return {t: w / total for t, w in inv_var.items()}
+    weights = {t: w / total for t, w in inv_var.items()}
+
+    # Cap max weight per ticker
+    weights = {t: min(w, max_weight) for t, w in weights.items()}
+    # Renormalize
+    total_w = sum(weights.values())
+    if total_w > 0:
+        weights = {t: w / total_w for t, w in weights.items()}
+
+    # Pastikan ticker tanpa data tetap ada dengan weight=0
+    for ticker in ohlcv_dict:
+        if ticker not in weights:
+            weights[ticker] = 0.0
+
+    return weights
 
 
 def signal_to_label(signal: float) -> tuple[int, str]:

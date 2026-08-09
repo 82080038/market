@@ -775,6 +775,7 @@ def _generate_regime_invariant_meta_signals(
             reg_alpha=0.1,
             reg_lambda=1.0,
             is_unbalance=True,
+            device='gpu',
         )
         model.fit(
             X_tr, y_tr,

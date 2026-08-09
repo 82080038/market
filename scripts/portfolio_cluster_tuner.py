@@ -498,6 +498,7 @@ def _generate_vol_targeted_with_baseline_ticker(
             subsample=0.8, colsample_bytree=0.8,
             n_jobs=1, min_data_in_leaf=30,
             reg_alpha=0.1, reg_lambda=1.0,
+            device='gpu',
         )
         model.fit(
             X_tr, y_tr,
@@ -545,8 +546,17 @@ def _generate_vol_targeted_with_baseline_ticker(
 
 def compute_inverse_variance_weights(
     returns_dict: dict[str, pd.Series],
+    max_weight: float = 0.20,
+    var_epsilon: float = 1e-6,
+    min_accept_rate: float = 0.05,
 ) -> dict[str, float]:
     """Hitung bobot Inverse-Variance untuk ensemble portofolio.
+
+    Safeguards against weighting collapse:
+    - Filter ticker dengan accept_rate < min_accept_rate (return konstan nol).
+    - Variance floor (epsilon) mencegah 1/0 = infinity.
+    - Cap max weight per ticker (default 20%).
+    - Fallback equal-weighting jika hanya 0-1 ticker yang lolos filter.
 
     Args:
         returns_dict: {ticker: daily_returns_series}
@@ -554,15 +564,46 @@ def compute_inverse_variance_weights(
     Returns:
         {ticker: weight} dengan Σ weights = 1.0
     """
-    variances: dict[str, float] = {}
+    # Filter ticker dengan accept_rate terlalu rendah (return konstan nol)
+    filtered = {}
     for ticker, rets in returns_dict.items():
+        if len(rets) == 0:
+            continue
+        accept_rate = float((rets != 0.0).sum()) / len(rets)
+        if accept_rate < min_accept_rate:
+            continue
+        filtered[ticker] = rets
+
+    # Fallback equal-weighting jika 0-1 ticker lolos filter
+    if len(filtered) <= 1:
+        all_tickers = list(returns_dict.keys())
+        if not all_tickers:
+            return {}
+        eq_weight = 1.0 / len(all_tickers)
+        return {ticker: eq_weight for ticker in all_tickers}
+
+    variances: dict[str, float] = {}
+    for ticker, rets in filtered.items():
         var = float(rets.var())
-        variances[ticker] = var if var > 0 else 1e-10
+        variances[ticker] = max(var, var_epsilon)
 
     inv_vars = {t: 1.0 / v for t, v in variances.items()}
     total_inv = sum(inv_vars.values())
 
     weights = {t: iv / total_inv for t, iv in inv_vars.items()}
+
+    # Cap max weight per ticker
+    weights = {t: min(w, max_weight) for t, w in weights.items()}
+    # Renormalize
+    total_w = sum(weights.values())
+    if total_w > 0:
+        weights = {t: w / total_w for t, w in weights.items()}
+
+    # Pastikan ticker yang di-filter out tetap ada dengan weight=0
+    for ticker in returns_dict:
+        if ticker not in weights:
+            weights[ticker] = 0.0
+
     return weights
 
 

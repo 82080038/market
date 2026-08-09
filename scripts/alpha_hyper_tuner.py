@@ -439,6 +439,7 @@ def _generate_vol_targeted_with_baseline(
             min_data_in_leaf=30,
             reg_alpha=0.1,
             reg_lambda=1.0,
+            device='gpu',
         )
         model.fit(
             X_tr, y_tr,
@@ -725,6 +726,7 @@ def _generate_adaptive_meta_labeled_signals(
             reg_alpha=0.1,
             reg_lambda=1.0,
             is_unbalance=True,
+            device='gpu',
         )
         model.fit(
             X_tr, y_tr,

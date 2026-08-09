@@ -307,11 +307,20 @@ def compute_daily_inverse_variance_weights(
     returns_dict: dict[str, pd.Series],
     oos_start: pd.Timestamp,
     oos_end: pd.Timestamp,
+    max_weight: float = 0.20,
+    var_epsilon: float = 1e-6,
+    min_accept_rate: float = 0.05,
 ) -> dict[str, pd.Series]:
     """Hitung bobot Inverse-Variance harian yang beradaptasi setiap hari.
 
     Bobot alokasi otomatis mengecil pada saham volatil (variance tinggi)
     dan membesar pada saham stabil (variance rendah).
+
+    Safeguards against weighting collapse:
+    - Filter ticker dengan accept_rate < min_accept_rate (return konstan nol).
+    - Variance floor (epsilon) mencegah 1/0 = infinity.
+    - Cap max weight per ticker (default 20%).
+    - Fallback equal-weighting jika hanya 0-1 ticker yang lolos filter.
 
     Returns:
         {ticker: weight_series} — bobot harian yang sum=1 per tanggal.
@@ -319,17 +328,45 @@ def compute_daily_inverse_variance_weights(
     if not returns_dict:
         return {}
 
-    # Filter ke periode OOS
+    # Filter ke periode OOS + filter ticker dengan return konstan (accept_rate ~ 0)
     filtered = {}
     for ticker, rets in returns_dict.items():
         oos_rets = rets.loc[
             (rets.index >= oos_start) & (rets.index <= oos_end)
         ]
-        if len(oos_rets) > 0:
-            filtered[ticker] = oos_rets
+        if len(oos_rets) == 0:
+            continue
+        # Hitung accept rate: proporsi hari dengan return != 0
+        accept_rate = float((oos_rets != 0.0).sum()) / len(oos_rets)
+        if accept_rate < min_accept_rate:
+            logger.warning(
+                "  Skipping %s from IV weighting: accept_rate=%.4f < %.4f",
+                ticker, accept_rate, min_accept_rate,
+            )
+            continue
+        filtered[ticker] = oos_rets
 
-    if not filtered:
-        return {}
+    # Fallback: jika 0-1 ticker lolos filter, gunakan equal weight dari semua ticker
+    if len(filtered) <= 1:
+        logger.warning(
+            "  Only %d ticker(s) passed accept_rate filter — "
+            "falling back to equal-weighting across all tickers.",
+            len(filtered),
+        )
+        all_tickers = list(returns_dict.keys())
+        if not all_tickers:
+            return {}
+        all_dates = sorted(set().union(*(
+            r.loc[(r.index >= oos_start) & (r.index <= oos_end)].index
+            for r in returns_dict.values()
+        )))
+        if not all_dates:
+            return {}
+        eq_weight = 1.0 / len(all_tickers)
+        return {
+            ticker: pd.Series(eq_weight, index=all_dates)
+            for ticker in all_tickers
+        }
 
     # Union semua tanggal
     all_dates = sorted(set().union(*(r.index for r in filtered.values())))
@@ -342,12 +379,20 @@ def compute_daily_inverse_variance_weights(
     df = df.reindex(all_dates).fillna(0.0)
 
     rolling_var = df.rolling(lookback, min_periods=20).var()
-    rolling_var = rolling_var.replace(0, np.nan).ffill().fillna(1e-10)
+    # Variance floor: mencegah 1/0 = infinity
+    rolling_var = rolling_var.clip(lower=var_epsilon)
+    rolling_var = rolling_var.replace(0, np.nan).ffill().fillna(var_epsilon)
 
     # Inverse variance
     inv_var = 1.0 / rolling_var
     row_sums = inv_var.sum(axis=1).replace(0, 1.0)
     weights_df = inv_var.div(row_sums, axis=0)
+
+    # Cap max weight per ticker
+    weights_df = weights_df.clip(upper=max_weight)
+    # Renormalize setelah cap
+    row_sums = weights_df.sum(axis=1).replace(0, 1.0)
+    weights_df = weights_df.div(row_sums, axis=0)
 
     return {ticker: weights_df[ticker] for ticker in weights_df.columns}
 

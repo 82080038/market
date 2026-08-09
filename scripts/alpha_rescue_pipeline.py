@@ -420,6 +420,7 @@ def generate_volatility_targeted_signals(
             min_data_in_leaf=30,
             reg_alpha=0.1,
             reg_lambda=1.0,
+            device='gpu',
         )
         model.fit(
             X_tr, y_tr,
@@ -615,6 +616,7 @@ def generate_meta_labeled_signals(
             reg_alpha=0.1,
             reg_lambda=1.0,
             is_unbalance=True,  # handle class imbalance (HOLD dominan)
+            device='gpu',
         )
         model.fit(
             X_tr, y_tr,
@@ -726,6 +728,7 @@ def select_clustered_features(
         n_estimators=50, max_depth=3, learning_rate=0.1,
         verbose=-1, subsample=0.8, colsample_bytree=0.8,
         n_jobs=1, min_data_in_leaf=50, reg_alpha=0.1, reg_lambda=1.0,
+        device='gpu',
     )
     imp_model.fit(X, y)
     imp_dict = dict(zip(feature_names, imp_model.feature_importances_, strict=False))
@@ -897,6 +900,7 @@ def generate_pruned_multifactor_signals(
             reg_lambda=config.mf_reg_lambda,
             num_classes=3,
             objective="multiclass",
+            device='gpu',
         )
         model.fit(
             X_tr, y_tr,

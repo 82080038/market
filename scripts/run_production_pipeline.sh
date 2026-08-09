@@ -115,12 +115,15 @@ export OMP_NUM_THREADS="${OMP_NUM_THREADS:-$(nproc --all 2>/dev/null || echo 4)}
 export MKL_NUM_THREADS="${OMP_NUM_THREADS}"
 export NUMEXPR_NUM_THREADS="${OMP_NUM_THREADS}"
 
-# Turunkan OOM score adjustment (-500 = kurang mungkin di-kill oleh OOM killer)
-if [[ -w /proc/self/oom_score_adj ]]; then
-    echo -500 > /proc/self/oom_score_adj 2>/dev/null || true
-fi
+# CUDA: prefer GPU cuda:1 per AGENTS.md §2
+export CUDA_VISIBLE_DEVICES="${CUDA_VISIBLE_DEVICES:-1}"
+# LightGBM GPU
+export LIGHTGBM_GPU_PLATFORM="${LIGHTGBM_GPU_PLATFORM:-cuda}"
+# PyTorch CUDA
+export TORCH_CUDA_DEVICE="${TORCH_CUDA_DEVICE:-cuda:1}"
 
 log "  OMP threads: ${OMP_NUM_THREADS}"
+log "  CUDA device: cuda:${CUDA_VISIBLE_DEVICES}"
 log "  OOM score adj: $(cat /proc/self/oom_score_adj 2>/dev/null || echo 'N/A')"
 
 # ── Step 1: Data Remediation ───────────────────────────────────────────────
