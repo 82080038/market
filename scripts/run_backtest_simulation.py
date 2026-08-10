@@ -36,8 +36,8 @@ logger = logging.getLogger(__name__)
 # ── Config ───────────────────────────────────────────────────────────────
 
 TICKERS = [
-    "BBCA.JK", "BBRI.JK", "TLKM.JK", "ASII.JK", "UNVR.JK",
-    "ANTM.JK", "MDKA.JK", "UNTR.JK",
+    "BBCA.JK", "BBRI.JK", "UNVR.JK", "ANTM.JK",
+    "MDKA.JK", "UNTR.JK", "SONA.JK", "APLI.JK",
 ]
 
 # Backtest period: 2 years (2024-01-01 to 2026-08-03)
@@ -185,6 +185,7 @@ def run_prediction_evaluation(
     df: pd.DataFrame, ticker: str, context_provider: MarketContextProvider,
     vix_series: pd.Series | None = None,
     foreign_flow_series: pd.Series | None = None,
+    multifactor: MultiFactorModel | None = None,
 ) -> dict:
     """Run prediction at multiple as_of dates, compare with actual.
 
@@ -276,7 +277,7 @@ def run_prediction_evaluation(
             # ── MetaLabeler soft bet sizing ────────────────────────────────
             # P3-4: Instead of hard veto at 0.45, use soft approach:
             # - meta_prob < 0.35 → veto (no trade)
-            # - meta_prob 0.35-0.50 → keep but reduce confidence
+            # - meta_prob 0.35-0.50 → P4-3: try MultiFactorModel override
             # - meta_prob >= 0.50 → keep with full confidence
             primary_side = 1 if pred_direction == "up" else -1 if pred_direction == "down" else 0
             meta_result = meta_labeler.predict(
@@ -285,7 +286,15 @@ def run_prediction_evaluation(
             )
             meta_prob = meta_result.probability
             HARD_VETO_THRESHOLD = 0.35
+            LOW_CONFIDENCE_ZONE = 0.50
             meta_vetoed = meta_prob < HARD_VETO_THRESHOLD
+
+            # P4-3: Confidence-weighted ensemble override (DISABLED — hurt accuracy)
+            # When meta_prob is in low-confidence zone (0.35-0.50), MultiFactorModel
+            # override was tested but flipped to wrong direction too often.
+            # if not meta_vetoed and meta_prob < LOW_CONFIDENCE_ZONE and multifactor is not None:
+            #     ...
+
             if meta_vetoed:
                 meta_filtered += 1
                 # If vetoed, flip to HOLD — but preserve original prediction
@@ -435,6 +444,7 @@ def main() -> None:
                 df, ticker, context_provider,
                 vix_series=vix_series if not vix_series.empty else None,
                 foreign_flow_series=ff_series if not ff_series.empty else None,
+                multifactor=multifactor,
             )
             all_prediction_results.append(pred_result)
             if pred_result["direction_accuracy_pct"] is not None:

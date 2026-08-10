@@ -83,7 +83,9 @@ class MLSignalProvider:
         self.sl_barrier = sl_barrier
         self.use_atr_barriers = use_atr_barriers
         self.atr_multiplier = atr_multiplier
+        self.use_regime_conditional = False  # P4-1: disabled — reduces training samples too much
         self._models: dict[str, object] = {}
+        self._regime_models: dict[str, dict[int, object]] = {}  # ticker → {regime_label: model}
 
     def _prepare_features(self, df: pd.DataFrame) -> pd.DataFrame:
         """Prepare feature columns from OHLCV data."""
@@ -184,6 +186,12 @@ class MLSignalProvider:
         adx = dx.rolling(14).mean()
         data["trend_regime"] = (adx > 25).astype(int)  # 1 = trending, 0 = ranging
 
+        # P4-2: Feature interactions — cross-features for non-linear patterns
+        data["rsi_x_vol"] = data["rsi"] * data["vol_ratio"]
+        data["momentum_x_regime"] = data["momentum_5"] * data["trend_regime"]
+        data["ma_ratio_x_vol_pctile"] = data["ma_ratio"] * data["vol_pctile"]
+        data["rsi_rank_x_regime"] = data["rsi_rank"] * data["trend_regime"]
+
         # Target: triple-barrier labels (López de Prado)
         if self.use_triple_barrier:
             data["target"] = self._compute_triple_barrier_labels(data)
@@ -202,6 +210,9 @@ class MLSignalProvider:
         - Lower barrier (stop-loss): -sl_barrier or -ATR * atr_multiplier
         - Vertical barrier (time): H bars elapsed → neutral
 
+        P4-4: ATR multiplier adapts to ticker's volatility percentile —
+        high-volatility tickers get wider barriers (2.0x), low-vol get tighter (1.0x).
+
         Returns binary target: 1 = upper barrier hit, 0 = lower or vertical.
         """
         close = data["close"].astype(float)
@@ -213,8 +224,14 @@ class MLSignalProvider:
         # Compute ATR for dynamic barriers
         if self.use_atr_barriers:
             atr = (high - low).rolling(14).mean()
-            tp = atr * self.atr_multiplier
-            sl = atr * self.atr_multiplier
+            # P4-4: Adaptive multiplier based on ATR percentile
+            atr_pctile = atr.rolling(120, min_periods=60).rank(pct=True)
+            # Low vol (pctile < 0.3) → 1.0x, Mid → 1.5x, High vol (pctile > 0.7) → 2.0x
+            adaptive_mult = atr_pctile.map(
+                lambda p: 1.0 if p < 0.3 else (2.0 if p > 0.7 else 1.5)
+            ).fillna(1.5)
+            tp = atr * adaptive_mult
+            sl = atr * adaptive_mult
         else:
             tp = pd.Series(self.tp_barrier, index=data.index)
             sl = pd.Series(self.sl_barrier, index=data.index)
@@ -250,6 +267,9 @@ class MLSignalProvider:
             "vwap_ratio", "vol_roc_10", "obv_slope", "vol_price_trend",
             # Regime feature (P3-2)
             "trend_regime",
+            # Feature interactions (P4-2)
+            "rsi_x_vol", "momentum_x_regime", "ma_ratio_x_vol_pctile",
+            "rsi_rank_x_regime",
         ]
 
     def train_and_predict(
@@ -297,6 +317,91 @@ class MLSignalProvider:
                 model_available=False,
             )
 
+        # P4-1: Regime-conditional models — train separate models per regime
+        current_regime = int(train_data["trend_regime"].iloc[-1]) if "trend_regime" in train_data.columns else 0
+
+        if self.use_regime_conditional and "trend_regime" in train_data.columns:
+            # Train regime-specific models
+            regime_models = {}
+            val_accuracies = []
+            for regime_label in [0, 1]:
+                regime_data = train_data[train_data["trend_regime"] == regime_label]
+                if len(regime_data) < 50:
+                    continue
+
+                X_reg = regime_data[feature_cols].values
+                y_reg = regime_data["target"].values
+
+                # Walk-forward split within regime data
+                split_idx_r = int(len(X_reg) * 0.8)
+                X_tr_r, X_val_r = X_reg[:split_idx_r], X_reg[split_idx_r:]
+                y_tr_r, y_val_r = y_reg[:split_idx_r], y_reg[split_idx_r:]
+
+                if len(X_tr_r) < 30 or len(X_val_r) < 10:
+                    continue
+
+                model_r = lgb.LGBMClassifier(
+                    n_estimators=self.n_estimators,
+                    max_depth=self.max_depth,
+                    learning_rate=self.learning_rate,
+                    min_data_in_leaf=self.min_data_in_leaf,
+                    reg_alpha=self.reg_alpha,
+                    reg_lambda=self.reg_lambda,
+                    subsample=self.subsample,
+                    colsample_bytree=self.colsample_bytree,
+                    min_gain_to_split=self.min_gain_to_split,
+                    verbose=-1,
+                )
+                model_r.fit(
+                    X_tr_r, y_tr_r,
+                    eval_X=X_val_r, eval_y=y_val_r,
+                    callbacks=[lgb.early_stopping(self.early_stopping_rounds, verbose=False)],
+                )
+                regime_models[regime_label] = model_r
+                val_preds_r = model_r.predict(X_val_r)
+                val_acc_r = float((val_preds_r == y_val_r).mean()) if len(y_val_r) > 0 else 0.5
+                val_accuracies.append(val_acc_r)
+
+            self._regime_models[ticker] = regime_models
+
+            # Predict with the model matching current regime
+            latest = data.loc[:cutoff].iloc[-1:]
+            if latest.empty or latest[feature_cols].isna().any(axis=1).iloc[0]:
+                return MLSignal(
+                    signal=0.0, confidence=0.0,
+                    n_train_samples=len(train_data),
+                    model_available=True,
+                )
+
+            X_pred = latest[feature_cols].values
+            if current_regime in regime_models:
+                proba = regime_models[current_regime].predict_proba(X_pred)[0]
+            elif regime_models:
+                # Fallback to any available regime model
+                proba = list(regime_models.values())[0].predict_proba(X_pred)[0]
+            else:
+                return MLSignal(
+                    signal=0.0, confidence=0.0,
+                    n_train_samples=len(train_data),
+                    model_available=True,
+                )
+
+            signal = float(2 * proba[1] - 1)
+            val_acc = sum(val_accuracies) / len(val_accuracies) if val_accuracies else 0.5
+
+            logger.debug(
+                "ML signal for %s: signal=%.3f, val_acc=%.3f, n_train=%d, regime=%d",
+                ticker, signal, val_acc, len(train_data), current_regime,
+            )
+
+            return MLSignal(
+                signal=signal,
+                confidence=val_acc,
+                n_train_samples=len(train_data),
+                model_available=True,
+            )
+
+        # Fallback: single model (non-regime-conditional)
         X_train = train_data[feature_cols].values
         y_train = train_data["target"].values
 
@@ -319,6 +424,12 @@ class MLSignalProvider:
             X_tr, X_val = X_train[:split_idx], X_train[split_idx:]
             y_tr, y_val = y_train[:split_idx], y_train[split_idx:]
 
+        # P4-5: Exponential sample weighting — recent samples get more weight
+        # Decay factor: 0.995 → half-life ~138 bars (~7 months daily)
+        n_tr = len(X_tr)
+        sample_weights = np.power(0.995, np.arange(n_tr - 1, -1, -1))
+        sample_weights = sample_weights / sample_weights.mean()  # normalize to mean=1
+
         model = lgb.LGBMClassifier(
             n_estimators=self.n_estimators,
             max_depth=self.max_depth,
@@ -334,6 +445,7 @@ class MLSignalProvider:
 
         model.fit(
             X_tr, y_tr,
+            sample_weight=sample_weights,
             eval_X=X_val, eval_y=y_val,
             callbacks=[lgb.early_stopping(self.early_stopping_rounds, verbose=False)],
         )
