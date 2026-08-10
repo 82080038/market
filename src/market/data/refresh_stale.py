@@ -181,14 +181,19 @@ def _refresh_stock_prediction(
     excluded_tickers: list[str],
 ) -> tuple[int, str]:
     """Refresh stale predictions by running batch compute on stale tickers."""
-    excluded_placeholder = ",".join("?" * len(excluded_tickers)) if excluded_tickers else "''"
+    if excluded_tickers:
+        excluded_placeholder = ",".join("?" * len(excluded_tickers))
+        params: list[str] = list(excluded_tickers)
+    else:
+        excluded_placeholder = "''"
+        params = []
     stale = conn.execute(f"""
         SELECT ticker FROM stock_prediction
-        WHERE prediction_updated_at IS NULL
-           OR prediction_updated_at < datetime('now', '-1 day')
+        WHERE (prediction_updated_at IS NULL
+           OR prediction_updated_at < datetime('now', '-1 day'))
         AND ticker NOT IN ({excluded_placeholder})
         LIMIT 50
-    """, excluded_tickers if excluded_tickers else [""]).fetchall()
+    """, params).fetchall()
 
     if not stale:
         return 0, "no stale predictions"
@@ -219,7 +224,12 @@ def _refresh_technical_indicators(
     if not latest_ohlcv:
         return 0, "no OHLCV data"
 
-    excluded_placeholder = ",".join("?" * len(excluded_tickers)) if excluded_tickers else "''"
+    if excluded_tickers:
+        excluded_placeholder = ",".join("?" * len(excluded_tickers))
+        params = [latest_ohlcv, latest_ohlcv] + list(excluded_tickers)
+    else:
+        excluded_placeholder = "''"
+        params = [latest_ohlcv, latest_ohlcv]
     stale_tickers = conn.execute(f"""
         SELECT DISTINCT tiw.ticker
         FROM technical_indicators_wide tiw
@@ -231,7 +241,7 @@ def _refresh_technical_indicators(
         GROUP BY tiw.ticker
         HAVING MAX(tiw.date) < ?
         LIMIT 20
-    """, (latest_ohlcv, latest_ohlcv) + tuple(excluded_tickers if excluded_tickers else [""])).fetchall()
+    """, params).fetchall()
 
     if not stale_tickers:
         return 0, "all technical indicators up to date"

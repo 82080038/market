@@ -1431,6 +1431,15 @@ def main() -> None:
 
     fallback_config = None if args.no_fallback else args.config
 
+    # Pre-signal: refresh stale data (>24h) before computation
+    try:
+        from market.data.refresh_stale import refresh_stale_data
+        stale_report = refresh_stale_data(db_path, dry_run=False)
+        logger.info("Stale data refresh: %d stale rows found, %d refreshed",
+                    stale_report.total_stale, stale_report.total_refreshed)
+    except Exception as e:
+        logger.warning("refresh_stale_data failed (non-fatal): %s", e)
+
     # Run pipeline (Modules 1-3)
     report = run_daily_signal(
         tickers, db_path, args.verdict, fallback_config, capital, args.lookback,
