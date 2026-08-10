@@ -529,8 +529,15 @@ class MetaLabeler:
         use_atr: bool = False,
         prob_threshold: float = DEFAULT_BET_PROB_THRESHOLD,
         min_train_samples: int = DEFAULT_MIN_TRAIN_SAMPLES,
-        n_estimators: int = 200,
-        max_depth: int = 6,
+        n_estimators: int = 300,
+        max_depth: int = 5,
+        learning_rate: float = 0.03,
+        min_data_in_leaf: int = 60,
+        reg_alpha: float = 0.15,
+        reg_lambda: float = 2.0,
+        subsample: float = 0.7,
+        colsample_bytree: float = 0.7,
+        min_gain_to_split: float = 0.01,
         n_splits: int = 5,
         purge_gap: int = DEFAULT_PURGE_GAP,
         embargo: int = DEFAULT_EMBARGO,
@@ -544,6 +551,13 @@ class MetaLabeler:
         self.min_train_samples = min_train_samples
         self.n_estimators = n_estimators
         self.max_depth = max_depth
+        self.learning_rate = learning_rate
+        self.min_data_in_leaf = min_data_in_leaf
+        self.reg_alpha = reg_alpha
+        self.reg_lambda = reg_lambda
+        self.subsample = subsample
+        self.colsample_bytree = colsample_bytree
+        self.min_gain_to_split = min_gain_to_split
         self.n_splits = n_splits
         self.purge_gap = purge_gap
         self.embargo = embargo
@@ -648,10 +662,14 @@ class MetaLabeler:
             fold_model = lgb.LGBMClassifier(
                 n_estimators=self.n_estimators,
                 max_depth=self.max_depth,
-                learning_rate=0.05,
+                learning_rate=self.learning_rate,
+                min_data_in_leaf=self.min_data_in_leaf,
+                reg_alpha=self.reg_alpha,
+                reg_lambda=self.reg_lambda,
+                subsample=self.subsample,
+                colsample_bytree=self.colsample_bytree,
+                min_gain_to_split=self.min_gain_to_split,
                 verbose=-1,
-                subsample=0.8,
-                colsample_bytree=0.8,
             )
             fold_model.fit(X_tr, y_tr)
             preds = fold_model.predict(X_te)
@@ -669,10 +687,14 @@ class MetaLabeler:
         final_model = lgb.LGBMClassifier(
             n_estimators=self.n_estimators,
             max_depth=self.max_depth,
-            learning_rate=0.05,
+            learning_rate=self.learning_rate,
+            min_data_in_leaf=self.min_data_in_leaf,
+            reg_alpha=self.reg_alpha,
+            reg_lambda=self.reg_lambda,
+            subsample=self.subsample,
+            colsample_bytree=self.colsample_bytree,
+            min_gain_to_split=self.min_gain_to_split,
             verbose=-1,
-            subsample=0.8,
-            colsample_bytree=0.8,
         )
         final_model.fit(X, y)
         self._model = final_model

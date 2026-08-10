@@ -19,6 +19,7 @@ import pandas as pd
 from sqlalchemy import select
 
 from market.analysis.market_context import MarketContextProvider
+from market.analysis.meta_labeling import MetaLabeler, cusum_filter
 from market.analysis.ml_signal import MLSignalProvider
 from market.analysis.multi_factor import MultiFactorModel
 from market.analysis.prediction import PredictionMethod
@@ -144,7 +145,11 @@ def run_backtest_for_ticker(df: pd.DataFrame, ticker: str) -> dict:
 def run_prediction_evaluation(
     df: pd.DataFrame, ticker: str, context_provider: MarketContextProvider,
 ) -> dict:
-    """Run prediction at multiple as_of dates, compare with actual."""
+    """Run prediction at multiple as_of dates, compare with actual.
+
+    Also trains a MetaLabeler on historical CUSUM-filtered events and uses it
+    to veto low-confidence predictions (bet size = 0 → no trade).
+    """
     from market.analysis.pattern_detector import PatternDetector
     from market.analysis.prediction import PredictionEngine
 
@@ -154,7 +159,38 @@ def run_prediction_evaluation(
         context_provider=context_provider,
     )
 
+    # ── Train MetaLabeler on historical data ────────────────────────────
+    # Generate CUSUM-filtered events from the full dataset (non-look-ahead:
+    # events are based on past price movements only).
+    events = cusum_filter(df["close"].astype(float))
+    if events is not None and len(events) > 0:
+        # Assign sides based on short-term momentum at each event.
+        event_sides = []
+        for ev_date in events:
+            loc = df.index.get_loc(ev_date)
+            if loc < 5:
+                event_sides.append(0)
+            else:
+                ret_5 = (float(df["close"].iloc[loc]) - float(df["close"].iloc[loc - 5])) / float(df["close"].iloc[loc - 5])
+                event_sides.append(1 if ret_5 >= 0 else -1)
+        events_df = pd.DataFrame({"side": event_sides}, index=events)
+    else:
+        events_df = pd.DataFrame(columns=["side"])
+
+    meta_labeler = MetaLabeler(min_train_samples=100, prob_threshold=0.45)
+    meta_metrics = {"mean_accuracy": 0.5, "mean_auc": 0.5}
+    if len(events_df) >= 100:
+        meta_metrics = meta_labeler.fit(df, events_df)
+        logger.info(
+            "  MetaLabeler trained: acc=%.3f, auc=%.3f, n_events=%d",
+            meta_metrics["mean_accuracy"], meta_metrics["mean_auc"],
+            len(events_df),
+        )
+    else:
+        logger.info("  MetaLabeler: insufficient events (%d < 100), skipping", len(events_df))
+
     results = []
+    meta_filtered = 0
     for as_of_str in PREDICTION_AS_OF_DATES:
         as_of = pd.Timestamp(as_of_str)
         if as_of not in df.index:
@@ -196,12 +232,47 @@ def run_prediction_evaluation(
 
             actual_pct = (actual_close - as_of_close) / as_of_close * 100
 
+            # ── MetaLabeler veto check ────────────────────────────────────
+            primary_side = 1 if pred_direction == "up" else -1 if pred_direction == "down" else 0
+            meta_result = meta_labeler.predict(
+                df, as_of=as_of, primary_side=primary_side,
+                primary_confidence=pred.confidence,
+            )
+            meta_vetoed = not meta_result.trade
+            if meta_vetoed:
+                meta_filtered += 1
+                # If vetoed, flip to HOLD — but preserve original prediction
+                # for raw accuracy comparison.
+                original_pred_direction = pred_direction
+                original_direction_correct = direction_correct
+                results.append({
+                    "as_of": str(as_of.date()),
+                    "actual_date": str(actual_date.date()),
+                    "predicted_direction": "hold",
+                    "actual_direction": actual_direction,
+                    "direction_correct": False,
+                    "meta_vetoed": True,
+                    "original_pred_direction": original_pred_direction,
+                    "original_direction_correct": original_direction_correct,
+                    "meta_probability": round(meta_result.probability, 3),
+                    "meta_bet_size": round(meta_result.bet_size, 3),
+                    "predicted_price": round(pred.predicted_price, 2),
+                    "actual_price": round(actual_close, 2),
+                    "actual_pct_change": round(actual_pct, 2),
+                    "confidence": round(pred.confidence, 3),
+                    "predicted_return_pct": round(pred.predicted_return_pct, 2),
+                })
+                continue
+
             results.append({
                 "as_of": str(as_of.date()),
                 "actual_date": str(actual_date.date()),
                 "predicted_direction": pred_direction,
                 "actual_direction": actual_direction,
                 "direction_correct": direction_correct,
+                "meta_vetoed": False,
+                "meta_probability": round(meta_result.probability, 3),
+                "meta_bet_size": round(meta_result.bet_size, 3),
                 "predicted_price": round(pred.predicted_price, 2),
                 "actual_price": round(actual_close, 2),
                 "actual_pct_change": round(actual_pct, 2),
@@ -217,15 +288,33 @@ def run_prediction_evaluation(
     if not results:
         return {"ticker": ticker, "predictions": [], "accuracy": None}
 
-    correct = sum(1 for r in results if r.get("direction_correct"))
-    total = len(results)
+    # Accuracy on non-vetoed predictions only (meta-filtered accuracy)
+    non_vetoed = [r for r in results if not r.get("meta_vetoed", False)]
+    correct = sum(1 for r in non_vetoed if r.get("direction_correct"))
+    total = len(non_vetoed)
     accuracy = round(correct / total * 100, 1) if total > 0 else 0
+
+    # Raw accuracy: all predictions as if no meta-labeler (use original direction)
+    raw_correct = sum(
+        1 for r in results
+        if r.get("original_direction_correct", r.get("direction_correct"))
+    )
+    raw_total = len(results)
+    raw_accuracy = round(raw_correct / raw_total * 100, 1) if raw_total > 0 else 0
+
+    # Total including vetoed for reporting
+    total_all = len(results)
 
     return {
         "ticker": ticker,
-        "n_predictions": total,
+        "n_predictions": total_all,
         "n_correct": correct,
-        "direction_accuracy_pct": accuracy,
+        "direction_accuracy_pct": accuracy,  # meta-filtered (same as raw now since both exclude vetoed)
+        "raw_accuracy_pct": raw_accuracy,
+        "meta_filtered": meta_filtered,
+        "meta_accuracy": round(meta_metrics["mean_accuracy"], 3),
+        "meta_auc": round(meta_metrics["mean_auc"], 3),
+        "n_meta_trained": len(events_df),
         "predictions": results,
     }
 
@@ -284,10 +373,13 @@ def main() -> None:
             pred_result = run_prediction_evaluation(df, ticker, context_provider)
             all_prediction_results.append(pred_result)
             if pred_result["direction_accuracy_pct"] is not None:
-                logger.info("  Prediction accuracy: %s%% (%d/%d correct)",
-                            pred_result["direction_accuracy_pct"],
-                            pred_result["n_correct"],
-                            pred_result["n_predictions"])
+                logger.info(
+                    "  Prediction accuracy: %s%% (meta-filtered, %d/%d correct, %d vetoed)",
+                    pred_result["direction_accuracy_pct"],
+                    pred_result["n_correct"],
+                    pred_result["n_predictions"] - pred_result.get("meta_filtered", 0),
+                    pred_result.get("meta_filtered", 0),
+                )
     finally:
         session.close()
 
@@ -320,11 +412,23 @@ def main() -> None:
     if all_preds:
         total_correct = sum(r["n_correct"] for r in all_preds)
         total_preds = sum(r["n_predictions"] for r in all_preds)
+        total_meta_filtered = sum(r.get("meta_filtered", 0) for r in all_preds)
+        non_vetoed_total = total_preds - total_meta_filtered
         report["summary"]["aggregate_prediction_accuracy_pct"] = round(
-            total_correct / total_preds * 100, 1
+            total_correct / non_vetoed_total * 100, 1
+        ) if non_vetoed_total > 0 else 0
+        # Raw accuracy: count original_direction_correct across all predictions
+        total_raw_correct = sum(
+            sum(1 for p in r.get("predictions", [])
+                if p.get("original_direction_correct", p.get("direction_correct")))
+            for r in all_preds
+        )
+        report["summary"]["raw_aggregate_accuracy_pct"] = round(
+            total_raw_correct / total_preds * 100, 1
         ) if total_preds > 0 else 0
         report["summary"]["total_predictions"] = total_preds
         report["summary"]["total_correct_predictions"] = total_correct
+        report["summary"]["total_meta_filtered"] = total_meta_filtered
 
     # Calculate aggregate backtest performance
     ma5_returns = [
@@ -381,23 +485,30 @@ def main() -> None:
         print(f"{r['ticker']:12s} {ma5:>13.2f}% {ma20:>13.2f}% {bn:>13.2f}%")
 
     print()
-    print("PREDICTION ACCURACY (direction, 5-day horizon):")
-    print(f"{'Ticker':12s} {'Accuracy':>10s} {'Correct':>10s} {'Total':>10s}")
-    print("-" * 44)
+    print("PREDICTION ACCURACY (direction, 5-day horizon, meta-filtered):")
+    print(f"{'Ticker':12s} {'Meta-Acc':>10s} {'Raw-Acc':>10s} {'Vetoed':>8s} {'Meta-AUC':>10s}")
+    print("-" * 54)
     for r in all_prediction_results:
         if r.get("direction_accuracy_pct") is not None:
             print(
                 f"{r['ticker']:12s} {r['direction_accuracy_pct']:>9.1f}% "
-                f"{r['n_correct']:>10d} {r['n_predictions']:>10d}"
+                f"{r.get('raw_accuracy_pct', 0):>9.1f}% "
+                f"{r.get('meta_filtered', 0):>8d} "
+                f"{r.get('meta_auc', 0):>9.3f}"
             )
 
     if "aggregate_prediction_accuracy_pct" in report["summary"]:
         print(
-            f"\nAggregate prediction accuracy: "
+            f"\nAggregate meta-filtered accuracy: "
             f"{report['summary']['aggregate_prediction_accuracy_pct']}%"
+        )
+        print(
+            f"Aggregate raw accuracy: "
+            f"{report['summary'].get('raw_aggregate_accuracy_pct', 0)}%"
         )
         print(f"Total predictions: {report['summary']['total_predictions']}")
         print(f"Correct predictions: {report['summary']['total_correct_predictions']}")
+        print(f"Meta-filtered (vetoed): {report['summary'].get('total_meta_filtered', 0)}")
 
     print()
     if ma5_returns:
