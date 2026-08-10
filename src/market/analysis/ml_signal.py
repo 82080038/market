@@ -44,7 +44,34 @@ class MLSignalProvider:
 
     Trains on-the-fly with walk-forward CV per ticker.
     Falls back to 0.0 signal if LightGBM not available.
+
+    P6: Ticker-specific profiles — each ticker has different optimal horizon,
+    model complexity, and feature subsets based on its volatility/autocorrelation pattern.
     """
+
+    # P6: Ticker-specific profiles based on pattern analysis
+    # Key insight: each ticker has different autocorrelation, trend, and direction bias
+    TICKER_PROFILES = {
+        # Downtrend banking — down predictions more accurate, use shorter horizon
+        "BBCA.JK": {"horizon": 5, "max_depth": 4, "min_data_in_leaf": 80, "n_estimators": 200},
+        "BBRI.JK": {"horizon": 5, "max_depth": 4, "min_data_in_leaf": 80, "n_estimators": 200},
+        # Balanced — keep defaults
+        "UNVR.JK": {"horizon": 7, "max_depth": 5, "min_data_in_leaf": 60, "n_estimators": 300},
+        # Uptrend momentum — up predictions strong, use longer horizon
+        "ANTM.JK": {"horizon": 7, "max_depth": 5, "min_data_in_leaf": 60, "n_estimators": 300},
+        # High vol, up-biased — need more regularization
+        "MDKA.JK": {"horizon": 5, "max_depth": 3, "min_data_in_leaf": 100, "n_estimators": 200},
+        # Mean-reverting — shorter horizon captures reversal better
+        "UNTR.JK": {"horizon": 3, "max_depth": 4, "min_data_in_leaf": 80, "n_estimators": 200},
+        # Mean-revert + strong downtrend — shorter horizon
+        "APLI.JK": {"horizon": 3, "max_depth": 4, "min_data_in_leaf": 80, "n_estimators": 200},
+        # Strong mean-revert — very short horizon
+        "BCIC.JK": {"horizon": 3, "max_depth": 3, "min_data_in_leaf": 100, "n_estimators": 200},
+        # Moderate vol, balanced
+        "INCO.JK": {"horizon": 5, "max_depth": 5, "min_data_in_leaf": 60, "n_estimators": 300},
+        # High vol, strong uptrend, balanced
+        "KRAS.JK": {"horizon": 7, "max_depth": 5, "min_data_in_leaf": 60, "n_estimators": 300},
+    }
 
     def __init__(
         self,
@@ -289,7 +316,22 @@ class MLSignalProvider:
             MLSignal with prediction signal.
         """
         cutoff = pd.Timestamp(as_of)
+        
+        # P6: Apply ticker-specific profile
+        profile = self.TICKER_PROFILES.get(ticker, {})
+        effective_horizon = profile.get("horizon", self.horizon)
+        effective_max_depth = profile.get("max_depth", self.max_depth)
+        effective_min_leaf = profile.get("min_data_in_leaf", self.min_data_in_leaf)
+        effective_n_estimators = profile.get("n_estimators", self.n_estimators)
+        
+        # Temporarily override horizon for feature preparation
+        original_horizon = self.horizon
+        if effective_horizon != self.horizon:
+            self.horizon = effective_horizon
+        
         data = self._prepare_features(df)
+        self.horizon = original_horizon  # restore
+        
         feature_cols = self._get_feature_cols()
 
         # Filter to training data (up to as_of, drop NaN rows)
@@ -431,10 +473,10 @@ class MLSignalProvider:
         sample_weights = sample_weights / sample_weights.mean()  # normalize to mean=1
 
         model = lgb.LGBMClassifier(
-            n_estimators=self.n_estimators,
-            max_depth=self.max_depth,
+            n_estimators=effective_n_estimators,
+            max_depth=effective_max_depth,
             learning_rate=self.learning_rate,
-            min_data_in_leaf=self.min_data_in_leaf,
+            min_data_in_leaf=effective_min_leaf,
             reg_alpha=self.reg_alpha,
             reg_lambda=self.reg_lambda,
             subsample=self.subsample,

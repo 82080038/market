@@ -837,7 +837,29 @@ class PredictionEngine:
         pattern_signals: list[str],
         market_ctx: MarketContext | None = None,
     ) -> Prediction:
-        """Ensemble prediction: weighted combination of all methods + market context."""
+        """Ensemble prediction: weighted combination of all methods + market context.
+
+        P6: Ticker-specific ensemble weights and direction thresholds.
+        """
+        # P6: Ticker-specific profiles
+        # Mean-reverting tickers: wider threshold, less momentum weight
+        # Trending tickers: tighter threshold, more momentum weight
+        TICKER_ENSEMBLE_PROFILES = {
+            "BBCA.JK": {"weights": {"ma": 0.25, "momentum": 0.20, "pattern": 0.30, "vol_adj": 0.25}, "threshold": 0.15},
+            "BBRI.JK": {"weights": {"ma": 0.25, "momentum": 0.20, "pattern": 0.30, "vol_adj": 0.25}, "threshold": 0.15},
+            "UNVR.JK": {"weights": {"ma": 0.20, "momentum": 0.25, "pattern": 0.30, "vol_adj": 0.25}, "threshold": 0.15},
+            "ANTM.JK": {"weights": {"ma": 0.15, "momentum": 0.35, "pattern": 0.25, "vol_adj": 0.25}, "threshold": 0.12},
+            "MDKA.JK": {"weights": {"ma": 0.20, "momentum": 0.30, "pattern": 0.25, "vol_adj": 0.25}, "threshold": 0.20},
+            "UNTR.JK": {"weights": {"ma": 0.30, "momentum": 0.15, "pattern": 0.30, "vol_adj": 0.25}, "threshold": 0.25},
+            "APLI.JK": {"weights": {"ma": 0.25, "momentum": 0.20, "pattern": 0.30, "vol_adj": 0.25}, "threshold": 0.20},
+            "BCIC.JK": {"weights": {"ma": 0.30, "momentum": 0.15, "pattern": 0.30, "vol_adj": 0.25}, "threshold": 0.25},
+            "INCO.JK": {"weights": {"ma": 0.20, "momentum": 0.25, "pattern": 0.30, "vol_adj": 0.25}, "threshold": 0.15},
+            "KRAS.JK": {"weights": {"ma": 0.20, "momentum": 0.25, "pattern": 0.30, "vol_adj": 0.25}, "threshold": 0.15},
+        }
+        
+        profile = TICKER_ENSEMBLE_PROFILES.get(ticker, {})
+        direction_threshold = profile.get("threshold", 0.15)
+        
         # Generate individual predictions
         pred_ma = self._predict_ma(
             ticker, as_of, price, ma_s, ma_l, indicators, pattern_signals,
@@ -852,13 +874,13 @@ class PredictionEngine:
             ticker, as_of, price, ma_s, ma_l, atr, indicators, pattern_signals,
         )
 
-        # Weights (sum to 1.0)
-        weights = {
+        # Weights (sum to 1.0) — P6: ticker-specific
+        weights = profile.get("weights", {
             "ma": 0.20,
             "momentum": 0.25,
             "pattern": 0.30,
             "vol_adj": 0.25,
-        }
+        })
 
         # Adjust weights based on pattern availability
         if not patterns:
@@ -876,7 +898,7 @@ class PredictionEngine:
         )
 
         ret_pct = (predicted_price - price) / price * 100
-        direction = "up" if ret_pct > 0.5 else "down" if ret_pct < -0.5 else "flat"
+        direction = "up" if ret_pct > direction_threshold else "down" if ret_pct < -direction_threshold else "flat"
 
         # Confidence = weighted average
         confidence = (
@@ -908,8 +930,8 @@ class PredictionEngine:
             predicted_price *= (1.0 + context_adjustment / 100.0)
             ret_pct = (predicted_price - price) / price * 100
 
-            # Re-evaluate direction with context (lower threshold for sensitivity)
-            direction = "up" if ret_pct > 0.15 else "down" if ret_pct < -0.15 else "flat"
+            # Re-evaluate direction with context (P6: ticker-specific threshold)
+            direction = "up" if ret_pct > direction_threshold else "down" if ret_pct < -direction_threshold else "flat"
 
             # Adjust confidence based on context alignment with technical signal
             technical_signal = 1.0 if ret_pct > 0 else -1.0 if ret_pct < 0 else 0.0
