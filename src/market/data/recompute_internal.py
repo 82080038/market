@@ -235,6 +235,36 @@ def recompute_technical_indicators(
                 )
                 count += 1
 
+        # Also write to wide table (one row per ticker+date)
+        wide_cols = {
+            "ma20": "ma20", "ma50": "ma50", "rsi": "rsi",
+            "macd": "macd", "macd_signal": "macd_signal",
+            "adx": "adx", "atr": "atr14",
+            "bb_upper": "bb_upper", "bb_lower": "bb_lower",
+            "vol_ratio": "volume_sma20",
+            "ema50": "ema50", "ema_env_upper": "ema_env_upper",
+            "ema_env_lower": "ema_env_lower",
+            "donchian_upper": "donchian_upper",
+            "donchian_lower": "donchian_lower",
+            "donchian_mid": "donchian_mid",
+        }
+        wide_values = {}
+        for key, col_name in wide_cols.items():
+            val = result.indicators.get(key)
+            if val is not None and not (isinstance(val, float) and np.isnan(val)):
+                wide_values[col_name] = float(val)
+
+        if wide_values:
+            col_names = ", ".join(["ticker", "date", "timeframe"] + list(wide_values.keys()))
+            placeholders = ", ".join(["?"] * (3 + len(wide_values)))
+            session.execute(
+                text(
+                    f"INSERT OR REPLACE INTO technical_indicators_wide ({col_names}) "
+                    f"VALUES ({placeholders})"
+                ),
+                [ticker, today, "1d"] + list(wide_values.values()),
+            )
+
         if count % 1000 == 0:
             session.commit()
             logger.info("technical_indicators: %d rows", count)

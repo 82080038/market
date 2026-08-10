@@ -170,10 +170,31 @@ def save_to_db(
     ml: dict,
     pred: dict,
 ) -> None:
-    """Save ML signals + prediction to stock_personality."""
+    """Save ML signals + prediction to stock_prediction + stock_personality."""
     from datetime import datetime
     now = datetime.now().isoformat()
 
+    # Write to stock_prediction (new split table)
+    conn.execute("""
+        INSERT OR REPLACE INTO stock_prediction
+            (ticker, predicted_direction, predicted_price, predicted_return_pct,
+             prediction_confidence, ml_signal, multifactor_signal,
+             composite_signal, factors_summary, prediction_updated_at)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    """, (
+        ticker,
+        pred["predicted_direction"],
+        pred["predicted_price"],
+        pred["predicted_return_pct"],
+        pred["prediction_confidence"],
+        ml["ml_signal"],
+        ml["multifactor_signal"],
+        ml["composite_signal"],
+        ml["top_factors"],
+        now,
+    ))
+
+    # Also update stock_personality for backward compat
     conn.execute("""
         UPDATE stock_personality SET
             ml_signal = ?,
@@ -247,6 +268,14 @@ def main() -> None:
     # Writable connection
     conn_rw = sqlite3.connect(db_path)
 
+    # ModelRegistry: track model versions for each ticker
+    try:
+        from market.mlops.registry import ModelRegistry, ModelAlias
+        registry = ModelRegistry()
+        use_registry = True
+    except Exception:
+        use_registry = False
+
     t0 = time.time()
     n_ok = 0
     n_err = 0
@@ -274,6 +303,25 @@ def main() -> None:
                     n_pred_ok += 1
 
             save_to_db(conn_rw, ticker, ml, pred)
+
+            # Register model version in registry
+            if use_registry and ml["composite_signal"] != 0.0:
+                from datetime import datetime, UTC
+                registry.register(
+                    model_id=f"{ticker}_ml_v1",
+                    model_type="lightgbm_ml",
+                    version="1.0",
+                    metrics={
+                        "ml_signal": ml["ml_signal"],
+                        "multifactor_signal": ml["multifactor_signal"],
+                        "composite_signal": ml["composite_signal"],
+                    },
+                    trained_at=datetime.now(UTC).isoformat(),
+                    device="cpu",
+                    n_samples=len(ohlcv),
+                    alias=ModelAlias.EXPERIMENT,
+                )
+
             n_ok += 1
 
             if (i + 1) % 50 == 0 or (i + 1) == len(tickers):

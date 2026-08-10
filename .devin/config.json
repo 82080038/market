@@ -12,6 +12,6 @@
     "allow": ["Read(pustaka/**)", "Read(AGENTS.md)"],
     "ask": ["Write(pustaka/**)", "Bash(**)", "Exec(**)"]
   },
-  "subagents_enabled": true,
+  "subagents_enabled": false,
   "notify": "smart"
 }

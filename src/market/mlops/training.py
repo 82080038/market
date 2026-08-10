@@ -24,12 +24,23 @@ logger = logging.getLogger(__name__)
 
 
 def get_device() -> str:
-    """Get best available device, checking cuda:1 first per project rules."""
+    """Get best available device, checking cuda:1 first per project rules.
+
+    Delegates to ``market.compute.device.select_device`` for VRAM-aware
+    dispatch. Falls back to the legacy inline logic if the module is
+    unavailable.
+    """
+    try:
+        from market.compute.device import select_device
+
+        return select_device("lstm_training", data_size=0)
+    except ImportError:
+        pass
+    # Legacy fallback.
     try:
         import torch  # type: ignore[import-not-found]
 
         if torch.cuda.is_available():
-            # Check for cuda:1 first
             if torch.cuda.device_count() > 1:
                 logger.info("GPU available: cuda:1")
                 return "cuda:1"

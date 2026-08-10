@@ -202,3 +202,119 @@ def from_yf_ticker(yf_ticker: str) -> tuple[str, str]:
 
     # No suffix — US market
     return yf_ticker, "XNYS"
+
+
+# ── Ticker rename resolver (BEI ticker change support, efektif Jan 2028) ──
+
+
+def resolve_ticker(
+    ticker: str,
+    conn: object | None = None,
+) -> str:
+    """Resolve a ticker to its current active form.
+
+    If the ticker has been renamed (former_ticker set in instrument_master),
+    return the current ticker. If the input matches a former_ticker,
+    return the current ticker that superseded it.
+
+    Args:
+        ticker: Ticker to resolve (e.g. ``BNLI.JK`` or ``BBPI.JK``).
+        conn: Optional sqlite3.Connection or SQLAlchemy Session.
+            If None, caller must handle DB access separately.
+
+    Returns:
+        Current active ticker (e.g. ``BBPI.JK`` if BNLI→BBPI rename happened).
+
+    Examples:
+        >>> resolve_ticker("BNLI.JK", conn=conn)  # if BNLI renamed to BBPI
+        'BBPI.JK'
+        >>> resolve_ticker("BBCA.JK", conn=conn)   # no rename
+        'BBCA.JK'
+    """
+    if conn is None:
+        return ticker
+
+    import sqlite3 as _sqlite3
+
+    try:
+        if isinstance(conn, _sqlite3.Connection):
+            # Check if ticker exists as current ticker
+            row = conn.execute(
+                "SELECT ticker FROM instrument_master WHERE ticker = ? AND former_ticker IS NOT NULL",
+                (ticker,),
+            ).fetchone()
+            if row:
+                return row[0]  # Already current, has a former_ticker
+
+            # Check if ticker is a former_ticker of another row
+            row = conn.execute(
+                "SELECT ticker FROM instrument_master WHERE former_ticker = ?",
+                (ticker,),
+            ).fetchone()
+            if row:
+                return row[0]  # Return the current ticker
+
+            return ticker
+        else:
+            # SQLAlchemy session
+            from market.db.models import InstrumentMaster
+
+            result = conn.execute(
+                select(InstrumentMaster.ticker).where(
+                    InstrumentMaster.former_ticker == ticker
+                )
+            ).scalar_one_or_none()
+            if result:
+                return result
+            return ticker
+    except Exception:
+        logger.debug("resolve_ticker: could not query DB for %s", ticker)
+        return ticker
+
+
+def resolve_ticker_batch(
+    tickers: list[str],
+    conn: object | None = None,
+) -> dict[str, str]:
+    """Resolve multiple tickers at once.
+
+    Args:
+        tickers: List of tickers to resolve.
+        conn: sqlite3.Connection or SQLAlchemy Session.
+
+    Returns:
+        Dict mapping input ticker → current ticker.
+        Only includes entries where ticker changed.
+    """
+    if conn is None:
+        return {}
+
+    import sqlite3 as _sqlite3
+
+    result: dict[str, str] = {}
+    try:
+        if isinstance(conn, _sqlite3.Connection):
+            # Build former_ticker → current ticker map
+            rows = conn.execute(
+                "SELECT ticker, former_ticker FROM instrument_master WHERE former_ticker IS NOT NULL"
+            ).fetchall()
+            former_map = {r[1]: r[0] for r in rows}
+            for t in tickers:
+                if t in former_map:
+                    result[t] = former_map[t]
+        else:
+            from market.db.models import InstrumentMaster
+
+            rows = conn.execute(
+                select(InstrumentMaster.ticker, InstrumentMaster.former_ticker).where(
+                    InstrumentMaster.former_ticker.isnot(None)
+                )
+            ).fetchall()
+            former_map = {r[1]: r[0] for r in rows}
+            for t in tickers:
+                if t in former_map:
+                    result[t] = former_map[t]
+    except Exception:
+        logger.debug("resolve_ticker_batch: could not query DB")
+
+    return result

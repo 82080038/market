@@ -237,6 +237,7 @@ class TestDailyInverseVarianceWeights:
             returns_dict,
             pd.Timestamp("2024-01-01"),
             pd.Timestamp("2024-12-31"),
+            max_weight=0.50,
         )
         assert len(weights) == 3
         # Check sum ≈ 1 for each date (after lookback)
@@ -256,6 +257,7 @@ class TestDailyInverseVarianceWeights:
             returns_dict,
             pd.Timestamp("2024-01-01"),
             pd.Timestamp("2024-12-31"),
+            max_weight=0.50,
         )
         avg_stable = weights["STABLE"].mean()
         avg_volatile = weights["VOLATILE"].mean()
@@ -281,6 +283,64 @@ class TestDailyInverseVarianceWeights:
         w = weights["A"].dropna()
         assert w.index.min() >= pd.Timestamp("2024-01-01")
         assert w.index.max() <= pd.Timestamp("2024-06-30")
+
+    def test_zero_variance_ticker_filtered_out(self):
+        """Regression: ticker with all-zero returns (AcceptRate=0%) must NOT
+        collapse portfolio weighting. This was the BVIC.JK bug that caused
+        weight=1.0 on a zero-signal ticker."""
+        dates = pd.date_range("2024-01-01", periods=200, freq="B")
+        np.random.seed(42)
+        returns_dict = {
+            "GOOD_A": pd.Series(np.random.randn(200) * 0.01, index=dates),
+            "GOOD_B": pd.Series(np.random.randn(200) * 0.02, index=dates),
+            "ZERO_SIGNAL": pd.Series(0.0, index=dates),
+        }
+        weights = compute_daily_inverse_variance_weights(
+            returns_dict,
+            pd.Timestamp("2024-01-01"),
+            pd.Timestamp("2024-12-31"),
+        )
+        assert "ZERO_SIGNAL" not in weights or weights["ZERO_SIGNAL"].mean() == 0.0
+        good_a_mean = weights["GOOD_A"].dropna().mean()
+        good_b_mean = weights["GOOD_B"].dropna().mean()
+        assert good_a_mean > 0.0
+        assert good_b_mean > 0.0
+
+    def test_all_zero_returns_falls_back_to_equal_weight(self):
+        """If all tickers have zero returns, fallback to equal weighting."""
+        dates = pd.date_range("2024-01-01", periods=100, freq="B")
+        returns_dict = {
+            "A": pd.Series(0.0, index=dates),
+            "B": pd.Series(0.0, index=dates),
+        }
+        weights = compute_daily_inverse_variance_weights(
+            returns_dict,
+            pd.Timestamp("2024-01-01"),
+            pd.Timestamp("2024-12-31"),
+        )
+        assert len(weights) == 2
+        for ticker in weights:
+            w = weights[ticker].dropna()
+            if len(w) > 0:
+                assert abs(w.iloc[0] - 0.5) < 1e-10
+
+    def test_max_weight_cap_enforced(self):
+        """No single ticker should exceed max_weight when enough tickers exist."""
+        dates = pd.date_range("2024-01-01", periods=200, freq="B")
+        np.random.seed(42)
+        returns_dict = {
+            f"T{i}": pd.Series(np.random.randn(200) * (0.001 * (i + 1)), index=dates)
+            for i in range(6)
+        }
+        weights = compute_daily_inverse_variance_weights(
+            returns_dict,
+            pd.Timestamp("2024-01-01"),
+            pd.Timestamp("2024-12-31"),
+            max_weight=0.20,
+        )
+        df_w = pd.DataFrame(weights)
+        max_w = df_w.max().max()
+        assert max_w <= 0.20 + 1e-6
 
 
 class TestWeightedPortfolioReturns:

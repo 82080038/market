@@ -138,17 +138,59 @@ def load_ticker_strategies_from_db(
     return {r[0]: r[1] for r in rows}
 
 
+def check_stale_ticker_references(conn: sqlite3.Connection) -> list[str]:
+    """Check for tickers that have been renamed but still have data under old code.
+
+    Returns list of stale old tickers found in ohlcv but not in instrument_master.
+    These indicate an incomplete ticker migration (run scripts/migrate_ticker.py).
+    """
+    # Get all tickers with former_ticker set (renamed tickers)
+    renamed = conn.execute(
+        "SELECT ticker, former_ticker FROM instrument_master WHERE former_ticker IS NOT NULL"
+    ).fetchall()
+
+    stale: list[str] = []
+    for current, former in renamed:
+        if not former:
+            continue
+        # Check if old ticker still has OHLCV data
+        count = conn.execute(
+            "SELECT COUNT(*) FROM ohlcv WHERE ticker = ?", (former,)
+        ).fetchone()[0]
+        if count > 0:
+            stale.append(former)
+
+    if stale:
+        logger.warning(
+            "  STALE TICKER WARNING: %d ticker(s) have data under old code — "
+            "run scripts/migrate_ticker.py to fix:",
+            len(stale),
+        )
+        for t in stale:
+            logger.warning("    %s", t)
+
+    return stale
+
+
 def load_tickers_from_db(
     conn: sqlite3.Connection,
     limit: int = 0,
 ) -> list[str]:
     """Load ticker list from stock_personality (best_pattern IS NOT NULL).
 
+    Filters by trading_status = 'active' in instrument_master:
+    - Excludes delisted, suspended (BEI), illiquid, and index tickers
+    - trading_status is persisted in DB (updated from BEI announcements + yfinance verification)
+
     Falls back to DEFAULT_FOCUS_TICKERS if table empty.
     """
     sql = (
-        "SELECT ticker FROM stock_personality "
-        "WHERE best_pattern IS NOT NULL ORDER BY ticker"
+        "SELECT sp.ticker FROM stock_personality sp "
+        "JOIN instrument_master im ON sp.ticker = im.ticker "
+        "WHERE sp.best_pattern IS NOT NULL "
+        "AND im.trading_status = 'active' "
+        "AND sp.ticker LIKE '%.JK' "
+        "ORDER BY sp.ticker"
     )
     if limit > 0:
         sql += f" LIMIT {limit}"
@@ -156,7 +198,7 @@ def load_tickers_from_db(
     tickers = [r[0] for r in rows]
     if not tickers:
         logger.warning(
-            "  stock_personality kosong — fallback ke DEFAULT_FOCUS_TICKERS (%d)",
+            "  stock_personality kosong/filtered — fallback ke DEFAULT_FOCUS_TICKERS (%d)",
             len(DEFAULT_FOCUS_TICKERS),
         )
         return DEFAULT_FOCUS_TICKERS
@@ -374,6 +416,38 @@ def extract_ticker_params(
     return result
 
 
+def ensure_ticker_params_coverage(
+    ticker_params: dict[str, dict[str, Any]],
+    all_tickers: list[str],
+    db_strategies: dict[str, str] | None = None,
+) -> dict[str, dict[str, Any]]:
+    """Pastikan semua ticker dari stock_personality punya params.
+
+    Ticker yang tidak ada di verdict/fallback diberi params default
+    dengan strategi dari stock_personality (atau donchian fallback).
+    Ini mencegah SKIP pada ticker yang sudah di-update oleh weekly HRP
+    cron tetapi belum masuk verdict JSON.
+    """
+    STRATEGY_MAP = {
+        "donchian": "donchian",
+        "ema_envelope": "ema_env",
+        "rsi_meanrev": "donchian",
+    }
+    for ticker in all_tickers:
+        if ticker not in ticker_params:
+            db_strat = (db_strategies or {}).get(ticker, "donchian")
+            ticker_params[ticker] = {
+                "adapt_kappa": 0.15,
+                "baseline_mode": STRATEGY_MAP.get(db_strat, "donchian"),
+                "best_params": {},
+                "baseline_params": {},
+                "portfolio_weight": 0.0,
+                "gk_volatility": 0.0,
+                "sector": "Unknown",
+            }
+    return ticker_params
+
+
 # ═══════════════════════════════════════════════════════════════════════════
 # MODULE 2 — LATEST EOD DATA INGESTION
 # ═══════════════════════════════════════════════════════════════════════════
@@ -444,23 +518,62 @@ def load_recent_tech(
     lookback_days: int = DEFAULT_LOOKBACK_DAYS,
     indicators: list[str] | None = None,
 ) -> pd.DataFrame:
-    """Muat technical_indicators untuk lookback_days hari bursa terakhir.
+    """Muat technical indicators untuk lookback_days hari bursa terakhir.
 
-    Pivot long-format → wide DataFrame, konsisten dengan
-    load_technical_features_sqlite tapi dengan LIMIT untuk efisiensi cron.
+    Reads from technical_indicators_wide (wide format) with fallback to
+    technical_indicators (EAV) for backward compatibility.
     """
     from portfolio_data_remediation import REGIME_INVARIANT_INDICATORS
     if indicators is None:
         indicators = REGIME_INVARIANT_INDICATORS
 
-    # Ambil max date untuk ticker ini, lalu hitung cutoff date di Python
-    # (SQLite tidak mendukung syntax "? days")
+    # Map EAV indicator names to wide table column names (lowercase)
+    wide_col_map = {
+        "MA20": "ma20", "MA50": "ma50", "RSI": "rsi",
+        "MACD": "macd", "MACD_SIGNAL": "macd_signal",
+        "ADX": "adx", "ATR14": "atr14",
+        "BB_UPPER": "bb_upper", "BB_LOWER": "bb_lower",
+        "VOLUME_SMA20": "volume_sma20",
+        "EMA50": "ema50", "EMA_ENV_UPPER": "ema_env_upper",
+        "EMA_ENV_LOWER": "ema_env_lower",
+        "DONCHIAN_UPPER": "donchian_upper",
+        "DONCHIAN_LOWER": "donchian_lower",
+        "DONCHIAN_MID": "donchian_mid",
+    }
+
+    # Try wide table first
+    wide_cols = [wide_col_map.get(ind, ind.lower()) for ind in indicators]
+    col_select = ", ".join(wide_cols)
+
+    row = conn.execute(
+        "SELECT MAX(date) FROM technical_indicators_wide WHERE ticker = ?",
+        (ticker,),
+    ).fetchone()
+    if row and row[0]:
+        max_date = pd.Timestamp(row[0])
+        cutoff_date = (max_date - pd.Timedelta(days=lookback_days)).strftime("%Y-%m-%d")
+        sql = (
+            f"SELECT date, {col_select} FROM technical_indicators_wide "
+            f"WHERE ticker = ? AND date >= ? "
+            f"ORDER BY date"
+        )
+        df = pd.read_sql_query(sql, conn, params=(ticker, cutoff_date), parse_dates=["date"])
+        if not df.empty:
+            # Rename columns to match EAV indicator names
+            rename_map = {wc: ind for ind, wc in zip(indicators, wide_cols)}
+            df = df.rename(columns=rename_map)
+            df = df.set_index("date")
+            df.index = pd.DatetimeIndex(df.index)
+            return df
+
+    # Fallback: EAV table
     row = conn.execute(
         "SELECT MAX(date) FROM technical_indicators WHERE ticker = ?",
         (ticker,),
     ).fetchone()
     if not row or not row[0]:
         return pd.DataFrame()
+
     max_date = pd.Timestamp(row[0])
     cutoff_date = (max_date - pd.Timedelta(days=lookback_days)).strftime("%Y-%m-%d")
 
@@ -584,6 +697,28 @@ def compute_prediction_for_ticker(
             except Exception as e:
                 logger.debug("MarketContext failed for %s: %s", ticker, e)
 
+        # SignalEnhancer: enhance base prediction with 5 non-trend signals
+        try:
+            from market.analysis.signal_enhancer import SignalEnhancer
+            enhancer = SignalEnhancer()
+            enhancement = enhancer.enhance(pred, ohlcv, ticker, as_of)
+            if enhancement.bet_size < 0.1:
+                logger.debug("SignalEnhancer: meta-labeler vetoed %s (bet_size=%.2f)",
+                             ticker, enhancement.bet_size)
+                result["prediction_confidence"] = 0.0
+                result["predicted_direction"] = "flat"
+            else:
+                result["prediction_confidence"] = min(
+                    1.0, pred.confidence * enhancement.bet_size
+                )
+            result["enhancement_signals"] = [
+                {"source": s.source, "signal": round(s.signal, 4),
+                 "available": s.available, "rationale": s.rationale}
+                for s in enhancement.signals if s.available
+            ]
+        except Exception as e:
+            logger.debug("SignalEnhancer failed for %s: %s", ticker, e)
+
     except Exception as e:
         logger.debug("PredictionEngine failed for %s: %s", ticker, e)
 
@@ -595,11 +730,32 @@ def save_prediction_to_db(
     ticker: str,
     pred: dict[str, Any],
 ) -> None:
-    """Save prediction results to stock_personality table."""
+    """Save prediction results to stock_prediction table (with stock_personality fallback)."""
     from datetime import datetime
     now = datetime.now().isoformat()
     factors_json = json.dumps(pred.get("factors_summary", {})) if pred.get("factors_summary") else None
 
+    # Write to stock_prediction (new split table)
+    conn.execute("""
+        INSERT OR REPLACE INTO stock_prediction
+            (ticker, predicted_direction, predicted_price, predicted_return_pct,
+             prediction_confidence, ml_signal, multifactor_signal,
+             composite_signal, factors_summary, prediction_updated_at)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    """, (
+        ticker,
+        pred.get("predicted_direction", ""),
+        pred.get("predicted_price", 0.0),
+        pred.get("predicted_return_pct", 0.0),
+        pred.get("prediction_confidence", 0.0),
+        pred.get("ml_signal", None),
+        pred.get("multifactor_signal", None),
+        pred.get("composite_signal", 0.0),
+        factors_json,
+        now,
+    ))
+
+    # Also update stock_personality for backward compat
     conn.execute("""
         UPDATE stock_personality SET
             predicted_direction = ?,
@@ -852,6 +1008,10 @@ def run_daily_signal(
         # Load per-ticker strategy from stock_personality (updated by weekly HRP cron)
         db_strategies = load_ticker_strategies_from_db(conn)
         logger.info("  Loaded %d ticker strategies from stock_personality", len(db_strategies))
+
+        # Ensure all tickers from stock_personality have params (even if not in verdict)
+        ticker_params = ensure_ticker_params_coverage(ticker_params, tickers, db_strategies)
+        logger.info("  Ticker params after coverage check: %d", len(ticker_params))
 
         # Override baseline_mode with DB strategy if available
         # Map new HRP strategy names to old alpha_rescue_pipeline names
@@ -1263,6 +1423,8 @@ def main() -> None:
         conn = sqlite3.connect(db_path)
         try:
             tickers = load_tickers_from_db(conn)
+            # Check for stale ticker references (incomplete migrations)
+            check_stale_ticker_references(conn)
         finally:
             conn.close()
         logger.info("Loaded %d tickers from stock_personality (DB-driven)", len(tickers))

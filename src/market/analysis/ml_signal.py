@@ -197,10 +197,24 @@ class MLSignalProvider:
         X_train = train_data[feature_cols].values
         y_train = train_data["target"].values
 
-        # Walk-forward: use last 80% as train, first 20% as validation
-        split_idx = int(len(X_train) * 0.8)
-        X_tr, X_val = X_train[:split_idx], X_train[split_idx:]
-        y_tr, y_val = y_train[:split_idx], y_train[split_idx:]
+        # Walk-forward CV: use mlops.cross_validation for consistent splitting
+        from market.mlops.cross_validation import walk_forward_splits
+        splits = walk_forward_splits(
+            n_samples=len(X_train),
+            train_size=int(len(X_train) * 0.8),
+            test_size=len(X_train) - int(len(X_train) * 0.8),
+        )
+        if splits:
+            split = splits[0]  # First (and only) split: 80/20
+            X_tr = X_train[split.train_start:split.train_end]
+            y_tr = y_train[split.train_start:split.train_end]
+            X_val = X_train[split.test_start:split.test_end]
+            y_val = y_train[split.test_start:split.test_end]
+        else:
+            # Fallback to simple split
+            split_idx = int(len(X_train) * 0.8)
+            X_tr, X_val = X_train[:split_idx], X_train[split_idx:]
+            y_tr, y_val = y_train[:split_idx], y_train[split_idx:]
 
         model = lgb.LGBMClassifier(
             n_estimators=self.n_estimators,

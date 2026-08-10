@@ -688,3 +688,46 @@ Pipeline orkestrasi produksi dijalankan pada real DB (9.23 GB) dengan 20 ticker 
 
 **Rencana lanjutan:** Lihat `RENCANA-LANJUTAN-PRODUCTION-PIPELINE.md` untuk detail fix weighting, re-run pipeline, dan evaluasi model quality.
 
+### Strategi Alternatif & Ekspansi Data (10 Agustus 2026)
+
+Setelah autonomous trading sim V1-V4 menunjukkan prediction accuracy 40-43% (di bawah random 50%) di bear market choppy, dilakukan analisis mendalam 7 area pengembangan. Lihat `pustaka/97-strategi-alternatif-ekspansi-data-2026.md` untuk dokumentasi lengkap (17 sumber riset 2025-2026).
+
+**Akar masalah:** Ensemble prediction engine (`prediction.py:825-956`) menggunakan 4 metode yang semuanya trend-following (MA, momentum, pattern, vol-adj). Di bear market choppy dengan sharp bounces, semua metode salah arah.
+
+**7 modul baru dibuat:**
+
+| Modul | Lokasi | Test | Status | Untuk Poin |
+|-------|--------|------|--------|------------|
+| Meta-labeling | `src/market/analysis/meta_labeling.py` | 59 pass | Selesai | 5 (fix accuracy) |
+| Pairs trading | `src/market/analysis/pairs_trading.py` | In progress | Selesai | 1 (market-neutral) |
+| Volume features | `src/market/analysis/volume_features.py` | In progress | Selesai | 2 (OFI, VWAP, foreign flow) |
+| Policy event scorer | `src/market/analysis/policy_event_scorer.py` | 16 pass | Selesai | 3 (BI/BEI/corporate) |
+| Macro data fetcher | `src/market/data/macro_data_fetcher.py` | In progress | Selesai | 4 (BPS/BI/NOAA/WorldBank) |
+| Sector rotation | `src/market/analysis/sector_rotation.py` | 21 pass | Selesai | 1 (sector momentum) |
+| Compute device | `src/market/compute/device.py` | 30 pass | Selesai | 7 (dynamic GPU/CPU) |
+
+**Prioritas implementasi:**
+1. **Meta-labeling (TERTINGGI)** — fix accuracy 40-43% → target 55%+ via Lopez de Prado secondary ML model
+2. **Pairs trading** — strategi market-neutral yang tahan bear market (statarb cointegration)
+3. **Volume features** — foreign flow 1.25M rows + OFI proxy + VWAP (belum terhubung ke prediction)
+4. **Policy event scorer** — consume policy_events 179 rows + external_events 119 rows + corporate_actions 6,367 rows
+5. **Macro data fetcher** — BPS API + BI SEKI + NOAA + World Bank + commodity futures (dynamic rate limiter)
+6. **Sector rotation** — agregasi skor per sektor + momentum + rotation signal
+7. **Compute device** — dynamic dispatch GPU/CPU berdasarkan workload type + VRAM check
+
+**Data expansion roadmap (gratis, rate-limited):**
+- BPS API (`webapi.bps.go.id`) — GDP, CPI, trade balance, IP
+- BI SEKI — moneter, fiskal, real sector, eksternal
+- NOAA ONI — El Nino/La Nina climate index
+- World Bank API — GDP per negara, trade
+- Commodity futures yfinance — CPO, coal, nickel, copper, tin
+
+**Defer:** Satellite imagery (Sentinel-2 pipeline) — butuh infrastruktur ML berat, defer sampai base system stabil.
+
+**Strategi baru untuk backtest:**
+1. Pairs trading (statarb) — market-neutral, tahan bear market
+2. Meta-labeled ensemble — filter prediksi buruk, boost precision
+3. Regime-switching portfolio (HMM + dynamic allocation)
+4. Foreign flow momentum — foreign net buy 5-day = entry signal
+5. Triple-barrier labeled LightGBM — regime-aware, mean-reversion di bear
+

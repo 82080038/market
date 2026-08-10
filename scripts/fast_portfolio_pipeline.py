@@ -63,21 +63,34 @@ def load_ohlcv_from_db(conn: sqlite3.Connection, ticker: str) -> pd.DataFrame:
     return df
 
 
+# Minimum average daily volume (lembar) — pustaka/13 §13.1 No-Trade liquidity gate
+# pustaka/89 §11.2: ADV < 100 lot (10,000 lembar) = illiquid
+# pustaka/14 §11.1: Volume harian < 1 juta lembar = low liquidity (gorengan component)
+# Gunakan 100K lembar sebagai threshold minimum (no-trade gate)
+MIN_AVG_VOLUME = 100_000
+
+
 def get_all_tickers(conn: sqlite3.Connection, limit: int = 0) -> list[str]:
     """Get tickers with sufficient data (>MIN_BARS bars, active in 2026).
+
     Only .JK tickers (exclude indices like ^GSPC, ^JKSE, FX pairs, etc.).
-    Excludes delisted/inactive tickers via instrument_master."""
+    Filters by trading_status = 'active' in instrument_master:
+    - Excludes delisted, suspended (BEI), illiquid, and index tickers
+    - trading_status is persisted in DB (updated from BEI announcements + yfinance verification)
+    """
     df = pd.read_sql_query(
-        "SELECT o.ticker, COUNT(*) as n_bars, MAX(o.timestamp) as last_date "
+        "SELECT o.ticker, COUNT(*) as n_bars, MAX(o.timestamp) as last_date, "
+        "  AVG(CASE WHEN o.timestamp >= date('now', '-60 days') THEN o.volume END) as avg_vol_60d "
         "FROM ohlcv o "
         "JOIN instrument_master im ON o.ticker = im.ticker "
         "WHERE o.timeframe = '1d' "
         "AND o.ticker LIKE '%.JK' "
-        "AND im.is_active = 1 "
-        "AND im.delisting_date IS NULL "
-        "GROUP BY o.ticker HAVING n_bars > ? AND last_date >= '2026-01-01' "
+        "AND im.trading_status = 'active' "
+        "GROUP BY o.ticker "
+        "HAVING n_bars > ? AND last_date >= '2026-01-01' "
+        "AND avg_vol_60d >= ? "
         "ORDER BY n_bars DESC",
-        conn, params=(MIN_BARS,),
+        conn, params=(MIN_BARS, MIN_AVG_VOLUME),
     )
     tickers = df["ticker"].tolist()
     if limit > 0:
@@ -460,12 +473,20 @@ def save_ticker_profiles_to_db(
             ))
             n_updated += 1
 
+        # Also write to stock_prediction (split table)
+        c.execute("""
+            INSERT OR REPLACE INTO stock_prediction
+                (ticker, ml_signal, multifactor_signal, composite_signal,
+                 factors_summary, prediction_updated_at)
+            VALUES (?, ?, ?, ?, ?, ?)
+        """, (ticker, ml_sig, mf_sig, comp_sig, factors_json, now))
+
     conn.commit()
     return n_updated
 
 
 def compute_score_card(sharpe: float, alpha: float, max_dd: float, n_tickers: int) -> dict:
-    """Compute score card (0-5 scale, KEEP threshold 3.5)."""
+    """Compute score card (0-5 scale) + EvalGate promotion check."""
     # Sharpe score (0-1.5): Sharpe > 1 = 1.5, > 0.5 = 1.0, > 0 = 0.5, else 0
     sharpe_score = 1.5 if sharpe > 1.0 else 1.0 if sharpe > 0.5 else 0.5 if sharpe > 0 else 0.0
     # Alpha score (0-1.5): alpha > 0.05 = 1.5, > 0.02 = 1.0, > 0 = 0.5, else 0
@@ -476,7 +497,30 @@ def compute_score_card(sharpe: float, alpha: float, max_dd: float, n_tickers: in
     div_score = 1.0 if n_tickers > 50 else 0.7 if n_tickers > 20 else 0.5 if n_tickers > 10 else 0.3
 
     total = sharpe_score + alpha_score + dd_score + div_score
-    verdict = "KEEP" if total >= KEEP_SCORE_TARGET and alpha > 0 else "MARGINAL"
+
+    # Use EvalGate for promotion verdict (replaces hardcoded Score >= 3.5)
+    try:
+        from market.mlops.promotion import EvalCriteria, EvalGate
+        from market.mlops.registry import ModelRegistry
+        registry = ModelRegistry()
+        gate = EvalGate(registry, EvalCriteria(
+            min_sharpe=0.0,
+            max_drawdown=-0.6,
+            min_win_rate=0.0,
+            min_samples=50,
+        ))
+        eval_result = gate.evaluate(
+            model_id="portfolio_v1",
+            metrics={
+                "sharpe": sharpe,
+                "max_drawdown": max_dd,
+                "win_rate": 0.5 + sharpe * 0.05,
+                "n_samples": n_tickers,
+            },
+        )
+        verdict = "KEEP" if eval_result.passed and alpha > 0 and total >= KEEP_SCORE_TARGET else "MARGINAL"
+    except Exception:
+        verdict = "KEEP" if total >= KEEP_SCORE_TARGET and alpha > 0 else "MARGINAL"
 
     return {
         "sharpe_score": sharpe_score,

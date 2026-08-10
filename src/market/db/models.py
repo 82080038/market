@@ -446,6 +446,62 @@ class StockPersonality(Base):
     updated_at: Mapped[datetime] = mapped_column(DateTime, default=_utcnow, onupdate=_utcnow)
 
 
+class TechnicalIndicatorWide(Base):
+    """Wide-format technical indicators (pivot of TechnicalIndicator EAV).
+
+    One row per ticker+date with all indicators as columns.
+    Reduces 30M EAV rows to ~2.9M wide rows (10x storage savings).
+    """
+
+    __tablename__ = "technical_indicators_wide"
+    __table_args__ = (
+        UniqueConstraint("ticker", "date", "timeframe", name="uq_tiw_pk"),
+    )
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    ticker: Mapped[str] = mapped_column(String(30), nullable=False, index=True)
+    date: Mapped[date] = mapped_column(Date, nullable=False, index=True)
+    timeframe: Mapped[str] = mapped_column(String(10), default="1d")
+    ma20: Mapped[float | None] = mapped_column(Numeric(20, 6), nullable=True)
+    ma50: Mapped[float | None] = mapped_column(Numeric(20, 6), nullable=True)
+    rsi: Mapped[float | None] = mapped_column(Numeric(20, 6), nullable=True)
+    macd: Mapped[float | None] = mapped_column(Numeric(20, 6), nullable=True)
+    macd_signal: Mapped[float | None] = mapped_column(Numeric(20, 6), nullable=True)
+    adx: Mapped[float | None] = mapped_column(Numeric(20, 6), nullable=True)
+    atr14: Mapped[float | None] = mapped_column(Numeric(20, 6), nullable=True)
+    bb_upper: Mapped[float | None] = mapped_column(Numeric(20, 6), nullable=True)
+    bb_lower: Mapped[float | None] = mapped_column(Numeric(20, 6), nullable=True)
+    volume_sma20: Mapped[float | None] = mapped_column(Numeric(20, 6), nullable=True)
+    ema50: Mapped[float | None] = mapped_column(Numeric(20, 6), nullable=True)
+    ema_env_upper: Mapped[float | None] = mapped_column(Numeric(20, 6), nullable=True)
+    ema_env_lower: Mapped[float | None] = mapped_column(Numeric(20, 6), nullable=True)
+    donchian_upper: Mapped[float | None] = mapped_column(Numeric(20, 6), nullable=True)
+    donchian_lower: Mapped[float | None] = mapped_column(Numeric(20, 6), nullable=True)
+    donchian_mid: Mapped[float | None] = mapped_column(Numeric(20, 6), nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=_utcnow)
+
+
+class StockPrediction(Base):
+    """Daily prediction snapshot, split from stock_personality.
+
+    Updated daily by batch_compute_predictions.py and daily_signal_cron.py.
+    Separated from stock_personality (weekly profile) to reduce write amplification.
+    """
+
+    __tablename__ = "stock_prediction"
+
+    ticker: Mapped[str] = mapped_column(String(30), primary_key=True)
+    predicted_direction: Mapped[str | None] = mapped_column(String(10), nullable=True)
+    predicted_price: Mapped[float | None] = mapped_column(Numeric(15, 2), nullable=True)
+    predicted_return_pct: Mapped[float | None] = mapped_column(Numeric(8, 4), nullable=True)
+    prediction_confidence: Mapped[float | None] = mapped_column(Numeric(5, 3), nullable=True)
+    ml_signal: Mapped[float | None] = mapped_column(Numeric(6, 4), nullable=True)
+    multifactor_signal: Mapped[float | None] = mapped_column(Numeric(6, 4), nullable=True)
+    composite_signal: Mapped[float | None] = mapped_column(Numeric(6, 4), nullable=True)
+    factors_summary: Mapped[str | None] = mapped_column(Text, nullable=True)
+    prediction_updated_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+
+
 class SectorMaster(Base):
     """Sector master (pustaka/18 §13 D24)."""
 

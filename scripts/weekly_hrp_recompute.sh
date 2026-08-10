@@ -17,9 +17,11 @@ echo "========================================" | tee -a "${LOG_FILE}"
 echo "Weekly HRP Recompute — $(date)" | tee -a "${LOG_FILE}"
 echo "========================================" | tee -a "${LOG_FILE}"
 
-# Run fast_portfolio_pipeline with all tickers
+# Run fast_portfolio_pipeline with top 100 tickers by data volume
+# (917 eligible tickers would work but 100 is sufficient for HRP diversification
+# and completes in ~65 seconds vs ~10 minutes for all)
 DB_PATH="${DB_PATH}" "${PYTHON}" "${PROJECT_DIR}/scripts/fast_portfolio_pipeline.py" \
-    --limit 0 \
+    --limit 100 \
     2>&1 | tee -a "${LOG_FILE}"
 
 EXIT_CODE=${PIPESTATUS[0]}

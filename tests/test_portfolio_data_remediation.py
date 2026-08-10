@@ -35,6 +35,10 @@ from portfolio_data_remediation import (  # noqa: E402
     build_regime_invariant_features,
     feature_completeness,
 )
+from portfolio_cluster_tuner import (  # noqa: E402
+    compute_inverse_variance_weights,
+    ensemble_portfolio_returns,
+)
 from alpha_rescue_pipeline import ReformConfig  # noqa: E402
 
 
@@ -312,3 +316,89 @@ class TestConstants:
 
     def test_keep_score_target(self):
         assert KEEP_SCORE_TARGET == 3.5
+
+
+# ── Module D Tests: Inverse-Variance Weighting ──────────────────────────────
+
+
+class TestInverseVarianceWeights:
+    """Regression tests for compute_inverse_variance_weights.
+
+    Covers the BVIC.JK bug: ticker with AcceptRate=0% and zero variance
+    received weight=1.0, collapsing the entire portfolio.
+    """
+
+    def test_zero_variance_ticker_gets_zero_weight(self):
+        """Ticker with all-zero returns must get weight=0, not weight=1.0."""
+        dates = pd.date_range("2024-01-01", periods=200, freq="B")
+        np.random.seed(42)
+        returns_dict = {
+            "GOOD_A": pd.Series(np.random.randn(200) * 0.01, index=dates),
+            "GOOD_B": pd.Series(np.random.randn(200) * 0.02, index=dates),
+            "ZERO_SIGNAL": pd.Series(0.0, index=dates),
+        }
+        weights = compute_inverse_variance_weights(returns_dict)
+        assert weights["ZERO_SIGNAL"] == 0.0
+        assert weights["GOOD_A"] > 0.0
+        assert weights["GOOD_B"] > 0.0
+
+    def test_weights_sum_to_one(self):
+        """Weights should sum to 1.0 (excluding filtered tickers)."""
+        dates = pd.date_range("2024-01-01", periods=100, freq="B")
+        np.random.seed(42)
+        returns_dict = {
+            "A": pd.Series(np.random.randn(100) * 0.01, index=dates),
+            "B": pd.Series(np.random.randn(100) * 0.03, index=dates),
+            "C": pd.Series(np.random.randn(100) * 0.005, index=dates),
+        }
+        weights = compute_inverse_variance_weights(returns_dict, max_weight=0.50)
+        assert abs(sum(weights.values()) - 1.0) < 1e-6
+
+    def test_max_weight_cap_enforced(self):
+        """No ticker should exceed max_weight when enough tickers exist."""
+        dates = pd.date_range("2024-01-01", periods=200, freq="B")
+        np.random.seed(42)
+        returns_dict = {
+            f"T{i}": pd.Series(np.random.randn(200) * (0.001 * (i + 1)), index=dates)
+            for i in range(6)
+        }
+        weights = compute_inverse_variance_weights(returns_dict, max_weight=0.20)
+        for t, w in weights.items():
+            assert w <= 0.20 + 1e-6, f"{t} weight {w} exceeds cap 0.20"
+
+    def test_all_zero_returns_falls_back_to_equal_weight(self):
+        """If all tickers have zero returns, fallback to equal weighting."""
+        dates = pd.date_range("2024-01-01", periods=100, freq="B")
+        returns_dict = {
+            "A": pd.Series(0.0, index=dates),
+            "B": pd.Series(0.0, index=dates),
+            "C": pd.Series(0.0, index=dates),
+        }
+        weights = compute_inverse_variance_weights(returns_dict)
+        assert abs(weights["A"] - 1.0 / 3) < 1e-10
+        assert abs(weights["B"] - 1.0 / 3) < 1e-10
+        assert abs(weights["C"] - 1.0 / 3) < 1e-10
+
+    def test_empty_returns_empty(self):
+        weights = compute_inverse_variance_weights({})
+        assert weights == {}
+
+    def test_single_ticker_falls_back_to_equal_weight(self):
+        """Single ticker with valid returns should still get a weight."""
+        dates = pd.date_range("2024-01-01", periods=100, freq="B")
+        returns_dict = {
+            "ONLY": pd.Series(np.random.randn(100) * 0.01, index=dates),
+        }
+        weights = compute_inverse_variance_weights(returns_dict)
+        assert weights["ONLY"] == 1.0
+
+    def test_volatile_ticker_gets_smaller_weight(self):
+        """Volatile ticker should get smaller weight than stable ticker."""
+        dates = pd.date_range("2024-01-01", periods=200, freq="B")
+        np.random.seed(42)
+        returns_dict = {
+            "STABLE": pd.Series(np.random.randn(200) * 0.005, index=dates),
+            "VOLATILE": pd.Series(np.random.randn(200) * 0.05, index=dates),
+        }
+        weights = compute_inverse_variance_weights(returns_dict, max_weight=0.50)
+        assert weights["STABLE"] > weights["VOLATILE"]

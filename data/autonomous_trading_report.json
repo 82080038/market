@@ -1,0 +1,6064 @@
+{
+  "metadata": {
+    "timestamp": "2026-08-10T07:51:55.847139",
+    "capital": 10000000.0,
+    "period": "2025-01-01 to 2026-08-07",
+    "tickers": [
+      "BBCA.JK",
+      "BBRI.JK",
+      "BMRI.JK",
+      "TLKM.JK",
+      "ASII.JK",
+      "UNTR.JK",
+      "ANTM.JK",
+      "MDKA.JK",
+      "ICBP.JK",
+      "ADRO.JK"
+    ],
+    "rebalance_freq": 5,
+    "max_positions": 5
+  },
+  "strategy_selection": {
+    "BBCA.JK": "rsi_meanrev",
+    "BBRI.JK": "rsi_meanrev",
+    "BMRI.JK": "rsi_meanrev",
+    "TLKM.JK": "ema_envelope",
+    "ASII.JK": "donchian",
+    "UNTR.JK": "rsi_meanrev",
+    "ANTM.JK": "ema_envelope",
+    "MDKA.JK": "ema_envelope",
+    "ICBP.JK": "rsi_meanrev",
+    "ADRO.JK": "donchian"
+  },
+  "performance": {
+    "initial_capital": 10000000.0,
+    "final_equity": 9385914.22,
+    "total_return_pct": -6.14,
+    "sharpe_ratio": -0.016,
+    "sortino_ratio": -0.02,
+    "max_drawdown_pct": -33.71,
+    "win_rate_pct": 42.3,
+    "n_trades": 104,
+    "n_sell_trades": 52,
+    "n_winning_trades": 22,
+    "prediction_accuracy_pct": 43.1,
+    "n_predictions": 510,
+    "n_correct_predictions": 220
+  },
+  "trades": [
+    {
+      "date": "2025-01-03",
+      "ticker": "BBRI.JK",
+      "side": "buy",
+      "price": 3612.27,
+      "shares": 800,
+      "commission": 4334.72,
+      "strategy": "rsi_meanrev"
+    },
+    {
+      "date": "2025-01-03",
+      "ticker": "ANTM.JK",
+      "side": "buy",
+      "price": 1385.39,
+      "shares": 2100,
+      "commission": 4363.99,
+      "strategy": "ema_envelope"
+    },
+    {
+      "date": "2025-01-03",
+      "ticker": "TLKM.JK",
+      "side": "buy",
+      "price": 2349.62,
+      "shares": 1200,
+      "commission": 4229.32,
+      "strategy": "ema_envelope"
+    },
+    {
+      "date": "2025-01-03",
+      "ticker": "BBCA.JK",
+      "side": "buy",
+      "price": 9099.62,
+      "shares": 100,
+      "commission": 1364.94,
+      "strategy": "rsi_meanrev"
+    },
+    {
+      "date": "2025-01-03",
+      "ticker": "ADRO.JK",
+      "side": "buy",
+      "price": 2056.52,
+      "shares": 200,
+      "commission": 616.96,
+      "strategy": "donchian"
+    },
+    {
+      "date": "2025-01-17",
+      "ticker": "ADRO.JK",
+      "side": "sell",
+      "price": 1965.14,
+      "shares": 200,
+      "commission": 589.54,
+      "sales_tax": 393.03,
+      "pnl": -19258.73,
+      "pnl_pct": -4.44,
+      "entry_price": 2056.52,
+      "strategy": "donchian"
+    },
+    {
+      "date": "2025-01-17",
+      "ticker": "MDKA.JK",
+      "side": "buy",
+      "price": 1607.99,
+      "shares": 200,
+      "commission": 482.4,
+      "strategy": "ema_envelope"
+    },
+    {
+      "date": "2025-02-12",
+      "ticker": "BBCA.JK",
+      "side": "sell",
+      "price": 8259.92,
+      "shares": 100,
+      "commission": 1238.99,
+      "sales_tax": 825.99,
+      "pnl": -86034.94,
+      "pnl_pct": -9.23,
+      "entry_price": 9099.62,
+      "strategy": "rsi_meanrev"
+    },
+    {
+      "date": "2025-02-12",
+      "ticker": "BMRI.JK",
+      "side": "buy",
+      "price": 4027.01,
+      "shares": 200,
+      "commission": 1208.1,
+      "strategy": "rsi_meanrev"
+    },
+    {
+      "date": "2025-02-19",
+      "ticker": "BBRI.JK",
+      "side": "sell",
+      "price": 3557.35,
+      "shares": 800,
+      "commission": 4268.82,
+      "sales_tax": 2845.88,
+      "pnl": -51046.54,
+      "pnl_pct": -1.52,
+      "entry_price": 3612.27,
+      "strategy": "rsi_meanrev"
+    },
+    {
+      "date": "2025-02-19",
+      "ticker": "BMRI.JK",
+      "side": "sell",
+      "price": 4395.03,
+      "shares": 200,
+      "commission": 1318.51,
+      "sales_tax": 879.01,
+      "pnl": 71406.26,
+      "pnl_pct": 9.14,
+      "entry_price": 4027.01,
+      "strategy": "rsi_meanrev"
+    },
+    {
+      "date": "2025-02-19",
+      "ticker": "ANTM.JK",
+      "side": "sell",
+      "price": 1388.45,
+      "shares": 2100,
+      "commission": 4373.6,
+      "sales_tax": 2915.74,
+      "pnl": -877.87,
+      "pnl_pct": 0.22,
+      "entry_price": 1385.39,
+      "strategy": "ema_envelope"
+    },
+    {
+      "date": "2025-02-19",
+      "ticker": "ICBP.JK",
+      "side": "buy",
+      "price": 10922.54,
+      "shares": 200,
+      "commission": 3276.76,
+      "strategy": "rsi_meanrev"
+    },
+    {
+      "date": "2025-02-19",
+      "ticker": "ADRO.JK",
+      "side": "buy",
+      "price": 1845.17,
+      "shares": 1500,
+      "commission": 4151.64,
+      "strategy": "donchian"
+    },
+    {
+      "date": "2025-02-26",
+      "ticker": "ADRO.JK",
+      "side": "sell",
+      "price": 1713.4,
+      "shares": 1500,
+      "commission": 3855.16,
+      "sales_tax": 2570.1,
+      "pnl": -204079.14,
+      "pnl_pct": -7.14,
+      "entry_price": 1845.17,
+      "strategy": "donchian"
+    },
+    {
+      "date": "2025-03-05",
+      "ticker": "ICBP.JK",
+      "side": "sell",
+      "price": 9949.52,
+      "shares": 200,
+      "commission": 2984.86,
+      "sales_tax": 1989.9,
+      "pnl": -199577.92,
+      "pnl_pct": -8.91,
+      "entry_price": 10922.54,
+      "strategy": "rsi_meanrev"
+    },
+    {
+      "date": "2025-03-05",
+      "ticker": "ANTM.JK",
+      "side": "buy",
+      "price": 1372.07,
+      "shares": 1900,
+      "commission": 3910.39,
+      "strategy": "ema_envelope"
+    },
+    {
+      "date": "2025-03-12",
+      "ticker": "ASII.JK",
+      "side": "buy",
+      "price": 4174.42,
+      "shares": 600,
+      "commission": 3756.97,
+      "strategy": "donchian"
+    },
+    {
+      "date": "2025-03-19",
+      "ticker": "BBCA.JK",
+      "side": "buy",
+      "price": 7667.69,
+      "shares": 100,
+      "commission": 1150.15,
+      "strategy": "rsi_meanrev"
+    },
+    {
+      "date": "2025-04-11",
+      "ticker": "BBCA.JK",
+      "side": "sell",
+      "price": 7800.6,
+      "shares": 100,
+      "commission": 1170.09,
+      "sales_tax": 780.06,
+      "pnl": 11340.43,
+      "pnl_pct": 1.73,
+      "entry_price": 7667.69,
+      "strategy": "rsi_meanrev"
+    },
+    {
+      "date": "2025-04-11",
+      "ticker": "ASII.JK",
+      "side": "sell",
+      "price": 4082.64,
+      "shares": 600,
+      "commission": 3674.37,
+      "sales_tax": 2449.58,
+      "pnl": -61191.06,
+      "pnl_pct": -2.2,
+      "entry_price": 4174.42,
+      "strategy": "donchian"
+    },
+    {
+      "date": "2025-04-11",
+      "ticker": "ANTM.JK",
+      "side": "sell",
+      "price": 1472.72,
+      "shares": 1900,
+      "commission": 4197.26,
+      "sales_tax": 2798.17,
+      "pnl": 184253.97,
+      "pnl_pct": 7.34,
+      "entry_price": 1372.07,
+      "strategy": "ema_envelope"
+    },
+    {
+      "date": "2025-04-21",
+      "ticker": "MDKA.JK",
+      "side": "sell",
+      "price": 1700.88,
+      "shares": 200,
+      "commission": 510.26,
+      "sales_tax": 340.18,
+      "pnl": 17726.67,
+      "pnl_pct": 5.78,
+      "entry_price": 1607.99,
+      "strategy": "ema_envelope"
+    },
+    {
+      "date": "2025-04-21",
+      "ticker": "BMRI.JK",
+      "side": "buy",
+      "price": 4143.88,
+      "shares": 600,
+      "commission": 3729.49,
+      "strategy": "rsi_meanrev"
+    },
+    {
+      "date": "2025-04-21",
+      "ticker": "BBRI.JK",
+      "side": "buy",
+      "price": 3278.47,
+      "shares": 800,
+      "commission": 3934.16,
+      "strategy": "rsi_meanrev"
+    },
+    {
+      "date": "2025-04-21",
+      "ticker": "ASII.JK",
+      "side": "buy",
+      "price": 4165.65,
+      "shares": 400,
+      "commission": 2499.39,
+      "strategy": "donchian"
+    },
+    {
+      "date": "2025-06-25",
+      "ticker": "BMRI.JK",
+      "side": "sell",
+      "price": 4522.22,
+      "shares": 600,
+      "commission": 4070.0,
+      "sales_tax": 2713.33,
+      "pnl": 220218.79,
+      "pnl_pct": 9.13,
+      "entry_price": 4143.88,
+      "strategy": "rsi_meanrev"
+    },
+    {
+      "date": "2025-06-25",
+      "ticker": "ADRO.JK",
+      "side": "buy",
+      "price": 1623.28,
+      "shares": 1600,
+      "commission": 3895.87,
+      "strategy": "donchian"
+    },
+    {
+      "date": "2025-07-03",
+      "ticker": "ADRO.JK",
+      "side": "sell",
+      "price": 1573.18,
+      "shares": 1600,
+      "commission": 3775.64,
+      "sales_tax": 2517.09,
+      "pnl": -86449.88,
+      "pnl_pct": -3.09,
+      "entry_price": 1623.28,
+      "strategy": "donchian"
+    },
+    {
+      "date": "2025-07-10",
+      "ticker": "BMRI.JK",
+      "side": "buy",
+      "price": 4279.01,
+      "shares": 600,
+      "commission": 3851.11,
+      "strategy": "rsi_meanrev"
+    },
+    {
+      "date": "2025-07-17",
+      "ticker": "BMRI.JK",
+      "side": "sell",
+      "price": 4229.73,
+      "shares": 600,
+      "commission": 3806.76,
+      "sales_tax": 2537.84,
+      "pnl": -35909.22,
+      "pnl_pct": -1.15,
+      "entry_price": 4279.01,
+      "strategy": "rsi_meanrev"
+    },
+    {
+      "date": "2025-07-17",
+      "ticker": "TLKM.JK",
+      "side": "sell",
+      "price": 2495.19,
+      "shares": 1200,
+      "commission": 4491.35,
+      "sales_tax": 2994.23,
+      "pnl": 167195.49,
+      "pnl_pct": 6.2,
+      "entry_price": 2349.62,
+      "strategy": "ema_envelope"
+    },
+    {
+      "date": "2025-07-17",
+      "ticker": "BBCA.JK",
+      "side": "buy",
+      "price": 8094.08,
+      "shares": 300,
+      "commission": 3642.33,
+      "strategy": "rsi_meanrev"
+    },
+    {
+      "date": "2025-07-17",
+      "ticker": "ICBP.JK",
+      "side": "buy",
+      "price": 9958.92,
+      "shares": 300,
+      "commission": 4481.51,
+      "strategy": "rsi_meanrev"
+    },
+    {
+      "date": "2025-07-31",
+      "ticker": "ICBP.JK",
+      "side": "sell",
+      "price": 9540.43,
+      "shares": 300,
+      "commission": 4293.19,
+      "sales_tax": 2862.13,
+      "pnl": -132702.19,
+      "pnl_pct": -4.2,
+      "entry_price": 9958.92,
+      "strategy": "rsi_meanrev"
+    },
+    {
+      "date": "2025-07-31",
+      "ticker": "ADRO.JK",
+      "side": "buy",
+      "price": 1676.22,
+      "shares": 1700,
+      "commission": 4274.36,
+      "strategy": "donchian"
+    },
+    {
+      "date": "2025-08-22",
+      "ticker": "ADRO.JK",
+      "side": "sell",
+      "price": 1577.59,
+      "shares": 1700,
+      "commission": 4022.86,
+      "sales_tax": 2681.9,
+      "pnl": -174370.46,
+      "pnl_pct": -5.88,
+      "entry_price": 1676.22,
+      "strategy": "donchian"
+    },
+    {
+      "date": "2025-08-29",
+      "ticker": "BMRI.JK",
+      "side": "buy",
+      "price": 4251.98,
+      "shares": 600,
+      "commission": 3826.79,
+      "strategy": "rsi_meanrev"
+    },
+    {
+      "date": "2025-09-15",
+      "ticker": "BBCA.JK",
+      "side": "sell",
+      "price": 7610.33,
+      "shares": 300,
+      "commission": 3424.65,
+      "sales_tax": 2283.1,
+      "pnl": -150830.38,
+      "pnl_pct": -5.98,
+      "entry_price": 8094.08,
+      "strategy": "rsi_meanrev"
+    },
+    {
+      "date": "2025-09-15",
+      "ticker": "BMRI.JK",
+      "side": "sell",
+      "price": 4094.74,
+      "shares": 600,
+      "commission": 3685.27,
+      "sales_tax": 2456.84,
+      "pnl": -100488.11,
+      "pnl_pct": -3.7,
+      "entry_price": 4251.98,
+      "strategy": "rsi_meanrev"
+    },
+    {
+      "date": "2025-09-15",
+      "ticker": "UNTR.JK",
+      "side": "buy",
+      "price": 25222.81,
+      "shares": 100,
+      "commission": 3783.42,
+      "strategy": "rsi_meanrev"
+    },
+    {
+      "date": "2025-09-22",
+      "ticker": "MDKA.JK",
+      "side": "buy",
+      "price": 2429.41,
+      "shares": 1000,
+      "commission": 3644.12,
+      "strategy": "ema_envelope"
+    },
+    {
+      "date": "2025-10-13",
+      "ticker": "MDKA.JK",
+      "side": "sell",
+      "price": 2317.57,
+      "shares": 1000,
+      "commission": 3476.36,
+      "sales_tax": 2317.57,
+      "pnl": -117637.39,
+      "pnl_pct": -4.6,
+      "entry_price": 2429.41,
+      "strategy": "ema_envelope"
+    },
+    {
+      "date": "2025-10-13",
+      "ticker": "ICBP.JK",
+      "side": "buy",
+      "price": 8515.6,
+      "shares": 200,
+      "commission": 2554.68,
+      "strategy": "rsi_meanrev"
+    },
+    {
+      "date": "2025-10-13",
+      "ticker": "ADRO.JK",
+      "side": "buy",
+      "price": 1521.83,
+      "shares": 400,
+      "commission": 913.1,
+      "strategy": "donchian"
+    },
+    {
+      "date": "2025-10-20",
+      "ticker": "UNTR.JK",
+      "side": "sell",
+      "price": 26057.85,
+      "shares": 100,
+      "commission": 3908.68,
+      "sales_tax": 2605.79,
+      "pnl": 76990.48,
+      "pnl_pct": 3.31,
+      "entry_price": 25222.81,
+      "strategy": "rsi_meanrev"
+    },
+    {
+      "date": "2025-10-20",
+      "ticker": "ICBP.JK",
+      "side": "sell",
+      "price": 9059.8,
+      "shares": 200,
+      "commission": 2717.94,
+      "sales_tax": 1811.96,
+      "pnl": 104310.53,
+      "pnl_pct": 6.39,
+      "entry_price": 8515.6,
+      "strategy": "rsi_meanrev"
+    },
+    {
+      "date": "2025-10-27",
+      "ticker": "BBRI.JK",
+      "side": "sell",
+      "price": 3510.43,
+      "shares": 800,
+      "commission": 4212.52,
+      "sales_tax": 2808.35,
+      "pnl": 178551.52,
+      "pnl_pct": 7.08,
+      "entry_price": 3278.47,
+      "strategy": "rsi_meanrev"
+    },
+    {
+      "date": "2025-10-27",
+      "ticker": "MDKA.JK",
+      "side": "buy",
+      "price": 2210.36,
+      "shares": 1400,
+      "commission": 4641.77,
+      "strategy": "ema_envelope"
+    },
+    {
+      "date": "2025-10-27",
+      "ticker": "BBCA.JK",
+      "side": "buy",
+      "price": 7927.43,
+      "shares": 300,
+      "commission": 3567.34,
+      "strategy": "rsi_meanrev"
+    },
+    {
+      "date": "2025-10-27",
+      "ticker": "BMRI.JK",
+      "side": "buy",
+      "price": 4134.88,
+      "shares": 400,
+      "commission": 2480.93,
+      "strategy": "rsi_meanrev"
+    },
+    {
+      "date": "2025-11-10",
+      "ticker": "MDKA.JK",
+      "side": "sell",
+      "price": 2436.93,
+      "shares": 1400,
+      "commission": 5117.55,
+      "sales_tax": 3411.7,
+      "pnl": 308663.55,
+      "pnl_pct": 10.25,
+      "entry_price": 2210.36,
+      "strategy": "ema_envelope"
+    },
+    {
+      "date": "2025-11-10",
+      "ticker": "UNTR.JK",
+      "side": "buy",
+      "price": 26760.18,
+      "shares": 100,
+      "commission": 4014.03,
+      "strategy": "rsi_meanrev"
+    },
+    {
+      "date": "2025-11-24",
+      "ticker": "UNTR.JK",
+      "side": "sell",
+      "price": 26057.85,
+      "shares": 100,
+      "commission": 3908.68,
+      "sales_tax": 2605.79,
+      "pnl": -76747.35,
+      "pnl_pct": -2.62,
+      "entry_price": 26760.18,
+      "strategy": "rsi_meanrev"
+    },
+    {
+      "date": "2025-11-24",
+      "ticker": "BBRI.JK",
+      "side": "buy",
+      "price": 3622.62,
+      "shares": 800,
+      "commission": 4347.14,
+      "strategy": "rsi_meanrev"
+    },
+    {
+      "date": "2025-12-15",
+      "ticker": "ADRO.JK",
+      "side": "sell",
+      "price": 1573.18,
+      "shares": 400,
+      "commission": 943.91,
+      "sales_tax": 629.27,
+      "pnl": 18967.81,
+      "pnl_pct": 3.37,
+      "entry_price": 1521.83,
+      "strategy": "donchian"
+    },
+    {
+      "date": "2025-12-22",
+      "ticker": "BBCA.JK",
+      "side": "sell",
+      "price": 7708.52,
+      "shares": 300,
+      "commission": 3468.84,
+      "sales_tax": 2312.56,
+      "pnl": -71453.77,
+      "pnl_pct": -2.76,
+      "entry_price": 7927.43,
+      "strategy": "rsi_meanrev"
+    },
+    {
+      "date": "2025-12-22",
+      "ticker": "BBRI.JK",
+      "side": "sell",
+      "price": 3410.9,
+      "shares": 800,
+      "commission": 4093.08,
+      "sales_tax": 2728.72,
+      "pnl": -176195.18,
+      "pnl_pct": -5.84,
+      "entry_price": 3622.62,
+      "strategy": "rsi_meanrev"
+    },
+    {
+      "date": "2025-12-22",
+      "ticker": "ADRO.JK",
+      "side": "buy",
+      "price": 1685.04,
+      "shares": 1800,
+      "commission": 4549.61,
+      "strategy": "donchian"
+    },
+    {
+      "date": "2025-12-22",
+      "ticker": "UNTR.JK",
+      "side": "buy",
+      "price": 28426.66,
+      "shares": 100,
+      "commission": 4264.0,
+      "strategy": "rsi_meanrev"
+    },
+    {
+      "date": "2025-12-22",
+      "ticker": "ANTM.JK",
+      "side": "buy",
+      "price": 2899.42,
+      "shares": 100,
+      "commission": 434.91,
+      "strategy": "ema_envelope"
+    },
+    {
+      "date": "2026-02-02",
+      "ticker": "ASII.JK",
+      "side": "sell",
+      "price": 6041.76,
+      "shares": 400,
+      "commission": 3625.05,
+      "sales_tax": 2416.7,
+      "pnl": 744400.57,
+      "pnl_pct": 45.04,
+      "entry_price": 4165.65,
+      "strategy": "donchian"
+    },
+    {
+      "date": "2026-02-02",
+      "ticker": "TLKM.JK",
+      "side": "buy",
+      "price": 3395.0,
+      "shares": 700,
+      "commission": 3564.75,
+      "strategy": "ema_envelope"
+    },
+    {
+      "date": "2026-02-09",
+      "ticker": "BMRI.JK",
+      "side": "sell",
+      "price": 4636.53,
+      "shares": 400,
+      "commission": 2781.92,
+      "sales_tax": 1854.61,
+      "pnl": 196025.14,
+      "pnl_pct": 12.13,
+      "entry_price": 4134.88,
+      "strategy": "rsi_meanrev"
+    },
+    {
+      "date": "2026-02-09",
+      "ticker": "UNTR.JK",
+      "side": "sell",
+      "price": 26009.61,
+      "shares": 100,
+      "commission": 3901.44,
+      "sales_tax": 2600.96,
+      "pnl": -248207.16,
+      "pnl_pct": -8.5,
+      "entry_price": 28426.66,
+      "strategy": "rsi_meanrev"
+    },
+    {
+      "date": "2026-02-09",
+      "ticker": "BBRI.JK",
+      "side": "buy",
+      "price": 3561.52,
+      "shares": 800,
+      "commission": 4273.82,
+      "strategy": "rsi_meanrev"
+    },
+    {
+      "date": "2026-02-09",
+      "ticker": "ICBP.JK",
+      "side": "buy",
+      "price": 7769.87,
+      "shares": 200,
+      "commission": 2330.96,
+      "strategy": "rsi_meanrev"
+    },
+    {
+      "date": "2026-02-18",
+      "ticker": "ANTM.JK",
+      "side": "sell",
+      "price": 3753.36,
+      "shares": 100,
+      "commission": 563.0,
+      "sales_tax": 375.34,
+      "pnl": 84456.0,
+      "pnl_pct": 29.45,
+      "entry_price": 2899.42,
+      "strategy": "ema_envelope"
+    },
+    {
+      "date": "2026-02-18",
+      "ticker": "ADRO.JK",
+      "side": "sell",
+      "price": 2114.34,
+      "shares": 1800,
+      "commission": 5708.72,
+      "sales_tax": 3805.82,
+      "pnl": 763225.82,
+      "pnl_pct": 25.48,
+      "entry_price": 1685.04,
+      "strategy": "donchian"
+    },
+    {
+      "date": "2026-02-18",
+      "ticker": "BMRI.JK",
+      "side": "buy",
+      "price": 4664.14,
+      "shares": 700,
+      "commission": 4897.35,
+      "strategy": "rsi_meanrev"
+    },
+    {
+      "date": "2026-02-25",
+      "ticker": "ASII.JK",
+      "side": "buy",
+      "price": 6285.91,
+      "shares": 100,
+      "commission": 942.89,
+      "strategy": "donchian"
+    },
+    {
+      "date": "2026-03-04",
+      "ticker": "TLKM.JK",
+      "side": "sell",
+      "price": 3169.81,
+      "shares": 700,
+      "commission": 3328.31,
+      "sales_tax": 2218.87,
+      "pnl": -163174.82,
+      "pnl_pct": -6.63,
+      "entry_price": 3395.0,
+      "strategy": "ema_envelope"
+    },
+    {
+      "date": "2026-03-04",
+      "ticker": "ASII.JK",
+      "side": "sell",
+      "price": 5970.4,
+      "shares": 100,
+      "commission": 895.56,
+      "sales_tax": 597.04,
+      "pnl": -33043.41,
+      "pnl_pct": -5.02,
+      "entry_price": 6285.91,
+      "strategy": "donchian"
+    },
+    {
+      "date": "2026-03-04",
+      "ticker": "ICBP.JK",
+      "side": "sell",
+      "price": 7401.64,
+      "shares": 200,
+      "commission": 2220.49,
+      "sales_tax": 1480.33,
+      "pnl": -77347.95,
+      "pnl_pct": -4.74,
+      "entry_price": 7769.87,
+      "strategy": "rsi_meanrev"
+    },
+    {
+      "date": "2026-03-04",
+      "ticker": "ADRO.JK",
+      "side": "buy",
+      "price": 2373.87,
+      "shares": 1300,
+      "commission": 4629.04,
+      "strategy": "donchian"
+    },
+    {
+      "date": "2026-03-11",
+      "ticker": "ANTM.JK",
+      "side": "buy",
+      "price": 3766.44,
+      "shares": 400,
+      "commission": 2259.87,
+      "strategy": "ema_envelope"
+    },
+    {
+      "date": "2026-04-01",
+      "ticker": "BMRI.JK",
+      "side": "sell",
+      "price": 4407.0,
+      "shares": 700,
+      "commission": 4627.35,
+      "sales_tax": 3084.9,
+      "pnl": -187714.1,
+      "pnl_pct": -5.51,
+      "entry_price": 4664.14,
+      "strategy": "rsi_meanrev"
+    },
+    {
+      "date": "2026-04-01",
+      "ticker": "UNTR.JK",
+      "side": "buy",
+      "price": 29948.22,
+      "shares": 100,
+      "commission": 4492.23,
+      "strategy": "rsi_meanrev"
+    },
+    {
+      "date": "2026-04-09",
+      "ticker": "ANTM.JK",
+      "side": "sell",
+      "price": 3427.39,
+      "shares": 400,
+      "commission": 2056.43,
+      "sales_tax": 1370.95,
+      "pnl": -139050.12,
+      "pnl_pct": -9.0,
+      "entry_price": 3766.44,
+      "strategy": "ema_envelope"
+    },
+    {
+      "date": "2026-04-09",
+      "ticker": "TLKM.JK",
+      "side": "buy",
+      "price": 2932.47,
+      "shares": 500,
+      "commission": 2199.35,
+      "strategy": "ema_envelope"
+    },
+    {
+      "date": "2026-04-23",
+      "ticker": "BBRI.JK",
+      "side": "sell",
+      "price": 3238.38,
+      "shares": 800,
+      "commission": 3886.06,
+      "sales_tax": 2590.7,
+      "pnl": -264988.66,
+      "pnl_pct": -9.07,
+      "entry_price": 3561.52,
+      "strategy": "rsi_meanrev"
+    },
+    {
+      "date": "2026-04-23",
+      "ticker": "ASII.JK",
+      "side": "buy",
+      "price": 6285.91,
+      "shares": 400,
+      "commission": 3771.55,
+      "strategy": "donchian"
+    },
+    {
+      "date": "2026-05-22",
+      "ticker": "ASII.JK",
+      "side": "sell",
+      "price": 5622.19,
+      "shares": 400,
+      "commission": 3373.31,
+      "sales_tax": 2248.88,
+      "pnl": -271111.74,
+      "pnl_pct": -10.56,
+      "entry_price": 6285.91,
+      "strategy": "donchian"
+    },
+    {
+      "date": "2026-05-22",
+      "ticker": "BMRI.JK",
+      "side": "buy",
+      "price": 4142.07,
+      "shares": 500,
+      "commission": 3106.55,
+      "strategy": "rsi_meanrev"
+    },
+    {
+      "date": "2026-05-29",
+      "ticker": "ADRO.JK",
+      "side": "sell",
+      "price": 2298.85,
+      "shares": 1300,
+      "commission": 4482.76,
+      "sales_tax": 2988.51,
+      "pnl": -104992.5,
+      "pnl_pct": -3.16,
+      "entry_price": 2373.87,
+      "strategy": "donchian"
+    },
+    {
+      "date": "2026-05-29",
+      "ticker": "MDKA.JK",
+      "side": "buy",
+      "price": 2708.19,
+      "shares": 1000,
+      "commission": 4062.29,
+      "strategy": "ema_envelope"
+    },
+    {
+      "date": "2026-05-29",
+      "ticker": "ANTM.JK",
+      "side": "buy",
+      "price": 2759.57,
+      "shares": 100,
+      "commission": 413.94,
+      "strategy": "ema_envelope"
+    },
+    {
+      "date": "2026-06-15",
+      "ticker": "UNTR.JK",
+      "side": "sell",
+      "price": 22738.62,
+      "shares": 100,
+      "commission": 3410.79,
+      "sales_tax": 2273.86,
+      "pnl": -726643.82,
+      "pnl_pct": -24.07,
+      "entry_price": 29948.22,
+      "strategy": "rsi_meanrev"
+    },
+    {
+      "date": "2026-06-15",
+      "ticker": "BBCA.JK",
+      "side": "buy",
+      "price": 6103.05,
+      "shares": 400,
+      "commission": 3661.83,
+      "strategy": "rsi_meanrev"
+    },
+    {
+      "date": "2026-06-23",
+      "ticker": "BBCA.JK",
+      "side": "sell",
+      "price": 6146.93,
+      "shares": 400,
+      "commission": 3688.16,
+      "sales_tax": 2458.77,
+      "pnl": 11403.08,
+      "pnl_pct": 0.72,
+      "entry_price": 6103.05,
+      "strategy": "rsi_meanrev"
+    },
+    {
+      "date": "2026-06-30",
+      "ticker": "BBCA.JK",
+      "side": "buy",
+      "price": 5777.89,
+      "shares": 400,
+      "commission": 3466.73,
+      "strategy": "rsi_meanrev"
+    },
+    {
+      "date": "2026-07-14",
+      "ticker": "BMRI.JK",
+      "side": "sell",
+      "price": 4247.88,
+      "shares": 500,
+      "commission": 3185.91,
+      "sales_tax": 2123.94,
+      "pnl": 47592.66,
+      "pnl_pct": 2.55,
+      "entry_price": 4142.07,
+      "strategy": "rsi_meanrev"
+    },
+    {
+      "date": "2026-07-14",
+      "ticker": "ANTM.JK",
+      "side": "sell",
+      "price": 2878.56,
+      "shares": 100,
+      "commission": 431.78,
+      "sales_tax": 287.86,
+      "pnl": 11179.45,
+      "pnl_pct": 4.31,
+      "entry_price": 2759.57,
+      "strategy": "ema_envelope"
+    },
+    {
+      "date": "2026-07-14",
+      "ticker": "ADRO.JK",
+      "side": "buy",
+      "price": 2451.22,
+      "shares": 1000,
+      "commission": 3676.84,
+      "strategy": "donchian"
+    },
+    {
+      "date": "2026-07-21",
+      "ticker": "TLKM.JK",
+      "side": "sell",
+      "price": 2768.62,
+      "shares": 500,
+      "commission": 2076.46,
+      "sales_tax": 1384.31,
+      "pnl": -85386.02,
+      "pnl_pct": -5.59,
+      "entry_price": 2932.47,
+      "strategy": "ema_envelope"
+    },
+    {
+      "date": "2026-07-21",
+      "ticker": "MDKA.JK",
+      "side": "sell",
+      "price": 2688.66,
+      "shares": 1000,
+      "commission": 4032.98,
+      "sales_tax": 2688.66,
+      "pnl": -26260.06,
+      "pnl_pct": -0.72,
+      "entry_price": 2708.19,
+      "strategy": "ema_envelope"
+    },
+    {
+      "date": "2026-07-21",
+      "ticker": "ASII.JK",
+      "side": "buy",
+      "price": 5102.55,
+      "shares": 500,
+      "commission": 3826.91,
+      "strategy": "donchian"
+    },
+    {
+      "date": "2026-07-21",
+      "ticker": "ICBP.JK",
+      "side": "buy",
+      "price": 6953.47,
+      "shares": 200,
+      "commission": 2086.04,
+      "strategy": "rsi_meanrev"
+    },
+    {
+      "date": "2026-07-27",
+      "ticker": "TLKM.JK",
+      "side": "buy",
+      "price": 2671.34,
+      "shares": 100,
+      "commission": 400.7,
+      "strategy": "ema_envelope"
+    },
+    {
+      "date": "2026-08-06",
+      "ticker": "BBCA.JK",
+      "side": "sell",
+      "price": 6400.0,
+      "shares": 400,
+      "commission": 3840.0,
+      "sales_tax": 2560.0,
+      "pnl": 242445.0,
+      "pnl_pct": 10.77,
+      "entry_price": 5777.89,
+      "strategy": "rsi_meanrev",
+      "note": "forced close at end"
+    },
+    {
+      "date": "2026-08-06",
+      "ticker": "ADRO.JK",
+      "side": "sell",
+      "price": 2550.0,
+      "shares": 1000,
+      "commission": 3825.0,
+      "sales_tax": 2550.0,
+      "pnl": 92400.0,
+      "pnl_pct": 4.03,
+      "entry_price": 2451.22,
+      "strategy": "donchian",
+      "note": "forced close at end"
+    },
+    {
+      "date": "2026-08-06",
+      "ticker": "ASII.JK",
+      "side": "sell",
+      "price": 5075.0,
+      "shares": 500,
+      "commission": 3806.25,
+      "sales_tax": 2537.5,
+      "pnl": -20118.75,
+      "pnl_pct": -0.54,
+      "entry_price": 5102.55,
+      "strategy": "donchian",
+      "note": "forced close at end"
+    },
+    {
+      "date": "2026-08-06",
+      "ticker": "ICBP.JK",
+      "side": "sell",
+      "price": 7300.0,
+      "shares": 200,
+      "commission": 2190.0,
+      "sales_tax": 1460.0,
+      "pnl": 65655.0,
+      "pnl_pct": 4.98,
+      "entry_price": 6953.47,
+      "strategy": "rsi_meanrev",
+      "note": "forced close at end"
+    },
+    {
+      "date": "2026-08-06",
+      "ticker": "TLKM.JK",
+      "side": "sell",
+      "price": 2690.0,
+      "shares": 100,
+      "commission": 403.5,
+      "sales_tax": 269.0,
+      "pnl": 1194.0,
+      "pnl_pct": 0.7,
+      "entry_price": 2671.34,
+      "strategy": "ema_envelope",
+      "note": "forced close at end"
+    }
+  ],
+  "equity_curve": [
+    {
+      "date": "2025-01-02",
+      "equity": 10000000.0,
+      "cash": 10000000.0,
+      "positions_value": 0.0,
+      "n_positions": 0
+    },
+    {
+      "date": "2025-01-03",
+      "equity": 9856549.58,
+      "cash": 45139.58,
+      "positions_value": 9811410.0,
+      "n_positions": 5
+    },
+    {
+      "date": "2025-01-06",
+      "equity": 9628928.58,
+      "cash": 45139.58,
+      "positions_value": 9583789.0,
+      "n_positions": 5
+    },
+    {
+      "date": "2025-01-07",
+      "equity": 9402455.58,
+      "cash": 45139.58,
+      "positions_value": 9357316.0,
+      "n_positions": 5
+    },
+    {
+      "date": "2025-01-08",
+      "equity": 9512128.58,
+      "cash": 45139.58,
+      "positions_value": 9466989.0,
+      "n_positions": 5
+    },
+    {
+      "date": "2025-01-09",
+      "equity": 9434821.58,
+      "cash": 45139.58,
+      "positions_value": 9389682.0,
+      "n_positions": 5
+    },
+    {
+      "date": "2025-01-10",
+      "equity": 9551913.58,
+      "cash": 45139.58,
+      "positions_value": 9506774.0,
+      "n_positions": 5
+    },
+    {
+      "date": "2025-01-13",
+      "equity": 9460346.58,
+      "cash": 45139.58,
+      "positions_value": 9415207.0,
+      "n_positions": 5
+    },
+    {
+      "date": "2025-01-14",
+      "equity": 9437034.58,
+      "cash": 45139.58,
+      "positions_value": 9391895.0,
+      "n_positions": 5
+    },
+    {
+      "date": "2025-01-15",
+      "equity": 9696346.58,
+      "cash": 45139.58,
+      "positions_value": 9651207.0,
+      "n_positions": 5
+    },
+    {
+      "date": "2025-01-16",
+      "equity": 9681471.58,
+      "cash": 45139.58,
+      "positions_value": 9636332.0,
+      "n_positions": 5
+    },
+    {
+      "date": "2025-01-17",
+      "equity": 9718215.29,
+      "cash": 115103.29,
+      "positions_value": 9603112.0,
+      "n_positions": 5
+    },
+    {
+      "date": "2025-01-20",
+      "equity": 9729666.29,
+      "cash": 115103.29,
+      "positions_value": 9614563.0,
+      "n_positions": 5
+    },
+    {
+      "date": "2025-01-21",
+      "equity": 9763041.29,
+      "cash": 115103.29,
+      "positions_value": 9647938.0,
+      "n_positions": 5
+    },
+    {
+      "date": "2025-01-22",
+      "equity": 9886829.29,
+      "cash": 115103.29,
+      "positions_value": 9771726.0,
+      "n_positions": 5
+    },
+    {
+      "date": "2025-01-23",
+      "equity": 9828766.29,
+      "cash": 115103.29,
+      "positions_value": 9713663.0,
+      "n_positions": 5
+    },
+    {
+      "date": "2025-01-24",
+      "equity": 9708810.29,
+      "cash": 115103.29,
+      "positions_value": 9593707.0,
+      "n_positions": 5
+    },
+    {
+      "date": "2025-01-30",
+      "equity": 9409967.29,
+      "cash": 115103.29,
+      "positions_value": 9294864.0,
+      "n_positions": 5
+    },
+    {
+      "date": "2025-01-31",
+      "equity": 9514365.29,
+      "cash": 115103.29,
+      "positions_value": 9399262.0,
+      "n_positions": 5
+    },
+    {
+      "date": "2025-02-03",
+      "equity": 9453280.29,
+      "cash": 115103.29,
+      "positions_value": 9338177.0,
+      "n_positions": 5
+    },
+    {
+      "date": "2025-02-04",
+      "equity": 9501491.29,
+      "cash": 115103.29,
+      "positions_value": 9386388.0,
+      "n_positions": 5
+    },
+    {
+      "date": "2025-02-05",
+      "equity": 9482402.29,
+      "cash": 115103.29,
+      "positions_value": 9367299.0,
+      "n_positions": 5
+    },
+    {
+      "date": "2025-02-06",
+      "equity": 9186011.29,
+      "cash": 115103.29,
+      "positions_value": 9070908.0,
+      "n_positions": 5
+    },
+    {
+      "date": "2025-02-07",
+      "equity": 9348803.29,
+      "cash": 115103.29,
+      "positions_value": 9233700.0,
+      "n_positions": 5
+    },
+    {
+      "date": "2025-02-10",
+      "equity": 9065029.29,
+      "cash": 115103.29,
+      "positions_value": 8949926.0,
+      "n_positions": 5
+    },
+    {
+      "date": "2025-02-11",
+      "equity": 8983066.29,
+      "cash": 115103.29,
+      "positions_value": 8867963.0,
+      "n_positions": 5
+    },
+    {
+      "date": "2025-02-12",
+      "equity": 9149589.5,
+      "cash": 132419.5,
+      "positions_value": 9017170.0,
+      "n_positions": 5
+    },
+    {
+      "date": "2025-02-13",
+      "equity": 9247044.5,
+      "cash": 132419.5,
+      "positions_value": 9114625.0,
+      "n_positions": 5
+    },
+    {
+      "date": "2025-02-14",
+      "equity": 9395432.5,
+      "cash": 132419.5,
+      "positions_value": 9263013.0,
+      "n_positions": 5
+    },
+    {
+      "date": "2025-02-17",
+      "equity": 9760751.5,
+      "cash": 132419.5,
+      "positions_value": 9628332.0,
+      "n_positions": 5
+    },
+    {
+      "date": "2025-02-18",
+      "equity": 9868497.5,
+      "cash": 132419.5,
+      "positions_value": 9736078.0,
+      "n_positions": 5
+    },
+    {
+      "date": "2025-02-19",
+      "equity": 9821305.68,
+      "cash": 1796745.68,
+      "positions_value": 8024560.0,
+      "n_positions": 4
+    },
+    {
+      "date": "2025-02-20",
+      "equity": 9753535.68,
+      "cash": 1796745.68,
+      "positions_value": 7956790.0,
+      "n_positions": 4
+    },
+    {
+      "date": "2025-02-21",
+      "equity": 9702184.68,
+      "cash": 1796745.68,
+      "positions_value": 7905439.0,
+      "n_positions": 4
+    },
+    {
+      "date": "2025-02-24",
+      "equity": 9711501.68,
+      "cash": 1796745.68,
+      "positions_value": 7914756.0,
+      "n_positions": 4
+    },
+    {
+      "date": "2025-02-25",
+      "equity": 9320683.68,
+      "cash": 1796745.68,
+      "positions_value": 7523938.0,
+      "n_positions": 4
+    },
+    {
+      "date": "2025-02-26",
+      "equity": 9241868.72,
+      "cash": 4360424.72,
+      "positions_value": 4881444.0,
+      "n_positions": 3
+    },
+    {
+      "date": "2025-02-27",
+      "equity": 9164356.72,
+      "cash": 4360424.72,
+      "positions_value": 4803932.0,
+      "n_positions": 3
+    },
+    {
+      "date": "2025-02-28",
+      "equity": 9018814.72,
+      "cash": 4360424.72,
+      "positions_value": 4658390.0,
+      "n_positions": 3
+    },
+    {
+      "date": "2025-03-03",
+      "equity": 9118600.72,
+      "cash": 4360424.72,
+      "positions_value": 4758176.0,
+      "n_positions": 3
+    },
+    {
+      "date": "2025-03-04",
+      "equity": 9087074.72,
+      "cash": 4360424.72,
+      "positions_value": 4726650.0,
+      "n_positions": 3
+    },
+    {
+      "date": "2025-03-05",
+      "equity": 9281060.31,
+      "cash": 3734519.31,
+      "positions_value": 5546541.0,
+      "n_positions": 3
+    },
+    {
+      "date": "2025-03-06",
+      "equity": 9237082.31,
+      "cash": 3734519.31,
+      "positions_value": 5502563.0,
+      "n_positions": 3
+    },
+    {
+      "date": "2025-03-07",
+      "equity": 9266748.31,
+      "cash": 3734519.31,
+      "positions_value": 5532229.0,
+      "n_positions": 3
+    },
+    {
+      "date": "2025-03-10",
+      "equity": 8984181.31,
+      "cash": 3734519.31,
+      "positions_value": 5249662.0,
+      "n_positions": 3
+    },
+    {
+      "date": "2025-03-11",
+      "equity": 8996296.31,
+      "cash": 3734519.31,
+      "positions_value": 5261777.0,
+      "n_positions": 3
+    },
+    {
+      "date": "2025-03-12",
+      "equity": 9146012.64,
+      "cash": 1226112.64,
+      "positions_value": 7919900.0,
+      "n_positions": 4
+    },
+    {
+      "date": "2025-03-13",
+      "equity": 9068509.64,
+      "cash": 1226112.64,
+      "positions_value": 7842397.0,
+      "n_positions": 4
+    },
+    {
+      "date": "2025-03-14",
+      "equity": 9093131.64,
+      "cash": 1226112.64,
+      "positions_value": 7867019.0,
+      "n_positions": 4
+    },
+    {
+      "date": "2025-03-17",
+      "equity": 9222646.64,
+      "cash": 1226112.64,
+      "positions_value": 7996534.0,
+      "n_positions": 4
+    },
+    {
+      "date": "2025-03-18",
+      "equity": 9200713.64,
+      "cash": 1226112.64,
+      "positions_value": 7974601.0,
+      "n_positions": 4
+    },
+    {
+      "date": "2025-03-19",
+      "equity": 9272986.29,
+      "cash": 458193.29,
+      "positions_value": 8814793.0,
+      "n_positions": 5
+    },
+    {
+      "date": "2025-03-20",
+      "equity": 9225664.29,
+      "cash": 458193.29,
+      "positions_value": 8767471.0,
+      "n_positions": 5
+    },
+    {
+      "date": "2025-03-21",
+      "equity": 9078207.29,
+      "cash": 458193.29,
+      "positions_value": 8620014.0,
+      "n_positions": 5
+    },
+    {
+      "date": "2025-03-24",
+      "equity": 9027110.29,
+      "cash": 458193.29,
+      "positions_value": 8568917.0,
+      "n_positions": 5
+    },
+    {
+      "date": "2025-03-25",
+      "equity": 9043718.29,
+      "cash": 458193.29,
+      "positions_value": 8585525.0,
+      "n_positions": 5
+    },
+    {
+      "date": "2025-03-26",
+      "equity": 9374899.29,
+      "cash": 458193.29,
+      "positions_value": 8916706.0,
+      "n_positions": 5
+    },
+    {
+      "date": "2025-03-27",
+      "equity": 9375505.29,
+      "cash": 458193.29,
+      "positions_value": 8917312.0,
+      "n_positions": 5
+    },
+    {
+      "date": "2025-04-08",
+      "equity": 8513557.29,
+      "cash": 458193.29,
+      "positions_value": 8055364.0,
+      "n_positions": 5
+    },
+    {
+      "date": "2025-04-09",
+      "equity": 8722974.29,
+      "cash": 458193.29,
+      "positions_value": 8264781.0,
+      "n_positions": 5
+    },
+    {
+      "date": "2025-04-10",
+      "equity": 9126941.29,
+      "cash": 458193.29,
+      "positions_value": 8668748.0,
+      "n_positions": 5
+    },
+    {
+      "date": "2025-04-11",
+      "equity": 9127126.33,
+      "cash": 6470940.33,
+      "positions_value": 2656186.0,
+      "n_positions": 2
+    },
+    {
+      "date": "2025-04-14",
+      "equity": 9256848.33,
+      "cash": 6470940.33,
+      "positions_value": 2785908.0,
+      "n_positions": 2
+    },
+    {
+      "date": "2025-04-15",
+      "equity": 9275424.33,
+      "cash": 6470940.33,
+      "positions_value": 2804484.0,
+      "n_positions": 2
+    },
+    {
+      "date": "2025-04-16",
+      "equity": 9303292.33,
+      "cash": 6470940.33,
+      "positions_value": 2832352.0,
+      "n_positions": 2
+    },
+    {
+      "date": "2025-04-17",
+      "equity": 9421068.33,
+      "cash": 6470940.33,
+      "positions_value": 2950128.0,
+      "n_positions": 2
+    },
+    {
+      "date": "2025-04-21",
+      "equity": 9459434.69,
+      "cash": 24738.69,
+      "positions_value": 9434696.0,
+      "n_positions": 4
+    },
+    {
+      "date": "2025-04-22",
+      "equity": 9488006.69,
+      "cash": 24738.69,
+      "positions_value": 9463268.0,
+      "n_positions": 4
+    },
+    {
+      "date": "2025-04-23",
+      "equity": 9789720.69,
+      "cash": 24738.69,
+      "positions_value": 9764982.0,
+      "n_positions": 4
+    },
+    {
+      "date": "2025-04-24",
+      "equity": 9745068.69,
+      "cash": 24738.69,
+      "positions_value": 9720330.0,
+      "n_positions": 4
+    },
+    {
+      "date": "2025-04-25",
+      "equity": 9758412.69,
+      "cash": 24738.69,
+      "positions_value": 9733674.0,
+      "n_positions": 4
+    },
+    {
+      "date": "2025-04-28",
+      "equity": 9811002.69,
+      "cash": 24738.69,
+      "positions_value": 9786264.0,
+      "n_positions": 4
+    },
+    {
+      "date": "2025-04-29",
+      "equity": 9828348.69,
+      "cash": 24738.69,
+      "positions_value": 9803610.0,
+      "n_positions": 4
+    },
+    {
+      "date": "2025-04-30",
+      "equity": 9852768.69,
+      "cash": 24738.69,
+      "positions_value": 9828030.0,
+      "n_positions": 4
+    },
+    {
+      "date": "2025-05-02",
+      "equity": 9949936.69,
+      "cash": 24738.69,
+      "positions_value": 9925198.0,
+      "n_positions": 4
+    },
+    {
+      "date": "2025-05-05",
+      "equity": 9963330.69,
+      "cash": 24738.69,
+      "positions_value": 9938592.0,
+      "n_positions": 4
+    },
+    {
+      "date": "2025-05-06",
+      "equity": 9946718.69,
+      "cash": 24738.69,
+      "positions_value": 9921980.0,
+      "n_positions": 4
+    },
+    {
+      "date": "2025-05-07",
+      "equity": 9918576.69,
+      "cash": 24738.69,
+      "positions_value": 9893838.0,
+      "n_positions": 4
+    },
+    {
+      "date": "2025-05-08",
+      "equity": 9676284.69,
+      "cash": 24738.69,
+      "positions_value": 9651546.0,
+      "n_positions": 4
+    },
+    {
+      "date": "2025-05-09",
+      "equity": 9732550.69,
+      "cash": 24738.69,
+      "positions_value": 9707812.0,
+      "n_positions": 4
+    },
+    {
+      "date": "2025-05-14",
+      "equity": 10065076.69,
+      "cash": 24738.69,
+      "positions_value": 10040338.0,
+      "n_positions": 4
+    },
+    {
+      "date": "2025-05-15",
+      "equity": 10419502.69,
+      "cash": 24738.69,
+      "positions_value": 10394764.0,
+      "n_positions": 4
+    },
+    {
+      "date": "2025-05-16",
+      "equity": 10589370.69,
+      "cash": 24738.69,
+      "positions_value": 10564632.0,
+      "n_positions": 4
+    },
+    {
+      "date": "2025-05-19",
+      "equity": 10705222.69,
+      "cash": 24738.69,
+      "positions_value": 10680484.0,
+      "n_positions": 4
+    },
+    {
+      "date": "2025-05-20",
+      "equity": 10512872.69,
+      "cash": 24738.69,
+      "positions_value": 10488134.0,
+      "n_positions": 4
+    },
+    {
+      "date": "2025-05-21",
+      "equity": 10630548.69,
+      "cash": 24738.69,
+      "positions_value": 10605810.0,
+      "n_positions": 4
+    },
+    {
+      "date": "2025-05-22",
+      "equity": 10695972.69,
+      "cash": 24738.69,
+      "positions_value": 10671234.0,
+      "n_positions": 4
+    },
+    {
+      "date": "2025-05-23",
+      "equity": 10646706.69,
+      "cash": 24738.69,
+      "positions_value": 10621968.0,
+      "n_positions": 4
+    },
+    {
+      "date": "2025-05-26",
+      "equity": 10761402.69,
+      "cash": 24738.69,
+      "positions_value": 10736664.0,
+      "n_positions": 4
+    },
+    {
+      "date": "2025-05-27",
+      "equity": 10776712.69,
+      "cash": 24738.69,
+      "positions_value": 10751974.0,
+      "n_positions": 4
+    },
+    {
+      "date": "2025-05-28",
+      "equity": 10826484.69,
+      "cash": 24738.69,
+      "positions_value": 10801746.0,
+      "n_positions": 4
+    },
+    {
+      "date": "2025-06-02",
+      "equity": 10456538.69,
+      "cash": 24738.69,
+      "positions_value": 10431800.0,
+      "n_positions": 4
+    },
+    {
+      "date": "2025-06-03",
+      "equity": 10433664.69,
+      "cash": 24738.69,
+      "positions_value": 10408926.0,
+      "n_positions": 4
+    },
+    {
+      "date": "2025-06-04",
+      "equity": 10320142.69,
+      "cash": 24738.69,
+      "positions_value": 10295404.0,
+      "n_positions": 4
+    },
+    {
+      "date": "2025-06-05",
+      "equity": 10382202.69,
+      "cash": 24738.69,
+      "positions_value": 10357464.0,
+      "n_positions": 4
+    },
+    {
+      "date": "2025-06-10",
+      "equity": 10581208.69,
+      "cash": 24738.69,
+      "positions_value": 10556470.0,
+      "n_positions": 4
+    },
+    {
+      "date": "2025-06-11",
+      "equity": 10613700.69,
+      "cash": 24738.69,
+      "positions_value": 10588962.0,
+      "n_positions": 4
+    },
+    {
+      "date": "2025-06-12",
+      "equity": 10559290.69,
+      "cash": 24738.69,
+      "positions_value": 10534552.0,
+      "n_positions": 4
+    },
+    {
+      "date": "2025-06-13",
+      "equity": 10454440.69,
+      "cash": 24738.69,
+      "positions_value": 10429702.0,
+      "n_positions": 4
+    },
+    {
+      "date": "2025-06-16",
+      "equity": 10462176.69,
+      "cash": 24738.69,
+      "positions_value": 10437438.0,
+      "n_positions": 4
+    },
+    {
+      "date": "2025-06-17",
+      "equity": 10431880.69,
+      "cash": 24738.69,
+      "positions_value": 10407142.0,
+      "n_positions": 4
+    },
+    {
+      "date": "2025-06-18",
+      "equity": 10411250.69,
+      "cash": 24738.69,
+      "positions_value": 10386512.0,
+      "n_positions": 4
+    },
+    {
+      "date": "2025-06-19",
+      "equity": 10141918.69,
+      "cash": 24738.69,
+      "positions_value": 10117180.0,
+      "n_positions": 4
+    },
+    {
+      "date": "2025-06-20",
+      "equity": 10042618.69,
+      "cash": 24738.69,
+      "positions_value": 10017880.0,
+      "n_positions": 4
+    },
+    {
+      "date": "2025-06-23",
+      "equity": 9897482.69,
+      "cash": 24738.69,
+      "positions_value": 9872744.0,
+      "n_positions": 4
+    },
+    {
+      "date": "2025-06-24",
+      "equity": 10023738.69,
+      "cash": 24738.69,
+      "positions_value": 9999000.0,
+      "n_positions": 4
+    },
+    {
+      "date": "2025-06-25",
+      "equity": 9951604.17,
+      "cash": 130140.17,
+      "positions_value": 9821464.0,
+      "n_positions": 4
+    },
+    {
+      "date": "2025-06-26",
+      "equity": 10101720.17,
+      "cash": 130140.17,
+      "positions_value": 9971580.0,
+      "n_positions": 4
+    },
+    {
+      "date": "2025-06-30",
+      "equity": 10189368.17,
+      "cash": 130140.17,
+      "positions_value": 10059228.0,
+      "n_positions": 4
+    },
+    {
+      "date": "2025-07-01",
+      "equity": 10174960.17,
+      "cash": 130140.17,
+      "positions_value": 10044820.0,
+      "n_positions": 4
+    },
+    {
+      "date": "2025-07-02",
+      "equity": 10083312.17,
+      "cash": 130140.17,
+      "positions_value": 9953172.0,
+      "n_positions": 4
+    },
+    {
+      "date": "2025-07-03",
+      "equity": 10023408.26,
+      "cash": 2640940.26,
+      "positions_value": 7382468.0,
+      "n_positions": 3
+    },
+    {
+      "date": "2025-07-04",
+      "equity": 9946116.26,
+      "cash": 2640940.26,
+      "positions_value": 7305176.0,
+      "n_positions": 3
+    },
+    {
+      "date": "2025-07-07",
+      "equity": 10067980.26,
+      "cash": 2640940.26,
+      "positions_value": 7427040.0,
+      "n_positions": 3
+    },
+    {
+      "date": "2025-07-08",
+      "equity": 9983288.26,
+      "cash": 2640940.26,
+      "positions_value": 7342348.0,
+      "n_positions": 3
+    },
+    {
+      "date": "2025-07-09",
+      "equity": 10035184.26,
+      "cash": 2640940.26,
+      "positions_value": 7394244.0,
+      "n_positions": 3
+    },
+    {
+      "date": "2025-07-10",
+      "equity": 10212668.09,
+      "cash": 69684.09,
+      "positions_value": 10142984.0,
+      "n_positions": 4
+    },
+    {
+      "date": "2025-07-11",
+      "equity": 10356556.09,
+      "cash": 69684.09,
+      "positions_value": 10286872.0,
+      "n_positions": 4
+    },
+    {
+      "date": "2025-07-14",
+      "equity": 10084754.09,
+      "cash": 69684.09,
+      "positions_value": 10015070.0,
+      "n_positions": 4
+    },
+    {
+      "date": "2025-07-15",
+      "equity": 10107094.09,
+      "cash": 69684.09,
+      "positions_value": 10037410.0,
+      "n_positions": 4
+    },
+    {
+      "date": "2025-07-16",
+      "equity": 10131514.09,
+      "cash": 69684.09,
+      "positions_value": 10061830.0,
+      "n_positions": 4
+    },
+    {
+      "date": "2025-07-17",
+      "equity": 10194311.05,
+      "cash": 163903.05,
+      "positions_value": 10030408.0,
+      "n_positions": 4
+    },
+    {
+      "date": "2025-07-18",
+      "equity": 10143484.05,
+      "cash": 163903.05,
+      "positions_value": 9979581.0,
+      "n_positions": 4
+    },
+    {
+      "date": "2025-07-21",
+      "equity": 10161499.05,
+      "cash": 163903.05,
+      "positions_value": 9997596.0,
+      "n_positions": 4
+    },
+    {
+      "date": "2025-07-22",
+      "equity": 10084980.05,
+      "cash": 163903.05,
+      "positions_value": 9921077.0,
+      "n_positions": 4
+    },
+    {
+      "date": "2025-07-23",
+      "equity": 10189331.05,
+      "cash": 163903.05,
+      "positions_value": 10025428.0,
+      "n_positions": 4
+    },
+    {
+      "date": "2025-07-24",
+      "equity": 10327950.05,
+      "cash": 163903.05,
+      "positions_value": 10164047.0,
+      "n_positions": 4
+    },
+    {
+      "date": "2025-07-25",
+      "equity": 10301971.05,
+      "cash": 163903.05,
+      "positions_value": 10138068.0,
+      "n_positions": 4
+    },
+    {
+      "date": "2025-07-28",
+      "equity": 10303360.05,
+      "cash": 163903.05,
+      "positions_value": 10139457.0,
+      "n_positions": 4
+    },
+    {
+      "date": "2025-07-29",
+      "equity": 10195409.05,
+      "cash": 163903.05,
+      "positions_value": 10031506.0,
+      "n_positions": 4
+    },
+    {
+      "date": "2025-07-30",
+      "equity": 10083969.05,
+      "cash": 163903.05,
+      "positions_value": 9920066.0,
+      "n_positions": 4
+    },
+    {
+      "date": "2025-07-31",
+      "equity": 9896760.52,
+      "cash": 165031.52,
+      "positions_value": 9731729.0,
+      "n_positions": 4
+    },
+    {
+      "date": "2025-08-01",
+      "equity": 9910684.52,
+      "cash": 165031.52,
+      "positions_value": 9745653.0,
+      "n_positions": 4
+    },
+    {
+      "date": "2025-08-04",
+      "equity": 9943641.52,
+      "cash": 165031.52,
+      "positions_value": 9778610.0,
+      "n_positions": 4
+    },
+    {
+      "date": "2025-08-05",
+      "equity": 9955738.52,
+      "cash": 165031.52,
+      "positions_value": 9790707.0,
+      "n_positions": 4
+    },
+    {
+      "date": "2025-08-06",
+      "equity": 9844023.52,
+      "cash": 165031.52,
+      "positions_value": 9678992.0,
+      "n_positions": 4
+    },
+    {
+      "date": "2025-08-07",
+      "equity": 9881477.52,
+      "cash": 165031.52,
+      "positions_value": 9716446.0,
+      "n_positions": 4
+    },
+    {
+      "date": "2025-08-08",
+      "equity": 9739330.52,
+      "cash": 165031.52,
+      "positions_value": 9574299.0,
+      "n_positions": 4
+    },
+    {
+      "date": "2025-08-11",
+      "equity": 9912871.52,
+      "cash": 165031.52,
+      "positions_value": 9747840.0,
+      "n_positions": 4
+    },
+    {
+      "date": "2025-08-12",
+      "equity": 10280975.52,
+      "cash": 165031.52,
+      "positions_value": 10115944.0,
+      "n_positions": 4
+    },
+    {
+      "date": "2025-08-13",
+      "equity": 10348387.52,
+      "cash": 165031.52,
+      "positions_value": 10183356.0,
+      "n_positions": 4
+    },
+    {
+      "date": "2025-08-14",
+      "equity": 10277986.52,
+      "cash": 165031.52,
+      "positions_value": 10112955.0,
+      "n_positions": 4
+    },
+    {
+      "date": "2025-08-15",
+      "equity": 10226991.52,
+      "cash": 165031.52,
+      "positions_value": 10061960.0,
+      "n_positions": 4
+    },
+    {
+      "date": "2025-08-19",
+      "equity": 10284124.52,
+      "cash": 165031.52,
+      "positions_value": 10119093.0,
+      "n_positions": 4
+    },
+    {
+      "date": "2025-08-20",
+      "equity": 10385911.52,
+      "cash": 165031.52,
+      "positions_value": 10220880.0,
+      "n_positions": 4
+    },
+    {
+      "date": "2025-08-21",
+      "equity": 10385522.52,
+      "cash": 165031.52,
+      "positions_value": 10220491.0,
+      "n_positions": 4
+    },
+    {
+      "date": "2025-08-22",
+      "equity": 10355763.14,
+      "cash": 2840231.14,
+      "positions_value": 7515532.0,
+      "n_positions": 3
+    },
+    {
+      "date": "2025-08-25",
+      "equity": 10461276.14,
+      "cash": 2840231.14,
+      "positions_value": 7621045.0,
+      "n_positions": 3
+    },
+    {
+      "date": "2025-08-26",
+      "equity": 10321282.14,
+      "cash": 2840231.14,
+      "positions_value": 7481051.0,
+      "n_positions": 3
+    },
+    {
+      "date": "2025-08-27",
+      "equity": 10259792.14,
+      "cash": 2840231.14,
+      "positions_value": 7419561.0,
+      "n_positions": 3
+    },
+    {
+      "date": "2025-08-28",
+      "equity": 10302248.14,
+      "cash": 2840231.14,
+      "positions_value": 7462017.0,
+      "n_positions": 3
+    },
+    {
+      "date": "2025-08-29",
+      "equity": 10137912.39,
+      "cash": 285213.39,
+      "positions_value": 9852699.0,
+      "n_positions": 4
+    },
+    {
+      "date": "2025-09-01",
+      "equity": 9976861.39,
+      "cash": 285213.39,
+      "positions_value": 9691648.0,
+      "n_positions": 4
+    },
+    {
+      "date": "2025-09-02",
+      "equity": 9955527.39,
+      "cash": 285213.39,
+      "positions_value": 9670314.0,
+      "n_positions": 4
+    },
+    {
+      "date": "2025-09-03",
+      "equity": 10035454.39,
+      "cash": 285213.39,
+      "positions_value": 9750241.0,
+      "n_positions": 4
+    },
+    {
+      "date": "2025-09-04",
+      "equity": 10053275.39,
+      "cash": 285213.39,
+      "positions_value": 9768062.0,
+      "n_positions": 4
+    },
+    {
+      "date": "2025-09-08",
+      "equity": 9764482.39,
+      "cash": 285213.39,
+      "positions_value": 9479269.0,
+      "n_positions": 4
+    },
+    {
+      "date": "2025-09-09",
+      "equity": 9575052.39,
+      "cash": 285213.39,
+      "positions_value": 9289839.0,
+      "n_positions": 4
+    },
+    {
+      "date": "2025-09-10",
+      "equity": 9748652.39,
+      "cash": 285213.39,
+      "positions_value": 9463439.0,
+      "n_positions": 4
+    },
+    {
+      "date": "2025-09-11",
+      "equity": 9979061.39,
+      "cash": 285213.39,
+      "positions_value": 9693848.0,
+      "n_positions": 4
+    },
+    {
+      "date": "2025-09-12",
+      "equity": 10141289.39,
+      "cash": 285213.39,
+      "positions_value": 9856076.0,
+      "n_positions": 4
+    },
+    {
+      "date": "2025-09-15",
+      "equity": 10074192.44,
+      "cash": 2487244.44,
+      "positions_value": 7586948.0,
+      "n_positions": 3
+    },
+    {
+      "date": "2025-09-16",
+      "equity": 10114077.44,
+      "cash": 2487244.44,
+      "positions_value": 7626833.0,
+      "n_positions": 3
+    },
+    {
+      "date": "2025-09-17",
+      "equity": 10226294.44,
+      "cash": 2487244.44,
+      "positions_value": 7739050.0,
+      "n_positions": 3
+    },
+    {
+      "date": "2025-09-18",
+      "equity": 10144570.44,
+      "cash": 2487244.44,
+      "positions_value": 7657326.0,
+      "n_positions": 3
+    },
+    {
+      "date": "2025-09-19",
+      "equity": 10233769.44,
+      "cash": 2487244.44,
+      "positions_value": 7746525.0,
+      "n_positions": 3
+    },
+    {
+      "date": "2025-09-22",
+      "equity": 10233985.22,
+      "cash": 54186.22,
+      "positions_value": 10179799.0,
+      "n_positions": 4
+    },
+    {
+      "date": "2025-09-23",
+      "equity": 10267202.22,
+      "cash": 54186.22,
+      "positions_value": 10213016.0,
+      "n_positions": 4
+    },
+    {
+      "date": "2025-09-24",
+      "equity": 10067819.22,
+      "cash": 54186.22,
+      "positions_value": 10013633.0,
+      "n_positions": 4
+    },
+    {
+      "date": "2025-09-25",
+      "equity": 9741992.22,
+      "cash": 54186.22,
+      "positions_value": 9687806.0,
+      "n_positions": 4
+    },
+    {
+      "date": "2025-09-26",
+      "equity": 9876283.22,
+      "cash": 54186.22,
+      "positions_value": 9822097.0,
+      "n_positions": 4
+    },
+    {
+      "date": "2025-09-29",
+      "equity": 9829791.22,
+      "cash": 54186.22,
+      "positions_value": 9775605.0,
+      "n_positions": 4
+    },
+    {
+      "date": "2025-09-30",
+      "equity": 9668122.22,
+      "cash": 54186.22,
+      "positions_value": 9613936.0,
+      "n_positions": 4
+    },
+    {
+      "date": "2025-10-01",
+      "equity": 9447309.22,
+      "cash": 54186.22,
+      "positions_value": 9393123.0,
+      "n_positions": 4
+    },
+    {
+      "date": "2025-10-02",
+      "equity": 9453401.22,
+      "cash": 54186.22,
+      "positions_value": 9399215.0,
+      "n_positions": 4
+    },
+    {
+      "date": "2025-10-03",
+      "equity": 9518764.22,
+      "cash": 54186.22,
+      "positions_value": 9464578.0,
+      "n_positions": 4
+    },
+    {
+      "date": "2025-10-06",
+      "equity": 9497544.22,
+      "cash": 54186.22,
+      "positions_value": 9443358.0,
+      "n_positions": 4
+    },
+    {
+      "date": "2025-10-07",
+      "equity": 9539610.22,
+      "cash": 54186.22,
+      "positions_value": 9485424.0,
+      "n_positions": 4
+    },
+    {
+      "date": "2025-10-08",
+      "equity": 9591002.22,
+      "cash": 54186.22,
+      "positions_value": 9536816.0,
+      "n_positions": 4
+    },
+    {
+      "date": "2025-10-09",
+      "equity": 9852341.22,
+      "cash": 54186.22,
+      "positions_value": 9798155.0,
+      "n_positions": 4
+    },
+    {
+      "date": "2025-10-10",
+      "equity": 9794365.22,
+      "cash": 54186.22,
+      "positions_value": 9740179.0,
+      "n_positions": 4
+    },
+    {
+      "date": "2025-10-13",
+      "equity": 9683856.81,
+      "cash": 50643.81,
+      "positions_value": 9633213.0,
+      "n_positions": 5
+    },
+    {
+      "date": "2025-10-14",
+      "equity": 9535602.81,
+      "cash": 50643.81,
+      "positions_value": 9484959.0,
+      "n_positions": 5
+    },
+    {
+      "date": "2025-10-15",
+      "equity": 9551044.81,
+      "cash": 50643.81,
+      "positions_value": 9500401.0,
+      "n_positions": 5
+    },
+    {
+      "date": "2025-10-16",
+      "equity": 9674502.81,
+      "cash": 50643.81,
+      "positions_value": 9623859.0,
+      "n_positions": 5
+    },
+    {
+      "date": "2025-10-17",
+      "equity": 9719355.81,
+      "cash": 50643.81,
+      "positions_value": 9668712.0,
+      "n_positions": 5
+    },
+    {
+      "date": "2025-10-20",
+      "equity": 9976192.47,
+      "cash": 4457344.47,
+      "positions_value": 5518848.0,
+      "n_positions": 3
+    },
+    {
+      "date": "2025-10-21",
+      "equity": 10101476.47,
+      "cash": 4457344.47,
+      "positions_value": 5644132.0,
+      "n_positions": 3
+    },
+    {
+      "date": "2025-10-22",
+      "equity": 10114084.47,
+      "cash": 4457344.47,
+      "positions_value": 5656740.0,
+      "n_positions": 3
+    },
+    {
+      "date": "2025-10-23",
+      "equity": 10263384.47,
+      "cash": 4457344.47,
+      "positions_value": 5806040.0,
+      "n_positions": 3
+    },
+    {
+      "date": "2025-10-24",
+      "equity": 10369728.47,
+      "cash": 4457344.47,
+      "positions_value": 5912384.0,
+      "n_positions": 3
+    },
+    {
+      "date": "2025-10-27",
+      "equity": 10392836.12,
+      "cash": 121290.12,
+      "positions_value": 10271546.0,
+      "n_positions": 5
+    },
+    {
+      "date": "2025-10-28",
+      "equity": 10169646.12,
+      "cash": 121290.12,
+      "positions_value": 10048356.0,
+      "n_positions": 5
+    },
+    {
+      "date": "2025-10-29",
+      "equity": 10826926.12,
+      "cash": 121290.12,
+      "positions_value": 10705636.0,
+      "n_positions": 5
+    },
+    {
+      "date": "2025-10-30",
+      "equity": 10854990.12,
+      "cash": 121290.12,
+      "positions_value": 10733700.0,
+      "n_positions": 5
+    },
+    {
+      "date": "2025-10-31",
+      "equity": 10661480.12,
+      "cash": 121290.12,
+      "positions_value": 10540190.0,
+      "n_positions": 5
+    },
+    {
+      "date": "2025-11-03",
+      "equity": 10779271.12,
+      "cash": 121290.12,
+      "positions_value": 10657981.0,
+      "n_positions": 5
+    },
+    {
+      "date": "2025-11-04",
+      "equity": 10737083.12,
+      "cash": 121290.12,
+      "positions_value": 10615793.0,
+      "n_positions": 5
+    },
+    {
+      "date": "2025-11-05",
+      "equity": 10755366.12,
+      "cash": 121290.12,
+      "positions_value": 10634076.0,
+      "n_positions": 5
+    },
+    {
+      "date": "2025-11-06",
+      "equity": 10744470.12,
+      "cash": 121290.12,
+      "positions_value": 10623180.0,
+      "n_positions": 5
+    },
+    {
+      "date": "2025-11-07",
+      "equity": 10813131.12,
+      "cash": 121290.12,
+      "positions_value": 10691841.0,
+      "n_positions": 5
+    },
+    {
+      "date": "2025-11-10",
+      "equity": 10825765.79,
+      "cash": 844431.79,
+      "positions_value": 9981334.0,
+      "n_positions": 5
+    },
+    {
+      "date": "2025-11-11",
+      "equity": 10799578.79,
+      "cash": 844431.79,
+      "positions_value": 9955147.0,
+      "n_positions": 5
+    },
+    {
+      "date": "2025-11-12",
+      "equity": 10867476.79,
+      "cash": 844431.79,
+      "positions_value": 10023045.0,
+      "n_positions": 5
+    },
+    {
+      "date": "2025-11-13",
+      "equity": 10764441.79,
+      "cash": 844431.79,
+      "positions_value": 9920010.0,
+      "n_positions": 5
+    },
+    {
+      "date": "2025-11-14",
+      "equity": 10769298.79,
+      "cash": 844431.79,
+      "positions_value": 9924867.0,
+      "n_positions": 5
+    },
+    {
+      "date": "2025-11-17",
+      "equity": 10864548.79,
+      "cash": 844431.79,
+      "positions_value": 10020117.0,
+      "n_positions": 5
+    },
+    {
+      "date": "2025-11-18",
+      "equity": 10708839.79,
+      "cash": 844431.79,
+      "positions_value": 9864408.0,
+      "n_positions": 5
+    },
+    {
+      "date": "2025-11-19",
+      "equity": 10761277.79,
+      "cash": 844431.79,
+      "positions_value": 9916846.0,
+      "n_positions": 5
+    },
+    {
+      "date": "2025-11-20",
+      "equity": 10754683.79,
+      "cash": 844431.79,
+      "positions_value": 9910252.0,
+      "n_positions": 5
+    },
+    {
+      "date": "2025-11-21",
+      "equity": 10741214.79,
+      "cash": 844431.79,
+      "positions_value": 9896783.0,
+      "n_positions": 5
+    },
+    {
+      "date": "2025-11-24",
+      "equity": 10806940.31,
+      "cash": 541259.31,
+      "positions_value": 10265681.0,
+      "n_positions": 5
+    },
+    {
+      "date": "2025-11-25",
+      "equity": 10661876.31,
+      "cash": 541259.31,
+      "positions_value": 10120617.0,
+      "n_positions": 5
+    },
+    {
+      "date": "2025-11-26",
+      "equity": 10665082.31,
+      "cash": 541259.31,
+      "positions_value": 10123823.0,
+      "n_positions": 5
+    },
+    {
+      "date": "2025-11-27",
+      "equity": 10519032.31,
+      "cash": 541259.31,
+      "positions_value": 9977773.0,
+      "n_positions": 5
+    },
+    {
+      "date": "2025-11-28",
+      "equity": 10440979.31,
+      "cash": 541259.31,
+      "positions_value": 9899720.0,
+      "n_positions": 5
+    },
+    {
+      "date": "2025-12-01",
+      "equity": 10417122.31,
+      "cash": 541259.31,
+      "positions_value": 9875863.0,
+      "n_positions": 5
+    },
+    {
+      "date": "2025-12-02",
+      "equity": 10537593.31,
+      "cash": 541259.31,
+      "positions_value": 9996334.0,
+      "n_positions": 5
+    },
+    {
+      "date": "2025-12-03",
+      "equity": 10500453.31,
+      "cash": 541259.31,
+      "positions_value": 9959194.0,
+      "n_positions": 5
+    },
+    {
+      "date": "2025-12-04",
+      "equity": 10548519.31,
+      "cash": 541259.31,
+      "positions_value": 10007260.0,
+      "n_positions": 5
+    },
+    {
+      "date": "2025-12-05",
+      "equity": 10526149.31,
+      "cash": 541259.31,
+      "positions_value": 9984890.0,
+      "n_positions": 5
+    },
+    {
+      "date": "2025-12-08",
+      "equity": 10598137.31,
+      "cash": 541259.31,
+      "positions_value": 10056878.0,
+      "n_positions": 5
+    },
+    {
+      "date": "2025-12-09",
+      "equity": 10455767.31,
+      "cash": 541259.31,
+      "positions_value": 9914508.0,
+      "n_positions": 5
+    },
+    {
+      "date": "2025-12-10",
+      "equity": 10470658.31,
+      "cash": 541259.31,
+      "positions_value": 9929399.0,
+      "n_positions": 5
+    },
+    {
+      "date": "2025-12-11",
+      "equity": 10328667.31,
+      "cash": 541259.31,
+      "positions_value": 9787408.0,
+      "n_positions": 5
+    },
+    {
+      "date": "2025-12-12",
+      "equity": 10346211.31,
+      "cash": 541259.31,
+      "positions_value": 9804952.0,
+      "n_positions": 5
+    },
+    {
+      "date": "2025-12-15",
+      "equity": 10602161.34,
+      "cash": 1168959.34,
+      "positions_value": 9433202.0,
+      "n_positions": 4
+    },
+    {
+      "date": "2025-12-16",
+      "equity": 10475914.34,
+      "cash": 1168959.34,
+      "positions_value": 9306955.0,
+      "n_positions": 4
+    },
+    {
+      "date": "2025-12-17",
+      "equity": 10513996.34,
+      "cash": 1168959.34,
+      "positions_value": 9345037.0,
+      "n_positions": 4
+    },
+    {
+      "date": "2025-12-18",
+      "equity": 10585777.34,
+      "cash": 1168959.34,
+      "positions_value": 9416818.0,
+      "n_positions": 4
+    },
+    {
+      "date": "2025-12-19",
+      "equity": 10561125.34,
+      "cash": 1168959.34,
+      "positions_value": 9392166.0,
+      "n_positions": 4
+    },
+    {
+      "date": "2025-12-22",
+      "equity": 10562445.41,
+      "cash": 22704.41,
+      "positions_value": 10539741.0,
+      "n_positions": 5
+    },
+    {
+      "date": "2025-12-23",
+      "equity": 10514855.41,
+      "cash": 22704.41,
+      "positions_value": 10492151.0,
+      "n_positions": 5
+    },
+    {
+      "date": "2025-12-24",
+      "equity": 10526950.41,
+      "cash": 22704.41,
+      "positions_value": 10504246.0,
+      "n_positions": 5
+    },
+    {
+      "date": "2025-12-29",
+      "equity": 10644920.41,
+      "cash": 22704.41,
+      "positions_value": 10622216.0,
+      "n_positions": 5
+    },
+    {
+      "date": "2025-12-30",
+      "equity": 10657199.41,
+      "cash": 22704.41,
+      "positions_value": 10634495.0,
+      "n_positions": 5
+    },
+    {
+      "date": "2026-01-02",
+      "equity": 10766951.41,
+      "cash": 22704.41,
+      "positions_value": 10744247.0,
+      "n_positions": 5
+    },
+    {
+      "date": "2026-01-05",
+      "equity": 10905179.41,
+      "cash": 22704.41,
+      "positions_value": 10882475.0,
+      "n_positions": 5
+    },
+    {
+      "date": "2026-01-06",
+      "equity": 10983312.41,
+      "cash": 22704.41,
+      "positions_value": 10960608.0,
+      "n_positions": 5
+    },
+    {
+      "date": "2026-01-07",
+      "equity": 11312891.41,
+      "cash": 22704.41,
+      "positions_value": 11290187.0,
+      "n_positions": 5
+    },
+    {
+      "date": "2026-01-08",
+      "equity": 11318618.41,
+      "cash": 22704.41,
+      "positions_value": 11295914.0,
+      "n_positions": 5
+    },
+    {
+      "date": "2026-01-09",
+      "equity": 11371271.41,
+      "cash": 22704.41,
+      "positions_value": 11348567.0,
+      "n_positions": 5
+    },
+    {
+      "date": "2026-01-12",
+      "equity": 11512445.41,
+      "cash": 22704.41,
+      "positions_value": 11489741.0,
+      "n_positions": 5
+    },
+    {
+      "date": "2026-01-13",
+      "equity": 11899501.41,
+      "cash": 22704.41,
+      "positions_value": 11876797.0,
+      "n_positions": 5
+    },
+    {
+      "date": "2026-01-14",
+      "equity": 11761689.41,
+      "cash": 22704.41,
+      "positions_value": 11738985.0,
+      "n_positions": 5
+    },
+    {
+      "date": "2026-01-15",
+      "equity": 11741067.41,
+      "cash": 22704.41,
+      "positions_value": 11718363.0,
+      "n_positions": 5
+    },
+    {
+      "date": "2026-01-19",
+      "equity": 11813897.41,
+      "cash": 22704.41,
+      "positions_value": 11791193.0,
+      "n_positions": 5
+    },
+    {
+      "date": "2026-01-20",
+      "equity": 11952593.41,
+      "cash": 22704.41,
+      "positions_value": 11929889.0,
+      "n_positions": 5
+    },
+    {
+      "date": "2026-01-21",
+      "equity": 11269929.41,
+      "cash": 22704.41,
+      "positions_value": 11247225.0,
+      "n_positions": 5
+    },
+    {
+      "date": "2026-01-22",
+      "equity": 11506738.41,
+      "cash": 22704.41,
+      "positions_value": 11484034.0,
+      "n_positions": 5
+    },
+    {
+      "date": "2026-01-23",
+      "equity": 11604827.41,
+      "cash": 22704.41,
+      "positions_value": 11582123.0,
+      "n_positions": 5
+    },
+    {
+      "date": "2026-01-26",
+      "equity": 11621116.41,
+      "cash": 22704.41,
+      "positions_value": 11598412.0,
+      "n_positions": 5
+    },
+    {
+      "date": "2026-01-27",
+      "equity": 11025453.41,
+      "cash": 22704.41,
+      "positions_value": 11002749.0,
+      "n_positions": 5
+    },
+    {
+      "date": "2026-01-28",
+      "equity": 10661051.41,
+      "cash": 22704.41,
+      "positions_value": 10638347.0,
+      "n_positions": 5
+    },
+    {
+      "date": "2026-01-29",
+      "equity": 10755731.41,
+      "cash": 22704.41,
+      "positions_value": 10733027.0,
+      "n_positions": 5
+    },
+    {
+      "date": "2026-01-30",
+      "equity": 10909866.41,
+      "cash": 22704.41,
+      "positions_value": 10887162.0,
+      "n_positions": 5
+    },
+    {
+      "date": "2026-02-02",
+      "equity": 10468661.29,
+      "cash": 53303.29,
+      "positions_value": 10415358.0,
+      "n_positions": 5
+    },
+    {
+      "date": "2026-02-03",
+      "equity": 10642224.29,
+      "cash": 53303.29,
+      "positions_value": 10588921.0,
+      "n_positions": 5
+    },
+    {
+      "date": "2026-02-04",
+      "equity": 10845812.29,
+      "cash": 53303.29,
+      "positions_value": 10792509.0,
+      "n_positions": 5
+    },
+    {
+      "date": "2026-02-05",
+      "equity": 10640853.29,
+      "cash": 53303.29,
+      "positions_value": 10587550.0,
+      "n_positions": 5
+    },
+    {
+      "date": "2026-02-06",
+      "equity": 10558922.29,
+      "cash": 53303.29,
+      "positions_value": 10505619.0,
+      "n_positions": 5
+    },
+    {
+      "date": "2026-02-09",
+      "equity": 10657932.18,
+      "cash": 87942.18,
+      "positions_value": 10569990.0,
+      "n_positions": 5
+    },
+    {
+      "date": "2026-02-10",
+      "equity": 10776039.18,
+      "cash": 87942.18,
+      "positions_value": 10688097.0,
+      "n_positions": 5
+    },
+    {
+      "date": "2026-02-11",
+      "equity": 10979899.18,
+      "cash": 87942.18,
+      "positions_value": 10891957.0,
+      "n_positions": 5
+    },
+    {
+      "date": "2026-02-12",
+      "equity": 11008727.18,
+      "cash": 87942.18,
+      "positions_value": 10920785.0,
+      "n_positions": 5
+    },
+    {
+      "date": "2026-02-13",
+      "equity": 10923487.18,
+      "cash": 87942.18,
+      "positions_value": 10835545.0,
+      "n_positions": 5
+    },
+    {
+      "date": "2026-02-18",
+      "equity": 11094622.7,
+      "cash": 988845.7,
+      "positions_value": 10105777.0,
+      "n_positions": 4
+    },
+    {
+      "date": "2026-02-19",
+      "equity": 10900029.7,
+      "cash": 988845.7,
+      "positions_value": 9911184.0,
+      "n_positions": 4
+    },
+    {
+      "date": "2026-02-20",
+      "equity": 10965546.7,
+      "cash": 988845.7,
+      "positions_value": 9976701.0,
+      "n_positions": 4
+    },
+    {
+      "date": "2026-02-23",
+      "equity": 11176425.7,
+      "cash": 988845.7,
+      "positions_value": 10187580.0,
+      "n_positions": 4
+    },
+    {
+      "date": "2026-02-24",
+      "equity": 11199141.7,
+      "cash": 988845.7,
+      "positions_value": 10210296.0,
+      "n_positions": 4
+    },
+    {
+      "date": "2026-02-25",
+      "equity": 11256918.67,
+      "cash": 359311.67,
+      "positions_value": 10897607.0,
+      "n_positions": 5
+    },
+    {
+      "date": "2026-02-26",
+      "equity": 11273422.67,
+      "cash": 359311.67,
+      "positions_value": 10914111.0,
+      "n_positions": 5
+    },
+    {
+      "date": "2026-02-27",
+      "equity": 11125647.67,
+      "cash": 359311.67,
+      "positions_value": 10766336.0,
+      "n_positions": 5
+    },
+    {
+      "date": "2026-03-02",
+      "equity": 10787382.67,
+      "cash": 359311.67,
+      "positions_value": 10428071.0,
+      "n_positions": 5
+    },
+    {
+      "date": "2026-03-03",
+      "equity": 10782747.67,
+      "cash": 359311.67,
+      "positions_value": 10423436.0,
+      "n_positions": 5
+    },
+    {
+      "date": "2026-03-04",
+      "equity": 10501982.6,
+      "cash": 1554153.6,
+      "positions_value": 8947829.0,
+      "n_positions": 3
+    },
+    {
+      "date": "2026-03-05",
+      "equity": 10677470.6,
+      "cash": 1554153.6,
+      "positions_value": 9123317.0,
+      "n_positions": 3
+    },
+    {
+      "date": "2026-03-06",
+      "equity": 10486958.6,
+      "cash": 1554153.6,
+      "positions_value": 8932805.0,
+      "n_positions": 3
+    },
+    {
+      "date": "2026-03-09",
+      "equity": 10246996.6,
+      "cash": 1554153.6,
+      "positions_value": 8692843.0,
+      "n_positions": 3
+    },
+    {
+      "date": "2026-03-10",
+      "equity": 10334514.6,
+      "cash": 1554153.6,
+      "positions_value": 8780361.0,
+      "n_positions": 3
+    },
+    {
+      "date": "2026-03-11",
+      "equity": 10263987.82,
+      "cash": 45316.82,
+      "positions_value": 10218671.0,
+      "n_positions": 4
+    },
+    {
+      "date": "2026-03-12",
+      "equity": 10463911.82,
+      "cash": 45316.82,
+      "positions_value": 10418595.0,
+      "n_positions": 4
+    },
+    {
+      "date": "2026-03-13",
+      "equity": 10229196.82,
+      "cash": 45316.82,
+      "positions_value": 10183880.0,
+      "n_positions": 4
+    },
+    {
+      "date": "2026-03-16",
+      "equity": 10061594.82,
+      "cash": 45316.82,
+      "positions_value": 10016278.0,
+      "n_positions": 4
+    },
+    {
+      "date": "2026-03-17",
+      "equity": 10134275.82,
+      "cash": 45316.82,
+      "positions_value": 10088959.0,
+      "n_positions": 4
+    },
+    {
+      "date": "2026-03-25",
+      "equity": 10508201.82,
+      "cash": 45316.82,
+      "positions_value": 10462885.0,
+      "n_positions": 4
+    },
+    {
+      "date": "2026-03-26",
+      "equity": 10254281.82,
+      "cash": 45316.82,
+      "positions_value": 10208965.0,
+      "n_positions": 4
+    },
+    {
+      "date": "2026-03-27",
+      "equity": 10126795.82,
+      "cash": 45316.82,
+      "positions_value": 10081479.0,
+      "n_positions": 4
+    },
+    {
+      "date": "2026-03-30",
+      "equity": 10142222.82,
+      "cash": 45316.82,
+      "positions_value": 10096906.0,
+      "n_positions": 4
+    },
+    {
+      "date": "2026-03-31",
+      "equity": 10082988.82,
+      "cash": 45316.82,
+      "positions_value": 10037672.0,
+      "n_positions": 4
+    },
+    {
+      "date": "2026-04-01",
+      "equity": 10093754.47,
+      "cash": 123187.47,
+      "positions_value": 9970567.0,
+      "n_positions": 4
+    },
+    {
+      "date": "2026-04-02",
+      "equity": 10040609.47,
+      "cash": 123187.47,
+      "positions_value": 9917422.0,
+      "n_positions": 4
+    },
+    {
+      "date": "2026-04-06",
+      "equity": 10029902.47,
+      "cash": 123187.47,
+      "positions_value": 9906715.0,
+      "n_positions": 4
+    },
+    {
+      "date": "2026-04-07",
+      "equity": 9725714.47,
+      "cash": 123187.47,
+      "positions_value": 9602527.0,
+      "n_positions": 4
+    },
+    {
+      "date": "2026-04-08",
+      "equity": 10027610.47,
+      "cash": 123187.47,
+      "positions_value": 9904423.0,
+      "n_positions": 4
+    },
+    {
+      "date": "2026-04-09",
+      "equity": 9846168.16,
+      "cash": 22282.16,
+      "positions_value": 9823886.0,
+      "n_positions": 4
+    },
+    {
+      "date": "2026-04-10",
+      "equity": 10098354.16,
+      "cash": 22282.16,
+      "positions_value": 10076072.0,
+      "n_positions": 4
+    },
+    {
+      "date": "2026-04-13",
+      "equity": 10082577.16,
+      "cash": 22282.16,
+      "positions_value": 10060295.0,
+      "n_positions": 4
+    },
+    {
+      "date": "2026-04-14",
+      "equity": 10121725.16,
+      "cash": 22282.16,
+      "positions_value": 10099443.0,
+      "n_positions": 4
+    },
+    {
+      "date": "2026-04-15",
+      "equity": 10166382.16,
+      "cash": 22282.16,
+      "positions_value": 10144100.0,
+      "n_positions": 4
+    },
+    {
+      "date": "2026-04-16",
+      "equity": 10175375.16,
+      "cash": 22282.16,
+      "positions_value": 10153093.0,
+      "n_positions": 4
+    },
+    {
+      "date": "2026-04-17",
+      "equity": 10264820.16,
+      "cash": 22282.16,
+      "positions_value": 10242538.0,
+      "n_positions": 4
+    },
+    {
+      "date": "2026-04-20",
+      "equity": 10225522.16,
+      "cash": 22282.16,
+      "positions_value": 10203240.0,
+      "n_positions": 4
+    },
+    {
+      "date": "2026-04-21",
+      "equity": 10214155.16,
+      "cash": 22282.16,
+      "positions_value": 10191873.0,
+      "n_positions": 4
+    },
+    {
+      "date": "2026-04-22",
+      "equity": 10261006.16,
+      "cash": 22282.16,
+      "positions_value": 10238724.0,
+      "n_positions": 4
+    },
+    {
+      "date": "2026-04-23",
+      "equity": 10075625.3,
+      "cash": 88373.3,
+      "positions_value": 9987252.0,
+      "n_positions": 4
+    },
+    {
+      "date": "2026-04-24",
+      "equity": 9980497.3,
+      "cash": 88373.3,
+      "positions_value": 9892124.0,
+      "n_positions": 4
+    },
+    {
+      "date": "2026-04-27",
+      "equity": 9905695.3,
+      "cash": 88373.3,
+      "positions_value": 9817322.0,
+      "n_positions": 4
+    },
+    {
+      "date": "2026-04-28",
+      "equity": 9836728.3,
+      "cash": 88373.3,
+      "positions_value": 9748355.0,
+      "n_positions": 4
+    },
+    {
+      "date": "2026-04-29",
+      "equity": 9933363.3,
+      "cash": 88373.3,
+      "positions_value": 9844990.0,
+      "n_positions": 4
+    },
+    {
+      "date": "2026-04-30",
+      "equity": 9843567.3,
+      "cash": 88373.3,
+      "positions_value": 9755194.0,
+      "n_positions": 4
+    },
+    {
+      "date": "2026-05-04",
+      "equity": 9897628.3,
+      "cash": 88373.3,
+      "positions_value": 9809255.0,
+      "n_positions": 4
+    },
+    {
+      "date": "2026-05-05",
+      "equity": 9907808.3,
+      "cash": 88373.3,
+      "positions_value": 9819435.0,
+      "n_positions": 4
+    },
+    {
+      "date": "2026-05-06",
+      "equity": 9953053.3,
+      "cash": 88373.3,
+      "positions_value": 9864680.0,
+      "n_positions": 4
+    },
+    {
+      "date": "2026-05-07",
+      "equity": 9987923.3,
+      "cash": 88373.3,
+      "positions_value": 9899550.0,
+      "n_positions": 4
+    },
+    {
+      "date": "2026-05-08",
+      "equity": 9763788.3,
+      "cash": 88373.3,
+      "positions_value": 9675415.0,
+      "n_positions": 4
+    },
+    {
+      "date": "2026-05-11",
+      "equity": 9779288.3,
+      "cash": 88373.3,
+      "positions_value": 9690915.0,
+      "n_positions": 4
+    },
+    {
+      "date": "2026-05-12",
+      "equity": 9889668.3,
+      "cash": 88373.3,
+      "positions_value": 9801295.0,
+      "n_positions": 4
+    },
+    {
+      "date": "2026-05-13",
+      "equity": 9722788.3,
+      "cash": 88373.3,
+      "positions_value": 9634415.0,
+      "n_positions": 4
+    },
+    {
+      "date": "2026-05-14",
+      "equity": 9722788.3,
+      "cash": 88373.3,
+      "positions_value": 9634415.0,
+      "n_positions": 4
+    },
+    {
+      "date": "2026-05-15",
+      "equity": 9722788.3,
+      "cash": 88373.3,
+      "positions_value": 9634415.0,
+      "n_positions": 4
+    },
+    {
+      "date": "2026-05-18",
+      "equity": 9757768.3,
+      "cash": 88373.3,
+      "positions_value": 9669395.0,
+      "n_positions": 4
+    },
+    {
+      "date": "2026-05-19",
+      "equity": 9471268.3,
+      "cash": 88373.3,
+      "positions_value": 9382895.0,
+      "n_positions": 4
+    },
+    {
+      "date": "2026-05-20",
+      "equity": 9295513.3,
+      "cash": 88373.3,
+      "positions_value": 9207140.0,
+      "n_positions": 4
+    },
+    {
+      "date": "2026-05-21",
+      "equity": 8998283.3,
+      "cash": 88373.3,
+      "positions_value": 8909910.0,
+      "n_positions": 4
+    },
+    {
+      "date": "2026-05-22",
+      "equity": 9127409.56,
+      "cash": 257484.56,
+      "positions_value": 8869925.0,
+      "n_positions": 4
+    },
+    {
+      "date": "2026-05-25",
+      "equity": 9169534.56,
+      "cash": 257484.56,
+      "positions_value": 8912050.0,
+      "n_positions": 4
+    },
+    {
+      "date": "2026-05-26",
+      "equity": 9120999.56,
+      "cash": 257484.56,
+      "positions_value": 8863515.0,
+      "n_positions": 4
+    },
+    {
+      "date": "2026-05-27",
+      "equity": 9120999.56,
+      "cash": 257484.56,
+      "positions_value": 8863515.0,
+      "n_positions": 4
+    },
+    {
+      "date": "2026-05-28",
+      "equity": 9120999.56,
+      "cash": 257484.56,
+      "positions_value": 8863515.0,
+      "n_positions": 4
+    },
+    {
+      "date": "2026-05-29",
+      "equity": 8830869.74,
+      "cash": 249891.74,
+      "positions_value": 8580978.0,
+      "n_positions": 5
+    },
+    {
+      "date": "2026-06-02",
+      "equity": 8851735.74,
+      "cash": 249891.74,
+      "positions_value": 8601844.0,
+      "n_positions": 5
+    },
+    {
+      "date": "2026-06-03",
+      "equity": 8344442.74,
+      "cash": 249891.74,
+      "positions_value": 8094551.0,
+      "n_positions": 5
+    },
+    {
+      "date": "2026-06-04",
+      "equity": 8510714.74,
+      "cash": 249891.74,
+      "positions_value": 8260823.0,
+      "n_positions": 5
+    },
+    {
+      "date": "2026-06-05",
+      "equity": 8384667.74,
+      "cash": 249891.74,
+      "positions_value": 8134776.0,
+      "n_positions": 5
+    },
+    {
+      "date": "2026-06-08",
+      "equity": 7922852.74,
+      "cash": 249891.74,
+      "positions_value": 7672961.0,
+      "n_positions": 5
+    },
+    {
+      "date": "2026-06-09",
+      "equity": 8529511.74,
+      "cash": 249891.74,
+      "positions_value": 8279620.0,
+      "n_positions": 5
+    },
+    {
+      "date": "2026-06-10",
+      "equity": 8782342.74,
+      "cash": 249891.74,
+      "positions_value": 8532451.0,
+      "n_positions": 5
+    },
+    {
+      "date": "2026-06-11",
+      "equity": 8588207.74,
+      "cash": 249891.74,
+      "positions_value": 8338316.0,
+      "n_positions": 5
+    },
+    {
+      "date": "2026-06-12",
+      "equity": 8715355.74,
+      "cash": 249891.74,
+      "positions_value": 8465464.0,
+      "n_positions": 5
+    },
+    {
+      "date": "2026-06-15",
+      "equity": 9206147.76,
+      "cash": 73187.76,
+      "positions_value": 9132960.0,
+      "n_positions": 5
+    },
+    {
+      "date": "2026-06-17",
+      "equity": 9207858.76,
+      "cash": 73187.76,
+      "positions_value": 9134671.0,
+      "n_positions": 5
+    },
+    {
+      "date": "2026-06-18",
+      "equity": 9269745.76,
+      "cash": 73187.76,
+      "positions_value": 9196558.0,
+      "n_positions": 5
+    },
+    {
+      "date": "2026-06-19",
+      "equity": 9241018.76,
+      "cash": 73187.76,
+      "positions_value": 9167831.0,
+      "n_positions": 5
+    },
+    {
+      "date": "2026-06-22",
+      "equity": 9149967.76,
+      "cash": 73187.76,
+      "positions_value": 9076780.0,
+      "n_positions": 5
+    },
+    {
+      "date": "2026-06-23",
+      "equity": 8969070.83,
+      "cash": 2525810.83,
+      "positions_value": 6443260.0,
+      "n_positions": 4
+    },
+    {
+      "date": "2026-06-24",
+      "equity": 8742650.83,
+      "cash": 2525810.83,
+      "positions_value": 6216840.0,
+      "n_positions": 4
+    },
+    {
+      "date": "2026-06-25",
+      "equity": 8935780.83,
+      "cash": 2525810.83,
+      "positions_value": 6409970.0,
+      "n_positions": 4
+    },
+    {
+      "date": "2026-06-26",
+      "equity": 8708800.83,
+      "cash": 2525810.83,
+      "positions_value": 6182990.0,
+      "n_positions": 4
+    },
+    {
+      "date": "2026-06-29",
+      "equity": 8590090.83,
+      "cash": 2525810.83,
+      "positions_value": 6064280.0,
+      "n_positions": 4
+    },
+    {
+      "date": "2026-06-30",
+      "equity": 8198489.1,
+      "cash": 211189.1,
+      "positions_value": 7987300.0,
+      "n_positions": 5
+    },
+    {
+      "date": "2026-07-01",
+      "equity": 8364899.1,
+      "cash": 211189.1,
+      "positions_value": 8153710.0,
+      "n_positions": 5
+    },
+    {
+      "date": "2026-07-02",
+      "equity": 8522189.1,
+      "cash": 211189.1,
+      "positions_value": 8311000.0,
+      "n_positions": 5
+    },
+    {
+      "date": "2026-07-03",
+      "equity": 8889189.1,
+      "cash": 211189.1,
+      "positions_value": 8678000.0,
+      "n_positions": 5
+    },
+    {
+      "date": "2026-07-06",
+      "equity": 8920189.1,
+      "cash": 211189.1,
+      "positions_value": 8709000.0,
+      "n_positions": 5
+    },
+    {
+      "date": "2026-07-07",
+      "equity": 9019189.1,
+      "cash": 211189.1,
+      "positions_value": 8808000.0,
+      "n_positions": 5
+    },
+    {
+      "date": "2026-07-08",
+      "equity": 8770189.1,
+      "cash": 211189.1,
+      "positions_value": 8559000.0,
+      "n_positions": 5
+    },
+    {
+      "date": "2026-07-09",
+      "equity": 8821189.1,
+      "cash": 211189.1,
+      "positions_value": 8610000.0,
+      "n_positions": 5
+    },
+    {
+      "date": "2026-07-10",
+      "equity": 8821189.1,
+      "cash": 211189.1,
+      "positions_value": 8610000.0,
+      "n_positions": 5
+    },
+    {
+      "date": "2026-07-13",
+      "equity": 9013189.1,
+      "cash": 211189.1,
+      "positions_value": 8802000.0,
+      "n_positions": 5
+    },
+    {
+      "date": "2026-07-14",
+      "equity": 9032051.28,
+      "cash": 162051.28,
+      "positions_value": 8870000.0,
+      "n_positions": 4
+    },
+    {
+      "date": "2026-07-15",
+      "equity": 9002051.28,
+      "cash": 162051.28,
+      "positions_value": 8840000.0,
+      "n_positions": 4
+    },
+    {
+      "date": "2026-07-16",
+      "equity": 9087051.28,
+      "cash": 162051.28,
+      "positions_value": 8925000.0,
+      "n_positions": 4
+    },
+    {
+      "date": "2026-07-17",
+      "equity": 9232051.28,
+      "cash": 162051.28,
+      "positions_value": 9070000.0,
+      "n_positions": 4
+    },
+    {
+      "date": "2026-07-20",
+      "equity": 9347051.28,
+      "cash": 162051.28,
+      "positions_value": 9185000.0,
+      "n_positions": 4
+    },
+    {
+      "date": "2026-07-21",
+      "equity": 9376948.42,
+      "cash": 276948.42,
+      "positions_value": 9100000.0,
+      "n_positions": 4
+    },
+    {
+      "date": "2026-07-22",
+      "equity": 9446948.42,
+      "cash": 276948.42,
+      "positions_value": 9170000.0,
+      "n_positions": 4
+    },
+    {
+      "date": "2026-07-23",
+      "equity": 9251948.42,
+      "cash": 276948.42,
+      "positions_value": 8975000.0,
+      "n_positions": 4
+    },
+    {
+      "date": "2026-07-24",
+      "equity": 9211948.42,
+      "cash": 276948.42,
+      "positions_value": 8935000.0,
+      "n_positions": 4
+    },
+    {
+      "date": "2026-07-26",
+      "equity": 9221948.42,
+      "cash": 276948.42,
+      "positions_value": 8945000.0,
+      "n_positions": 4
+    },
+    {
+      "date": "2026-07-27",
+      "equity": 9123414.22,
+      "cash": 9414.22,
+      "positions_value": 9114000.0,
+      "n_positions": 5
+    },
+    {
+      "date": "2026-07-28",
+      "equity": 9110414.22,
+      "cash": 9414.22,
+      "positions_value": 9101000.0,
+      "n_positions": 5
+    },
+    {
+      "date": "2026-07-29",
+      "equity": 9165414.22,
+      "cash": 9414.22,
+      "positions_value": 9156000.0,
+      "n_positions": 5
+    },
+    {
+      "date": "2026-07-30",
+      "equity": 9196414.22,
+      "cash": 9414.22,
+      "positions_value": 9187000.0,
+      "n_positions": 5
+    },
+    {
+      "date": "2026-07-31",
+      "equity": 9207414.22,
+      "cash": 9414.22,
+      "positions_value": 9198000.0,
+      "n_positions": 5
+    },
+    {
+      "date": "2026-08-03",
+      "equity": 9238414.22,
+      "cash": 9414.22,
+      "positions_value": 9229000.0,
+      "n_positions": 5
+    },
+    {
+      "date": "2026-08-04",
+      "equity": 9405914.22,
+      "cash": 9414.22,
+      "positions_value": 9396500.0,
+      "n_positions": 5
+    },
+    {
+      "date": "2026-08-05",
+      "equity": 9382914.22,
+      "cash": 9414.22,
+      "positions_value": 9373500.0,
+      "n_positions": 5
+    },
+    {
+      "date": "2026-08-06",
+      "equity": 9385914.22,
+      "cash": 9414.22,
+      "positions_value": 9376500.0,
+      "n_positions": 5
+    }
+  ],
+  "predictions_log": [
+    {
+      "date": "2026-03-10",
+      "ticker": "BBCA.JK",
+      "action": "HOLD",
+      "score": -0.1362,
+      "strategy_signal": 0,
+      "ml_signal": 0.0899,
+      "prediction_direction": "down",
+      "prediction_confidence": 0.408,
+      "has_position": false
+    },
+    {
+      "date": "2026-03-10",
+      "ticker": "BBRI.JK",
+      "action": "BUY",
+      "score": 0.3098,
+      "strategy_signal": 0,
+      "ml_signal": 0.1273,
+      "prediction_direction": "up",
+      "prediction_confidence": 0.679,
+      "has_position": true
+    },
+    {
+      "date": "2026-03-10",
+      "ticker": "BMRI.JK",
+      "action": "BUY",
+      "score": 0.2932,
+      "strategy_signal": 0,
+      "ml_signal": 0.1279,
+      "prediction_direction": "up",
+      "prediction_confidence": 0.637,
+      "has_position": true
+    },
+    {
+      "date": "2026-03-10",
+      "ticker": "TLKM.JK",
+      "action": "BUY",
+      "score": 0.1802,
+      "strategy_signal": 1,
+      "ml_signal": 0.1645,
+      "prediction_direction": "down",
+      "prediction_confidence": 0.423,
+      "has_position": false
+    },
+    {
+      "date": "2026-03-10",
+      "ticker": "ASII.JK",
+      "action": "HOLD",
+      "score": 0.0325,
+      "strategy_signal": 0,
+      "ml_signal": 0.1083,
+      "prediction_direction": "flat",
+      "prediction_confidence": 0.428,
+      "has_position": false
+    },
+    {
+      "date": "2026-03-10",
+      "ticker": "UNTR.JK",
+      "action": "BUY",
+      "score": 0.2735,
+      "strategy_signal": 0,
+      "ml_signal": 0.0223,
+      "prediction_direction": "up",
+      "prediction_confidence": 0.667,
+      "has_position": false
+    },
+    {
+      "date": "2026-03-10",
+      "ticker": "ANTM.JK",
+      "action": "BUY",
+      "score": 0.2587,
+      "strategy_signal": 0,
+      "ml_signal": -0.035,
+      "prediction_direction": "up",
+      "prediction_confidence": 0.673,
+      "has_position": false
+    },
+    {
+      "date": "2026-03-10",
+      "ticker": "MDKA.JK",
+      "action": "HOLD",
+      "score": -0.1147,
+      "strategy_signal": -1,
+      "ml_signal": -0.0622,
+      "prediction_direction": "up",
+      "prediction_confidence": 0.51,
+      "has_position": false
+    },
+    {
+      "date": "2026-03-10",
+      "ticker": "ICBP.JK",
+      "action": "HOLD",
+      "score": 0.0704,
+      "strategy_signal": 1,
+      "ml_signal": 0.0053,
+      "prediction_direction": "down",
+      "prediction_confidence": 0.578,
+      "has_position": false
+    },
+    {
+      "date": "2026-03-10",
+      "ticker": "ADRO.JK",
+      "action": "HOLD",
+      "score": -0.0406,
+      "strategy_signal": 0,
+      "ml_signal": -0.1354,
+      "prediction_direction": "flat",
+      "prediction_confidence": 0.698,
+      "has_position": true
+    },
+    {
+      "date": "2026-03-17",
+      "ticker": "BBCA.JK",
+      "action": "SELL",
+      "score": -0.206,
+      "strategy_signal": 0,
+      "ml_signal": 0.0882,
+      "prediction_direction": "down",
+      "prediction_confidence": 0.581,
+      "has_position": false
+    },
+    {
+      "date": "2026-03-17",
+      "ticker": "BBRI.JK",
+      "action": "BUY",
+      "score": 0.3552,
+      "strategy_signal": 1,
+      "ml_signal": 0.1839,
+      "prediction_direction": "flat",
+      "prediction_confidence": 0.634,
+      "has_position": true
+    },
+    {
+      "date": "2026-03-17",
+      "ticker": "BMRI.JK",
+      "action": "HOLD",
+      "score": 0.1008,
+      "strategy_signal": 1,
+      "ml_signal": 0.1173,
+      "prediction_direction": "down",
+      "prediction_confidence": 0.586,
+      "has_position": true
+    },
+    {
+      "date": "2026-03-17",
+      "ticker": "TLKM.JK",
+      "action": "HOLD",
+      "score": 0.1351,
+      "strategy_signal": 1,
+      "ml_signal": 0.1356,
+      "prediction_direction": "down",
+      "prediction_confidence": 0.514,
+      "has_position": false
+    },
+    {
+      "date": "2026-03-17",
+      "ticker": "ASII.JK",
+      "action": "SELL",
+      "score": -0.5088,
+      "strategy_signal": -1,
+      "ml_signal": 0.1055,
+      "prediction_direction": "down",
+      "prediction_confidence": 0.601,
+      "has_position": false
+    },
+    {
+      "date": "2026-03-17",
+      "ticker": "UNTR.JK",
+      "action": "BUY",
+      "score": 0.2008,
+      "strategy_signal": 0,
+      "ml_signal": 0.0333,
+      "prediction_direction": "up",
+      "prediction_confidence": 0.477,
+      "has_position": false
+    },
+    {
+      "date": "2026-03-17",
+      "ticker": "ANTM.JK",
+      "action": "HOLD",
+      "score": 0.0355,
+      "strategy_signal": 1,
+      "ml_signal": -0.0549,
+      "prediction_direction": "down",
+      "prediction_confidence": 0.62,
+      "has_position": true
+    },
+    {
+      "date": "2026-03-17",
+      "ticker": "MDKA.JK",
+      "action": "SELL",
+      "score": -0.5757,
+      "strategy_signal": -1,
+      "ml_signal": 0.0249,
+      "prediction_direction": "down",
+      "prediction_confidence": 0.708,
+      "has_position": false
+    },
+    {
+      "date": "2026-03-17",
+      "ticker": "ICBP.JK",
+      "action": "HOLD",
+      "score": 0.0747,
+      "strategy_signal": 1,
+      "ml_signal": 0.0716,
+      "prediction_direction": "down",
+      "prediction_confidence": 0.617,
+      "has_position": false
+    },
+    {
+      "date": "2026-03-17",
+      "ticker": "ADRO.JK",
+      "action": "BUY",
+      "score": 0.1593,
+      "strategy_signal": 0,
+      "ml_signal": -0.0196,
+      "prediction_direction": "up",
+      "prediction_confidence": 0.413,
+      "has_position": true
+    },
+    {
+      "date": "2026-03-31",
+      "ticker": "BBCA.JK",
+      "action": "SELL",
+      "score": -0.1941,
+      "strategy_signal": 0,
+      "ml_signal": 0.1529,
+      "prediction_direction": "down",
+      "prediction_confidence": 0.6,
+      "has_position": false
+    },
+    {
+      "date": "2026-03-31",
+      "ticker": "BBRI.JK",
+      "action": "HOLD",
+      "score": 0.1138,
+      "strategy_signal": 1,
+      "ml_signal": 0.1101,
+      "prediction_direction": "down",
+      "prediction_confidence": 0.548,
+      "has_position": true
+    },
+    {
+      "date": "2026-03-31",
+      "ticker": "BMRI.JK",
+      "action": "SELL",
+      "score": -0.2457,
+      "strategy_signal": 0,
+      "ml_signal": 0.0544,
+      "prediction_direction": "down",
+      "prediction_confidence": 0.655,
+      "has_position": true
+    },
+    {
+      "date": "2026-03-31",
+      "ticker": "TLKM.JK",
+      "action": "HOLD",
+      "score": 0.125,
+      "strategy_signal": 1,
+      "ml_signal": 0.0288,
+      "prediction_direction": "down",
+      "prediction_confidence": 0.459,
+      "has_position": false
+    },
+    {
+      "date": "2026-03-31",
+      "ticker": "ASII.JK",
+      "action": "SELL",
+      "score": -0.3158,
+      "strategy_signal": 0,
+      "ml_signal": 0.0085,
+      "prediction_direction": "down",
+      "prediction_confidence": 0.796,
+      "has_position": false
+    },
+    {
+      "date": "2026-03-31",
+      "ticker": "UNTR.JK",
+      "action": "BUY",
+      "score": 0.2186,
+      "strategy_signal": 0,
+      "ml_signal": 0.0219,
+      "prediction_direction": "up",
+      "prediction_confidence": 0.53,
+      "has_position": false
+    },
+    {
+      "date": "2026-03-31",
+      "ticker": "ANTM.JK",
+      "action": "HOLD",
+      "score": 0.0523,
+      "strategy_signal": 1,
+      "ml_signal": -0.0471,
+      "prediction_direction": "down",
+      "prediction_confidence": 0.584,
+      "has_position": true
+    },
+    {
+      "date": "2026-03-31",
+      "ticker": "MDKA.JK",
+      "action": "SELL",
+      "score": -0.2909,
+      "strategy_signal": 0,
+      "ml_signal": -0.0669,
+      "prediction_direction": "down",
+      "prediction_confidence": 0.677,
+      "has_position": false
+    },
+    {
+      "date": "2026-03-31",
+      "ticker": "ICBP.JK",
+      "action": "SELL",
+      "score": -0.2773,
+      "strategy_signal": 0,
+      "ml_signal": -0.035,
+      "prediction_direction": "down",
+      "prediction_confidence": 0.667,
+      "has_position": false
+    },
+    {
+      "date": "2026-03-31",
+      "ticker": "ADRO.JK",
+      "action": "BUY",
+      "score": 0.169,
+      "strategy_signal": 0,
+      "ml_signal": -0.0208,
+      "prediction_direction": "up",
+      "prediction_confidence": 0.438,
+      "has_position": true
+    },
+    {
+      "date": "2026-04-08",
+      "ticker": "BBCA.JK",
+      "action": "BUY",
+      "score": 0.2405,
+      "strategy_signal": 0,
+      "ml_signal": 0.0391,
+      "prediction_direction": "up",
+      "prediction_confidence": 0.572,
+      "has_position": false
+    },
+    {
+      "date": "2026-04-08",
+      "ticker": "BBRI.JK",
+      "action": "BUY",
+      "score": 0.2573,
+      "strategy_signal": 0,
+      "ml_signal": 0.0552,
+      "prediction_direction": "up",
+      "prediction_confidence": 0.602,
+      "has_position": true
+    },
+    {
+      "date": "2026-04-08",
+      "ticker": "BMRI.JK",
+      "action": "BUY",
+      "score": 0.2875,
+      "strategy_signal": 0,
+      "ml_signal": 0.0983,
+      "prediction_direction": "up",
+      "prediction_confidence": 0.645,
+      "has_position": false
+    },
+    {
+      "date": "2026-04-08",
+      "ticker": "TLKM.JK",
+      "action": "BUY",
+      "score": 0.5644,
+      "strategy_signal": 1,
+      "ml_signal": -0.0052,
+      "prediction_direction": "up",
+      "prediction_confidence": 0.665,
+      "has_position": false
+    },
+    {
+      "date": "2026-04-08",
+      "ticker": "ASII.JK",
+      "action": "BUY",
+      "score": 0.212,
+      "strategy_signal": 0,
+      "ml_signal": 0.0827,
+      "prediction_direction": "up",
+      "prediction_confidence": 0.468,
+      "has_position": false
+    },
+    {
+      "date": "2026-04-08",
+      "ticker": "UNTR.JK",
+      "action": "BUY",
+      "score": 0.3072,
+      "strategy_signal": 0,
+      "ml_signal": 0.0441,
+      "prediction_direction": "up",
+      "prediction_confidence": 0.735,
+      "has_position": true
+    },
+    {
+      "date": "2026-04-08",
+      "ticker": "ANTM.JK",
+      "action": "SELL",
+      "score": -0.1969,
+      "strategy_signal": 0,
+      "ml_signal": -0.0642,
+      "prediction_direction": "down",
+      "prediction_confidence": 0.444,
+      "has_position": true
+    },
+    {
+      "date": "2026-04-08",
+      "ticker": "MDKA.JK",
+      "action": "SELL",
+      "score": -0.488,
+      "strategy_signal": -1,
+      "ml_signal": 0.0466,
+      "prediction_direction": "down",
+      "prediction_confidence": 0.505,
+      "has_position": false
+    },
+    {
+      "date": "2026-04-08",
+      "ticker": "ICBP.JK",
+      "action": "HOLD",
+      "score": -0.0029,
+      "strategy_signal": 0,
+      "ml_signal": -0.0097,
+      "prediction_direction": "flat",
+      "prediction_confidence": 0.534,
+      "has_position": false
+    },
+    {
+      "date": "2026-04-08",
+      "ticker": "ADRO.JK",
+      "action": "BUY",
+      "score": 0.2587,
+      "strategy_signal": 0,
+      "ml_signal": -0.0164,
+      "prediction_direction": "up",
+      "prediction_confidence": 0.659,
+      "has_position": true
+    },
+    {
+      "date": "2026-04-15",
+      "ticker": "BBCA.JK",
+      "action": "BUY",
+      "score": 0.237,
+      "strategy_signal": 0,
+      "ml_signal": 0.098,
+      "prediction_direction": "up",
+      "prediction_confidence": 0.519,
+      "has_position": false
+    },
+    {
+      "date": "2026-04-15",
+      "ticker": "BBRI.JK",
+      "action": "BUY",
+      "score": 0.2175,
+      "strategy_signal": 0,
+      "ml_signal": 0.021,
+      "prediction_direction": "up",
+      "prediction_confidence": 0.528,
+      "has_position": true
+    },
+    {
+      "date": "2026-04-15",
+      "ticker": "BMRI.JK",
+      "action": "BUY",
+      "score": 0.2517,
+      "strategy_signal": 0,
+      "ml_signal": 0.0391,
+      "prediction_direction": "up",
+      "prediction_confidence": 0.6,
+      "has_position": false
+    },
+    {
+      "date": "2026-04-15",
+      "ticker": "TLKM.JK",
+      "action": "BUY",
+      "score": 0.5317,
+      "strategy_signal": 1,
+      "ml_signal": 0.0764,
+      "prediction_direction": "up",
+      "prediction_confidence": 0.522,
+      "has_position": true
+    },
+    {
+      "date": "2026-04-15",
+      "ticker": "ASII.JK",
+      "action": "BUY",
+      "score": 0.2589,
+      "strategy_signal": 0,
+      "ml_signal": 0.0017,
+      "prediction_direction": "up",
+      "prediction_confidence": 0.646,
+      "has_position": false
+    },
+    {
+      "date": "2026-04-15",
+      "ticker": "UNTR.JK",
+      "action": "BUY",
+      "score": 0.2899,
+      "strategy_signal": 0,
+      "ml_signal": 0.0795,
+      "prediction_direction": "up",
+      "prediction_confidence": 0.665,
+      "has_position": true
+    },
+    {
+      "date": "2026-04-15",
+      "ticker": "ANTM.JK",
+      "action": "SELL",
+      "score": -0.4776,
+      "strategy_signal": -1,
+      "ml_signal": -0.0148,
+      "prediction_direction": "down",
+      "prediction_confidence": 0.433,
+      "has_position": false
+    },
+    {
+      "date": "2026-04-15",
+      "ticker": "MDKA.JK",
+      "action": "SELL",
+      "score": -0.2904,
+      "strategy_signal": -1,
+      "ml_signal": 0.0321,
+      "prediction_direction": "flat",
+      "prediction_confidence": 0.417,
+      "has_position": false
+    },
+    {
+      "date": "2026-04-15",
+      "ticker": "ICBP.JK",
+      "action": "BUY",
+      "score": 0.3228,
+      "strategy_signal": 0,
+      "ml_signal": 0.0868,
+      "prediction_direction": "up",
+      "prediction_confidence": 0.742,
+      "has_position": false
+    },
+    {
+      "date": "2026-04-15",
+      "ticker": "ADRO.JK",
+      "action": "BUY",
+      "score": 0.2474,
+      "strategy_signal": 0,
+      "ml_signal": -0.0112,
+      "prediction_direction": "up",
+      "prediction_confidence": 0.627,
+      "has_position": true
+    },
+    {
+      "date": "2026-04-22",
+      "ticker": "BBCA.JK",
+      "action": "SELL",
+      "score": -0.1692,
+      "strategy_signal": 0,
+      "ml_signal": 0.0813,
+      "prediction_direction": "down",
+      "prediction_confidence": 0.484,
+      "has_position": false
+    },
+    {
+      "date": "2026-04-22",
+      "ticker": "BBRI.JK",
+      "action": "SELL",
+      "score": -0.1838,
+      "strategy_signal": 0,
+      "ml_signal": 0.0701,
+      "prediction_direction": "down",
+      "prediction_confidence": 0.512,
+      "has_position": true
+    },
+    {
+      "date": "2026-04-22",
+      "ticker": "BMRI.JK",
+      "action": "HOLD",
+      "score": 0.0192,
+      "strategy_signal": 0,
+      "ml_signal": 0.064,
+      "prediction_direction": "flat",
+      "prediction_confidence": 0.397,
+      "has_position": false
+    },
+    {
+      "date": "2026-04-22",
+      "ticker": "TLKM.JK",
+      "action": "BUY",
+      "score": 0.6045,
+      "strategy_signal": 1,
+      "ml_signal": 0.1031,
+      "prediction_direction": "up",
+      "prediction_confidence": 0.684,
+      "has_position": true
+    },
+    {
+      "date": "2026-04-22",
+      "ticker": "ASII.JK",
+      "action": "BUY",
+      "score": 0.308,
+      "strategy_signal": 0,
+      "ml_signal": 0.0547,
+      "prediction_direction": "up",
+      "prediction_confidence": 0.729,
+      "has_position": false
+    },
+    {
+      "date": "2026-04-22",
+      "ticker": "UNTR.JK",
+      "action": "BUY",
+      "score": 0.3265,
+      "strategy_signal": 0,
+      "ml_signal": 0.0776,
+      "prediction_direction": "up",
+      "prediction_confidence": 0.758,
+      "has_position": true
+    },
+    {
+      "date": "2026-04-22",
+      "ticker": "ANTM.JK",
+      "action": "HOLD",
+      "score": -0.0469,
+      "strategy_signal": -1,
+      "ml_signal": 0.0118,
+      "prediction_direction": "up",
+      "prediction_confidence": 0.624,
+      "has_position": false
+    },
+    {
+      "date": "2026-04-22",
+      "ticker": "MDKA.JK",
+      "action": "HOLD",
+      "score": -0.0272,
+      "strategy_signal": -1,
+      "ml_signal": 0.0228,
+      "prediction_direction": "up",
+      "prediction_confidence": 0.665,
+      "has_position": false
+    },
+    {
+      "date": "2026-04-22",
+      "ticker": "ICBP.JK",
+      "action": "HOLD",
+      "score": 0.014,
+      "strategy_signal": 0,
+      "ml_signal": 0.0468,
+      "prediction_direction": "flat",
+      "prediction_confidence": 0.528,
+      "has_position": false
+    },
+    {
+      "date": "2026-04-22",
+      "ticker": "ADRO.JK",
+      "action": "BUY",
+      "score": 0.2074,
+      "strategy_signal": 0,
+      "ml_signal": -0.0128,
+      "prediction_direction": "up",
+      "prediction_confidence": 0.528,
+      "has_position": true
+    },
+    {
+      "date": "2026-04-29",
+      "ticker": "BBCA.JK",
+      "action": "SELL",
+      "score": -0.2067,
+      "strategy_signal": 0,
+      "ml_signal": 0.079,
+      "prediction_direction": "down",
+      "prediction_confidence": 0.576,
+      "has_position": false
+    },
+    {
+      "date": "2026-04-29",
+      "ticker": "BBRI.JK",
+      "action": "SELL",
+      "score": -0.1899,
+      "strategy_signal": 0,
+      "ml_signal": 0.1097,
+      "prediction_direction": "down",
+      "prediction_confidence": 0.557,
+      "has_position": false
+    },
+    {
+      "date": "2026-04-29",
+      "ticker": "BMRI.JK",
+      "action": "SELL",
+      "score": -0.186,
+      "strategy_signal": 0,
+      "ml_signal": 0.0775,
+      "prediction_direction": "down",
+      "prediction_confidence": 0.523,
+      "has_position": false
+    },
+    {
+      "date": "2026-04-29",
+      "ticker": "TLKM.JK",
+      "action": "BUY",
+      "score": 0.1887,
+      "strategy_signal": 1,
+      "ml_signal": 0.1744,
+      "prediction_direction": "down",
+      "prediction_confidence": 0.409,
+      "has_position": true
+    },
+    {
+      "date": "2026-04-29",
+      "ticker": "ASII.JK",
+      "action": "BUY",
+      "score": 0.283,
+      "strategy_signal": 0,
+      "ml_signal": 0.0968,
+      "prediction_direction": "up",
+      "prediction_confidence": 0.635,
+      "has_position": true
+    },
+    {
+      "date": "2026-04-29",
+      "ticker": "UNTR.JK",
+      "action": "BUY",
+      "score": 0.2609,
+      "strategy_signal": 0,
+      "ml_signal": 0.127,
+      "prediction_direction": "up",
+      "prediction_confidence": 0.557,
+      "has_position": true
+    },
+    {
+      "date": "2026-04-29",
+      "ticker": "ANTM.JK",
+      "action": "BUY",
+      "score": 0.1889,
+      "strategy_signal": 0,
+      "ml_signal": -0.0038,
+      "prediction_direction": "up",
+      "prediction_confidence": 0.475,
+      "has_position": false
+    },
+    {
+      "date": "2026-04-29",
+      "ticker": "MDKA.JK",
+      "action": "SELL",
+      "score": -0.2883,
+      "strategy_signal": -1,
+      "ml_signal": 0.0392,
+      "prediction_direction": "flat",
+      "prediction_confidence": 0.667,
+      "has_position": false
+    },
+    {
+      "date": "2026-04-29",
+      "ticker": "ICBP.JK",
+      "action": "BUY",
+      "score": 0.3159,
+      "strategy_signal": 1,
+      "ml_signal": 0.053,
+      "prediction_direction": "flat",
+      "prediction_confidence": 0.429,
+      "has_position": false
+    },
+    {
+      "date": "2026-04-29",
+      "ticker": "ADRO.JK",
+      "action": "BUY",
+      "score": 0.2457,
+      "strategy_signal": 0,
+      "ml_signal": -0.0289,
+      "prediction_direction": "up",
+      "prediction_confidence": 0.636,
+      "has_position": true
+    },
+    {
+      "date": "2026-05-07",
+      "ticker": "BBCA.JK",
+      "action": "SELL",
+      "score": -0.1881,
+      "strategy_signal": 0,
+      "ml_signal": 0.0942,
+      "prediction_direction": "down",
+      "prediction_confidence": 0.541,
+      "has_position": false
+    },
+    {
+      "date": "2026-05-07",
+      "ticker": "BBRI.JK",
+      "action": "HOLD",
+      "score": 0.0141,
+      "strategy_signal": 0,
+      "ml_signal": 0.047,
+      "prediction_direction": "flat",
+      "prediction_confidence": 0.617,
+      "has_position": false
+    },
+    {
+      "date": "2026-05-07",
+      "ticker": "BMRI.JK",
+      "action": "BUY",
+      "score": 0.2742,
+      "strategy_signal": 0,
+      "ml_signal": 0.0354,
+      "prediction_direction": "up",
+      "prediction_confidence": 0.659,
+      "has_position": false
+    },
+    {
+      "date": "2026-05-07",
+      "ticker": "TLKM.JK",
+      "action": "BUY",
+      "score": 0.1506,
+      "strategy_signal": 1,
+      "ml_signal": 0.0205,
+      "prediction_direction": "down",
+      "prediction_confidence": 0.389,
+      "has_position": true
+    },
+    {
+      "date": "2026-05-07",
+      "ticker": "ASII.JK",
+      "action": "BUY",
+      "score": 0.2396,
+      "strategy_signal": 0,
+      "ml_signal": -0.0374,
+      "prediction_direction": "up",
+      "prediction_confidence": 0.627,
+      "has_position": true
+    },
+    {
+      "date": "2026-05-07",
+      "ticker": "UNTR.JK",
+      "action": "HOLD",
+      "score": 0.0289,
+      "strategy_signal": 0,
+      "ml_signal": 0.0964,
+      "prediction_direction": "flat",
+      "prediction_confidence": 0.578,
+      "has_position": true
+    },
+    {
+      "date": "2026-05-07",
+      "ticker": "ANTM.JK",
+      "action": "BUY",
+      "score": 0.1925,
+      "strategy_signal": 0,
+      "ml_signal": -0.0275,
+      "prediction_direction": "up",
+      "prediction_confidence": 0.502,
+      "has_position": false
+    },
+    {
+      "date": "2026-05-07",
+      "ticker": "MDKA.JK",
+      "action": "BUY",
+      "score": 0.2507,
+      "strategy_signal": 0,
+      "ml_signal": 0.0423,
+      "prediction_direction": "up",
+      "prediction_confidence": 0.595,
+      "has_position": false
+    },
+    {
+      "date": "2026-05-07",
+      "ticker": "ICBP.JK",
+      "action": "BUY",
+      "score": 0.2981,
+      "strategy_signal": 0,
+      "ml_signal": 0.0031,
+      "prediction_direction": "up",
+      "prediction_confidence": 0.743,
+      "has_position": false
+    },
+    {
+      "date": "2026-05-07",
+      "ticker": "ADRO.JK",
+      "action": "BUY",
+      "score": 0.2871,
+      "strategy_signal": 0,
+      "ml_signal": -0.0097,
+      "prediction_direction": "up",
+      "prediction_confidence": 0.725,
+      "has_position": true
+    },
+    {
+      "date": "2026-05-14",
+      "ticker": "BBCA.JK",
+      "action": "SELL",
+      "score": -0.1637,
+      "strategy_signal": 0,
+      "ml_signal": 0.125,
+      "prediction_direction": "down",
+      "prediction_confidence": 0.503,
+      "has_position": false
+    },
+    {
+      "date": "2026-05-14",
+      "ticker": "BBRI.JK",
+      "action": "BUY",
+      "score": 0.3306,
+      "strategy_signal": 0,
+      "ml_signal": 0.066,
+      "prediction_direction": "up",
+      "prediction_confidence": 0.777,
+      "has_position": false
+    },
+    {
+      "date": "2026-05-14",
+      "ticker": "BMRI.JK",
+      "action": "HOLD",
+      "score": 0.0102,
+      "strategy_signal": 0,
+      "ml_signal": 0.0341,
+      "prediction_direction": "flat",
+      "prediction_confidence": 0.43,
+      "has_position": false
+    },
+    {
+      "date": "2026-05-14",
+      "ticker": "TLKM.JK",
+      "action": "BUY",
+      "score": 0.1694,
+      "strategy_signal": 1,
+      "ml_signal": 0.1393,
+      "prediction_direction": "down",
+      "prediction_confidence": 0.431,
+      "has_position": true
+    },
+    {
+      "date": "2026-05-14",
+      "ticker": "ASII.JK",
+      "action": "BUY",
+      "score": 0.2881,
+      "strategy_signal": 0,
+      "ml_signal": 0.0708,
+      "prediction_direction": "up",
+      "prediction_confidence": 0.667,
+      "has_position": true
+    },
+    {
+      "date": "2026-05-14",
+      "ticker": "UNTR.JK",
+      "action": "HOLD",
+      "score": 0.0936,
+      "strategy_signal": 1,
+      "ml_signal": 0.0348,
+      "prediction_direction": "down",
+      "prediction_confidence": 0.542,
+      "has_position": true
+    },
+    {
+      "date": "2026-05-14",
+      "ticker": "ANTM.JK",
+      "action": "HOLD",
+      "score": 0.0753,
+      "strategy_signal": 1,
+      "ml_signal": 0.0202,
+      "prediction_direction": "down",
+      "prediction_confidence": 0.577,
+      "has_position": false
+    },
+    {
+      "date": "2026-05-14",
+      "ticker": "MDKA.JK",
+      "action": "HOLD",
+      "score": 0.0889,
+      "strategy_signal": 1,
+      "ml_signal": 0.0231,
+      "prediction_direction": "down",
+      "prediction_confidence": 0.545,
+      "has_position": false
+    },
+    {
+      "date": "2026-05-14",
+      "ticker": "ICBP.JK",
+      "action": "SELL",
+      "score": -0.1566,
+      "strategy_signal": 0,
+      "ml_signal": 0.0899,
+      "prediction_direction": "down",
+      "prediction_confidence": 0.459,
+      "has_position": false
+    },
+    {
+      "date": "2026-05-14",
+      "ticker": "ADRO.JK",
+      "action": "BUY",
+      "score": 0.2657,
+      "strategy_signal": 0,
+      "ml_signal": 0.0404,
+      "prediction_direction": "up",
+      "prediction_confidence": 0.634,
+      "has_position": true
+    },
+    {
+      "date": "2026-05-21",
+      "ticker": "BBCA.JK",
+      "action": "HOLD",
+      "score": -0.1194,
+      "strategy_signal": 0,
+      "ml_signal": 0.1595,
+      "prediction_direction": "down",
+      "prediction_confidence": 0.418,
+      "has_position": false
+    },
+    {
+      "date": "2026-05-21",
+      "ticker": "BBRI.JK",
+      "action": "HOLD",
+      "score": 0.0312,
+      "strategy_signal": 0,
+      "ml_signal": 0.104,
+      "prediction_direction": "flat",
+      "prediction_confidence": 0.407,
+      "has_position": false
+    },
+    {
+      "date": "2026-05-21",
+      "ticker": "BMRI.JK",
+      "action": "BUY",
+      "score": 0.268,
+      "strategy_signal": 0,
+      "ml_signal": 0.0548,
+      "prediction_direction": "up",
+      "prediction_confidence": 0.629,
+      "has_position": false
+    },
+    {
+      "date": "2026-05-21",
+      "ticker": "TLKM.JK",
+      "action": "BUY",
+      "score": 0.1898,
+      "strategy_signal": 0,
+      "ml_signal": 0.0473,
+      "prediction_direction": "up",
+      "prediction_confidence": 0.439,
+      "has_position": true
+    },
+    {
+      "date": "2026-05-21",
+      "ticker": "ASII.JK",
+      "action": "SELL",
+      "score": -0.5357,
+      "strategy_signal": -1,
+      "ml_signal": 0.105,
+      "prediction_direction": "down",
+      "prediction_confidence": 0.668,
+      "has_position": true
+    },
+    {
+      "date": "2026-05-21",
+      "ticker": "UNTR.JK",
+      "action": "HOLD",
+      "score": 0.0475,
+      "strategy_signal": 1,
+      "ml_signal": -0.0136,
+      "prediction_direction": "down",
+      "prediction_confidence": 0.621,
+      "has_position": true
+    },
+    {
+      "date": "2026-05-21",
+      "ticker": "ANTM.JK",
+      "action": "BUY",
+      "score": 0.194,
+      "strategy_signal": 1,
+      "ml_signal": 0.2413,
+      "prediction_direction": "down",
+      "prediction_confidence": 0.446,
+      "has_position": false
+    },
+    {
+      "date": "2026-05-21",
+      "ticker": "MDKA.JK",
+      "action": "HOLD",
+      "score": 0.0759,
+      "strategy_signal": 1,
+      "ml_signal": 0.0156,
+      "prediction_direction": "down",
+      "prediction_confidence": 0.572,
+      "has_position": false
+    },
+    {
+      "date": "2026-05-21",
+      "ticker": "ICBP.JK",
+      "action": "SELL",
+      "score": -0.2372,
+      "strategy_signal": 0,
+      "ml_signal": 0.0413,
+      "prediction_direction": "down",
+      "prediction_confidence": 0.624,
+      "has_position": false
+    },
+    {
+      "date": "2026-05-21",
+      "ticker": "ADRO.JK",
+      "action": "HOLD",
+      "score": -0.0817,
+      "strategy_signal": -1,
+      "ml_signal": -0.0257,
+      "prediction_direction": "up",
+      "prediction_confidence": 0.565,
+      "has_position": true
+    },
+    {
+      "date": "2026-05-28",
+      "ticker": "BBCA.JK",
+      "action": "HOLD",
+      "score": 0.0113,
+      "strategy_signal": 0,
+      "ml_signal": 0.0376,
+      "prediction_direction": "flat",
+      "prediction_confidence": 0.368,
+      "has_position": false
+    },
+    {
+      "date": "2026-05-28",
+      "ticker": "BBRI.JK",
+      "action": "SELL",
+      "score": -0.1636,
+      "strategy_signal": 0,
+      "ml_signal": 0.0228,
+      "prediction_direction": "down",
+      "prediction_confidence": 0.426,
+      "has_position": false
+    },
+    {
+      "date": "2026-05-28",
+      "ticker": "BMRI.JK",
+      "action": "HOLD",
+      "score": 0.0101,
+      "strategy_signal": 0,
+      "ml_signal": 0.0336,
+      "prediction_direction": "flat",
+      "prediction_confidence": 0.499,
+      "has_position": true
+    },
+    {
+      "date": "2026-05-28",
+      "ticker": "TLKM.JK",
+      "action": "BUY",
+      "score": 0.3545,
+      "strategy_signal": 0,
+      "ml_signal": 0.1804,
+      "prediction_direction": "up",
+      "prediction_confidence": 0.751,
+      "has_position": true
+    },
+    {
+      "date": "2026-05-28",
+      "ticker": "ASII.JK",
+      "action": "SELL",
+      "score": -0.3035,
+      "strategy_signal": 0,
+      "ml_signal": 0.0402,
+      "prediction_direction": "down",
+      "prediction_confidence": 0.789,
+      "has_position": false
+    },
+    {
+      "date": "2026-05-28",
+      "ticker": "UNTR.JK",
+      "action": "HOLD",
+      "score": 0.0904,
+      "strategy_signal": 1,
+      "ml_signal": 0.0321,
+      "prediction_direction": "down",
+      "prediction_confidence": 0.548,
+      "has_position": true
+    },
+    {
+      "date": "2026-05-28",
+      "ticker": "ANTM.JK",
+      "action": "BUY",
+      "score": 0.2263,
+      "strategy_signal": 1,
+      "ml_signal": 0.1185,
+      "prediction_direction": "down",
+      "prediction_confidence": 0.273,
+      "has_position": false
+    },
+    {
+      "date": "2026-05-28",
+      "ticker": "MDKA.JK",
+      "action": "BUY",
+      "score": 0.4654,
+      "strategy_signal": 1,
+      "ml_signal": 0.0087,
+      "prediction_direction": "up",
+      "prediction_confidence": 0.407,
+      "has_position": false
+    },
+    {
+      "date": "2026-05-28",
+      "ticker": "ICBP.JK",
+      "action": "HOLD",
+      "score": 0.0194,
+      "strategy_signal": 0,
+      "ml_signal": 0.0647,
+      "prediction_direction": "flat",
+      "prediction_confidence": 0.389,
+      "has_position": false
+    },
+    {
+      "date": "2026-05-28",
+      "ticker": "ADRO.JK",
+      "action": "SELL",
+      "score": -0.208,
+      "strategy_signal": 0,
+      "ml_signal": -0.0001,
+      "prediction_direction": "down",
+      "prediction_confidence": 0.52,
+      "has_position": true
+    },
+    {
+      "date": "2026-06-05",
+      "ticker": "BBCA.JK",
+      "action": "BUY",
+      "score": 0.5611,
+      "strategy_signal": 1,
+      "ml_signal": 0.1663,
+      "prediction_direction": "up",
+      "prediction_confidence": 0.528,
+      "has_position": false
+    },
+    {
+      "date": "2026-06-05",
+      "ticker": "BBRI.JK",
+      "action": "HOLD",
+      "score": 0.12,
+      "strategy_signal": 1,
+      "ml_signal": 0.1252,
+      "prediction_direction": "down",
+      "prediction_confidence": 0.544,
+      "has_position": false
+    },
+    {
+      "date": "2026-06-05",
+      "ticker": "BMRI.JK",
+      "action": "BUY",
+      "score": 0.3329,
+      "strategy_signal": 0,
+      "ml_signal": 0.1336,
+      "prediction_direction": "up",
+      "prediction_confidence": 0.732,
+      "has_position": true
+    },
+    {
+      "date": "2026-06-05",
+      "ticker": "TLKM.JK",
+      "action": "BUY",
+      "score": 0.6135,
+      "strategy_signal": 1,
+      "ml_signal": 0.325,
+      "prediction_direction": "up",
+      "prediction_confidence": 0.54,
+      "has_position": true
+    },
+    {
+      "date": "2026-06-05",
+      "ticker": "ASII.JK",
+      "action": "SELL",
+      "score": -0.5562,
+      "strategy_signal": -1,
+      "ml_signal": -0.0421,
+      "prediction_direction": "down",
+      "prediction_confidence": 0.609,
+      "has_position": false
+    },
+    {
+      "date": "2026-06-05",
+      "ticker": "UNTR.JK",
+      "action": "HOLD",
+      "score": 0.0579,
+      "strategy_signal": 1,
+      "ml_signal": 0.0182,
+      "prediction_direction": "down",
+      "prediction_confidence": 0.619,
+      "has_position": true
+    },
+    {
+      "date": "2026-06-05",
+      "ticker": "ANTM.JK",
+      "action": "HOLD",
+      "score": 0.0569,
+      "strategy_signal": 1,
+      "ml_signal": 0.1375,
+      "prediction_direction": "down",
+      "prediction_confidence": 0.711,
+      "has_position": true
+    },
+    {
+      "date": "2026-06-05",
+      "ticker": "MDKA.JK",
+      "action": "HOLD",
+      "score": -0.0,
+      "strategy_signal": 1,
+      "ml_signal": -0.1547,
+      "prediction_direction": "down",
+      "prediction_confidence": 0.634,
+      "has_position": true
+    },
+    {
+      "date": "2026-06-05",
+      "ticker": "ICBP.JK",
+      "action": "SELL",
+      "score": -0.2158,
+      "strategy_signal": 0,
+      "ml_signal": 0.058,
+      "prediction_direction": "down",
+      "prediction_confidence": 0.583,
+      "has_position": false
+    },
+    {
+      "date": "2026-06-05",
+      "ticker": "ADRO.JK",
+      "action": "SELL",
+      "score": -0.2825,
+      "strategy_signal": 0,
+      "ml_signal": -0.0163,
+      "prediction_direction": "down",
+      "prediction_confidence": 0.694,
+      "has_position": false
+    },
+    {
+      "date": "2026-06-12",
+      "ticker": "BBCA.JK",
+      "action": "BUY",
+      "score": 0.2697,
+      "strategy_signal": 0,
+      "ml_signal": -0.013,
+      "prediction_direction": "up",
+      "prediction_confidence": 0.684,
+      "has_position": false
+    },
+    {
+      "date": "2026-06-12",
+      "ticker": "BBRI.JK",
+      "action": "SELL",
+      "score": -0.2007,
+      "strategy_signal": 0,
+      "ml_signal": -0.0048,
+      "prediction_direction": "down",
+      "prediction_confidence": 0.498,
+      "has_position": false
+    },
+    {
+      "date": "2026-06-12",
+      "ticker": "BMRI.JK",
+      "action": "BUY",
+      "score": 0.2868,
+      "strategy_signal": 0,
+      "ml_signal": -0.0239,
+      "prediction_direction": "up",
+      "prediction_confidence": 0.735,
+      "has_position": true
+    },
+    {
+      "date": "2026-06-12",
+      "ticker": "TLKM.JK",
+      "action": "HOLD",
+      "score": 0.1013,
+      "strategy_signal": 1,
+      "ml_signal": 0.0257,
+      "prediction_direction": "down",
+      "prediction_confidence": 0.516,
+      "has_position": true
+    },
+    {
+      "date": "2026-06-12",
+      "ticker": "ASII.JK",
+      "action": "SELL",
+      "score": -0.2707,
+      "strategy_signal": 0,
+      "ml_signal": 0.0018,
+      "prediction_direction": "down",
+      "prediction_confidence": 0.678,
+      "has_position": false
+    },
+    {
+      "date": "2026-06-12",
+      "ticker": "UNTR.JK",
+      "action": "SELL",
+      "score": -0.251,
+      "strategy_signal": 0,
+      "ml_signal": 0.0354,
+      "prediction_direction": "down",
+      "prediction_confidence": 0.654,
+      "has_position": true
+    },
+    {
+      "date": "2026-06-12",
+      "ticker": "ANTM.JK",
+      "action": "HOLD",
+      "score": 0.1055,
+      "strategy_signal": 1,
+      "ml_signal": 0.0009,
+      "prediction_direction": "down",
+      "prediction_confidence": 0.487,
+      "has_position": true
+    },
+    {
+      "date": "2026-06-12",
+      "ticker": "MDKA.JK",
+      "action": "HOLD",
+      "score": 0.1433,
+      "strategy_signal": 1,
+      "ml_signal": 0.015,
+      "prediction_direction": "down",
+      "prediction_confidence": 0.403,
+      "has_position": true
+    },
+    {
+      "date": "2026-06-12",
+      "ticker": "ICBP.JK",
+      "action": "SELL",
+      "score": -0.1618,
+      "strategy_signal": 0,
+      "ml_signal": 0.0113,
+      "prediction_direction": "down",
+      "prediction_confidence": 0.413,
+      "has_position": false
+    },
+    {
+      "date": "2026-06-12",
+      "ticker": "ADRO.JK",
+      "action": "SELL",
+      "score": -0.2531,
+      "strategy_signal": 0,
+      "ml_signal": 0.0108,
+      "prediction_direction": "down",
+      "prediction_confidence": 0.641,
+      "has_position": false
+    },
+    {
+      "date": "2026-06-22",
+      "ticker": "BBCA.JK",
+      "action": "SELL",
+      "score": -0.2015,
+      "strategy_signal": 0,
+      "ml_signal": -0.0862,
+      "prediction_direction": "down",
+      "prediction_confidence": 0.439,
+      "has_position": true
+    },
+    {
+      "date": "2026-06-22",
+      "ticker": "BBRI.JK",
+      "action": "SELL",
+      "score": -0.1786,
+      "strategy_signal": 0,
+      "ml_signal": 0.0165,
+      "prediction_direction": "down",
+      "prediction_confidence": 0.459,
+      "has_position": false
+    },
+    {
+      "date": "2026-06-22",
+      "ticker": "BMRI.JK",
+      "action": "BUY",
+      "score": 0.2255,
+      "strategy_signal": 0,
+      "ml_signal": 0.0476,
+      "prediction_direction": "up",
+      "prediction_confidence": 0.528,
+      "has_position": true
+    },
+    {
+      "date": "2026-06-22",
+      "ticker": "TLKM.JK",
+      "action": "BUY",
+      "score": 0.1635,
+      "strategy_signal": 1,
+      "ml_signal": 0.1982,
+      "prediction_direction": "down",
+      "prediction_confidence": 0.49,
+      "has_position": true
+    },
+    {
+      "date": "2026-06-22",
+      "ticker": "ASII.JK",
+      "action": "SELL",
+      "score": -0.2335,
+      "strategy_signal": 0,
+      "ml_signal": 0.0668,
+      "prediction_direction": "down",
+      "prediction_confidence": 0.634,
+      "has_position": false
+    },
+    {
+      "date": "2026-06-22",
+      "ticker": "UNTR.JK",
+      "action": "SELL",
+      "score": -0.1829,
+      "strategy_signal": 0,
+      "ml_signal": 0.0264,
+      "prediction_direction": "down",
+      "prediction_confidence": 0.477,
+      "has_position": false
+    },
+    {
+      "date": "2026-06-22",
+      "ticker": "ANTM.JK",
+      "action": "HOLD",
+      "score": 0.0818,
+      "strategy_signal": 1,
+      "ml_signal": 0.0273,
+      "prediction_direction": "down",
+      "prediction_confidence": 0.566,
+      "has_position": true
+    },
+    {
+      "date": "2026-06-22",
+      "ticker": "MDKA.JK",
+      "action": "HOLD",
+      "score": -0.118,
+      "strategy_signal": -1,
+      "ml_signal": -0.0159,
+      "prediction_direction": "up",
+      "prediction_confidence": 0.467,
+      "has_position": true
+    },
+    {
+      "date": "2026-06-22",
+      "ticker": "ICBP.JK",
+      "action": "HOLD",
+      "score": -0.1081,
+      "strategy_signal": 0,
+      "ml_signal": -0.0124,
+      "prediction_direction": "down",
+      "prediction_confidence": 0.261,
+      "has_position": false
+    },
+    {
+      "date": "2026-06-22",
+      "ticker": "ADRO.JK",
+      "action": "SELL",
+      "score": -0.1868,
+      "strategy_signal": 0,
+      "ml_signal": -0.0093,
+      "prediction_direction": "down",
+      "prediction_confidence": 0.46,
+      "has_position": false
+    },
+    {
+      "date": "2026-06-29",
+      "ticker": "BBCA.JK",
+      "action": "BUY",
+      "score": 0.2456,
+      "strategy_signal": 0,
+      "ml_signal": 0.1039,
+      "prediction_direction": "up",
+      "prediction_confidence": 0.536,
+      "has_position": false
+    },
+    {
+      "date": "2026-06-29",
+      "ticker": "BBRI.JK",
+      "action": "SELL",
+      "score": -0.2435,
+      "strategy_signal": 0,
+      "ml_signal": 0.0428,
+      "prediction_direction": "down",
+      "prediction_confidence": 0.641,
+      "has_position": false
+    },
+    {
+      "date": "2026-06-29",
+      "ticker": "BMRI.JK",
+      "action": "BUY",
+      "score": 0.244,
+      "strategy_signal": 0,
+      "ml_signal": 0.088,
+      "prediction_direction": "up",
+      "prediction_confidence": 0.544,
+      "has_position": true
+    },
+    {
+      "date": "2026-06-29",
+      "ticker": "TLKM.JK",
+      "action": "HOLD",
+      "score": 0.0612,
+      "strategy_signal": 1,
+      "ml_signal": 0.1319,
+      "prediction_direction": "down",
+      "prediction_confidence": 0.696,
+      "has_position": true
+    },
+    {
+      "date": "2026-06-29",
+      "ticker": "ASII.JK",
+      "action": "SELL",
+      "score": -0.2407,
+      "strategy_signal": 0,
+      "ml_signal": 0.0775,
+      "prediction_direction": "down",
+      "prediction_confidence": 0.66,
+      "has_position": false
+    },
+    {
+      "date": "2026-06-29",
+      "ticker": "UNTR.JK",
+      "action": "SELL",
+      "score": -0.2538,
+      "strategy_signal": 0,
+      "ml_signal": 0.0315,
+      "prediction_direction": "down",
+      "prediction_confidence": 0.658,
+      "has_position": false
+    },
+    {
+      "date": "2026-06-29",
+      "ticker": "ANTM.JK",
+      "action": "HOLD",
+      "score": -0.0045,
+      "strategy_signal": 1,
+      "ml_signal": 0.0142,
+      "prediction_direction": "down",
+      "prediction_confidence": 0.772,
+      "has_position": true
+    },
+    {
+      "date": "2026-06-29",
+      "ticker": "MDKA.JK",
+      "action": "BUY",
+      "score": 0.456,
+      "strategy_signal": 1,
+      "ml_signal": -0.0973,
+      "prediction_direction": "up",
+      "prediction_confidence": 0.463,
+      "has_position": true
+    },
+    {
+      "date": "2026-06-29",
+      "ticker": "ICBP.JK",
+      "action": "SELL",
+      "score": -0.4403,
+      "strategy_signal": -1,
+      "ml_signal": -0.0155,
+      "prediction_direction": "down",
+      "prediction_confidence": 0.339,
+      "has_position": false
+    },
+    {
+      "date": "2026-06-29",
+      "ticker": "ADRO.JK",
+      "action": "SELL",
+      "score": -0.2495,
+      "strategy_signal": 0,
+      "ml_signal": -0.0212,
+      "prediction_direction": "down",
+      "prediction_confidence": 0.608,
+      "has_position": false
+    },
+    {
+      "date": "2026-07-06",
+      "ticker": "BBCA.JK",
+      "action": "BUY",
+      "score": 0.2859,
+      "strategy_signal": 0,
+      "ml_signal": 0.0865,
+      "prediction_direction": "up",
+      "prediction_confidence": 0.65,
+      "has_position": true
+    },
+    {
+      "date": "2026-07-06",
+      "ticker": "BBRI.JK",
+      "action": "SELL",
+      "score": -0.1768,
+      "strategy_signal": 0,
+      "ml_signal": 0.0627,
+      "prediction_direction": "down",
+      "prediction_confidence": 0.489,
+      "has_position": false
+    },
+    {
+      "date": "2026-07-06",
+      "ticker": "BMRI.JK",
+      "action": "HOLD",
+      "score": 0.1477,
+      "strategy_signal": 1,
+      "ml_signal": 0.0364,
+      "prediction_direction": "down",
+      "prediction_confidence": 0.408,
+      "has_position": true
+    },
+    {
+      "date": "2026-07-06",
+      "ticker": "TLKM.JK",
+      "action": "HOLD",
+      "score": 0.1207,
+      "strategy_signal": 1,
+      "ml_signal": 0.0609,
+      "prediction_direction": "down",
+      "prediction_confidence": 0.494,
+      "has_position": true
+    },
+    {
+      "date": "2026-07-06",
+      "ticker": "ASII.JK",
+      "action": "SELL",
+      "score": -0.2046,
+      "strategy_signal": 0,
+      "ml_signal": 0.0033,
+      "prediction_direction": "down",
+      "prediction_confidence": 0.514,
+      "has_position": false
+    },
+    {
+      "date": "2026-07-06",
+      "ticker": "UNTR.JK",
+      "action": "BUY",
+      "score": 0.2672,
+      "strategy_signal": 0,
+      "ml_signal": 0.0012,
+      "prediction_direction": "up",
+      "prediction_confidence": 0.667,
+      "has_position": false
+    },
+    {
+      "date": "2026-07-06",
+      "ticker": "ANTM.JK",
+      "action": "BUY",
+      "score": 0.2352,
+      "strategy_signal": 0,
+      "ml_signal": -0.0294,
+      "prediction_direction": "up",
+      "prediction_confidence": 0.61,
+      "has_position": true
+    },
+    {
+      "date": "2026-07-06",
+      "ticker": "MDKA.JK",
+      "action": "BUY",
+      "score": 0.2225,
+      "strategy_signal": 0,
+      "ml_signal": 0.0191,
+      "prediction_direction": "up",
+      "prediction_confidence": 0.542,
+      "has_position": true
+    },
+    {
+      "date": "2026-07-06",
+      "ticker": "ICBP.JK",
+      "action": "HOLD",
+      "score": 0.1467,
+      "strategy_signal": 0,
+      "ml_signal": 0.0132,
+      "prediction_direction": "up",
+      "prediction_confidence": 0.357,
+      "has_position": false
+    },
+    {
+      "date": "2026-07-06",
+      "ticker": "ADRO.JK",
+      "action": "HOLD",
+      "score": -0.0014,
+      "strategy_signal": 0,
+      "ml_signal": -0.0046,
+      "prediction_direction": "flat",
+      "prediction_confidence": 0.668,
+      "has_position": false
+    },
+    {
+      "date": "2026-07-13",
+      "ticker": "BBCA.JK",
+      "action": "BUY",
+      "score": 0.2551,
+      "strategy_signal": 0,
+      "ml_signal": 0.0691,
+      "prediction_direction": "up",
+      "prediction_confidence": 0.586,
+      "has_position": true
+    },
+    {
+      "date": "2026-07-13",
+      "ticker": "BBRI.JK",
+      "action": "SELL",
+      "score": -0.1728,
+      "strategy_signal": 0,
+      "ml_signal": -0.0185,
+      "prediction_direction": "down",
+      "prediction_confidence": 0.418,
+      "has_position": false
+    },
+    {
+      "date": "2026-07-13",
+      "ticker": "BMRI.JK",
+      "action": "SELL",
+      "score": -0.1827,
+      "strategy_signal": 0,
+      "ml_signal": 0.0402,
+      "prediction_direction": "down",
+      "prediction_confidence": 0.487,
+      "has_position": true
+    },
+    {
+      "date": "2026-07-13",
+      "ticker": "TLKM.JK",
+      "action": "HOLD",
+      "score": 0.1293,
+      "strategy_signal": 1,
+      "ml_signal": 0.0965,
+      "prediction_direction": "down",
+      "prediction_confidence": 0.499,
+      "has_position": true
+    },
+    {
+      "date": "2026-07-13",
+      "ticker": "ASII.JK",
+      "action": "BUY",
+      "score": 0.2633,
+      "strategy_signal": 0,
+      "ml_signal": 0.0056,
+      "prediction_direction": "up",
+      "prediction_confidence": 0.654,
+      "has_position": false
+    },
+    {
+      "date": "2026-07-13",
+      "ticker": "UNTR.JK",
+      "action": "HOLD",
+      "score": -0.0305,
+      "strategy_signal": -1,
+      "ml_signal": -0.0709,
+      "prediction_direction": "up",
+      "prediction_confidence": 0.727,
+      "has_position": false
+    },
+    {
+      "date": "2026-07-13",
+      "ticker": "ANTM.JK",
+      "action": "SELL",
+      "score": -0.2008,
+      "strategy_signal": 0,
+      "ml_signal": 0.0412,
+      "prediction_direction": "down",
+      "prediction_confidence": 0.533,
+      "has_position": true
+    },
+    {
+      "date": "2026-07-13",
+      "ticker": "MDKA.JK",
+      "action": "HOLD",
+      "score": 0.1206,
+      "strategy_signal": 1,
+      "ml_signal": 0.0408,
+      "prediction_direction": "down",
+      "prediction_confidence": 0.479,
+      "has_position": true
+    },
+    {
+      "date": "2026-07-13",
+      "ticker": "ICBP.JK",
+      "action": "BUY",
+      "score": 0.2244,
+      "strategy_signal": 0,
+      "ml_signal": 0.0562,
+      "prediction_direction": "up",
+      "prediction_confidence": 0.519,
+      "has_position": false
+    },
+    {
+      "date": "2026-07-13",
+      "ticker": "ADRO.JK",
+      "action": "BUY",
+      "score": 0.2981,
+      "strategy_signal": 1,
+      "ml_signal": -0.0063,
+      "prediction_direction": "flat",
+      "prediction_confidence": 0.722,
+      "has_position": false
+    },
+    {
+      "date": "2026-07-20",
+      "ticker": "BBCA.JK",
+      "action": "HOLD",
+      "score": 0.0095,
+      "strategy_signal": -1,
+      "ml_signal": 0.0316,
+      "prediction_direction": "up",
+      "prediction_confidence": 0.75,
+      "has_position": true
+    },
+    {
+      "date": "2026-07-20",
+      "ticker": "BBRI.JK",
+      "action": "SELL",
+      "score": -0.1728,
+      "strategy_signal": 0,
+      "ml_signal": -0.0185,
+      "prediction_direction": "down",
+      "prediction_confidence": 0.418,
+      "has_position": false
+    },
+    {
+      "date": "2026-07-20",
+      "ticker": "BMRI.JK",
+      "action": "HOLD",
+      "score": 0.0074,
+      "strategy_signal": -1,
+      "ml_signal": 0.0195,
+      "prediction_direction": "up",
+      "prediction_confidence": 0.754,
+      "has_position": false
+    },
+    {
+      "date": "2026-07-20",
+      "ticker": "TLKM.JK",
+      "action": "SELL",
+      "score": -0.1586,
+      "strategy_signal": -1,
+      "ml_signal": -0.2355,
+      "prediction_direction": "up",
+      "prediction_confidence": 0.53,
+      "has_position": true
+    },
+    {
+      "date": "2026-07-20",
+      "ticker": "ASII.JK",
+      "action": "BUY",
+      "score": 0.2798,
+      "strategy_signal": 0,
+      "ml_signal": 0.0514,
+      "prediction_direction": "up",
+      "prediction_confidence": 0.661,
+      "has_position": false
+    },
+    {
+      "date": "2026-07-20",
+      "ticker": "UNTR.JK",
+      "action": "BUY",
+      "score": 0.2459,
+      "strategy_signal": 0,
+      "ml_signal": 0.0384,
+      "prediction_direction": "up",
+      "prediction_confidence": 0.586,
+      "has_position": false
+    },
+    {
+      "date": "2026-07-20",
+      "ticker": "ANTM.JK",
+      "action": "BUY",
+      "score": 0.2457,
+      "strategy_signal": 0,
+      "ml_signal": -0.0104,
+      "prediction_direction": "up",
+      "prediction_confidence": 0.622,
+      "has_position": false
+    },
+    {
+      "date": "2026-07-20",
+      "ticker": "MDKA.JK",
+      "action": "SELL",
+      "score": -0.2104,
+      "strategy_signal": 0,
+      "ml_signal": 0.0388,
+      "prediction_direction": "down",
+      "prediction_confidence": 0.555,
+      "has_position": true
+    },
+    {
+      "date": "2026-07-20",
+      "ticker": "ICBP.JK",
+      "action": "BUY",
+      "score": 0.2587,
+      "strategy_signal": 0,
+      "ml_signal": 0.0622,
+      "prediction_direction": "up",
+      "prediction_confidence": 0.6,
+      "has_position": false
+    },
+    {
+      "date": "2026-07-20",
+      "ticker": "ADRO.JK",
+      "action": "BUY",
+      "score": 0.2957,
+      "strategy_signal": 1,
+      "ml_signal": -0.0142,
+      "prediction_direction": "flat",
+      "prediction_confidence": 0.267,
+      "has_position": true
+    },
+    {
+      "date": "2026-07-26",
+      "ticker": "BBCA.JK",
+      "action": "BUY",
+      "score": 0.3075,
+      "strategy_signal": 0,
+      "ml_signal": 0.1837,
+      "prediction_direction": "up",
+      "prediction_confidence": 0.631,
+      "has_position": true
+    },
+    {
+      "date": "2026-07-26",
+      "ticker": "BBRI.JK",
+      "action": "SELL",
+      "score": -0.1728,
+      "strategy_signal": 0,
+      "ml_signal": -0.0185,
+      "prediction_direction": "down",
+      "prediction_confidence": 0.418,
+      "has_position": false
+    },
+    {
+      "date": "2026-07-26",
+      "ticker": "BMRI.JK",
+      "action": "BUY",
+      "score": 0.3121,
+      "strategy_signal": 0,
+      "ml_signal": 0.0949,
+      "prediction_direction": "up",
+      "prediction_confidence": 0.709,
+      "has_position": false
+    },
+    {
+      "date": "2026-07-26",
+      "ticker": "TLKM.JK",
+      "action": "BUY",
+      "score": 0.2329,
+      "strategy_signal": 0,
+      "ml_signal": 0.0471,
+      "prediction_direction": "up",
+      "prediction_confidence": 0.547,
+      "has_position": false
+    },
+    {
+      "date": "2026-07-26",
+      "ticker": "ASII.JK",
+      "action": "BUY",
+      "score": 0.2704,
+      "strategy_signal": 0,
+      "ml_signal": 0.092,
+      "prediction_direction": "up",
+      "prediction_confidence": 0.607,
+      "has_position": true
+    },
+    {
+      "date": "2026-07-26",
+      "ticker": "UNTR.JK",
+      "action": "BUY",
+      "score": 0.2524,
+      "strategy_signal": 0,
+      "ml_signal": 0.0573,
+      "prediction_direction": "up",
+      "prediction_confidence": 0.588,
+      "has_position": false
+    },
+    {
+      "date": "2026-07-26",
+      "ticker": "ANTM.JK",
+      "action": "BUY",
+      "score": 0.2586,
+      "strategy_signal": 0,
+      "ml_signal": 0.0341,
+      "prediction_direction": "up",
+      "prediction_confidence": 0.621,
+      "has_position": false
+    },
+    {
+      "date": "2026-07-26",
+      "ticker": "MDKA.JK",
+      "action": "SELL",
+      "score": -0.1728,
+      "strategy_signal": 0,
+      "ml_signal": 0.0481,
+      "prediction_direction": "down",
+      "prediction_confidence": 0.468,
+      "has_position": false
+    },
+    {
+      "date": "2026-07-26",
+      "ticker": "ICBP.JK",
+      "action": "BUY",
+      "score": 0.2831,
+      "strategy_signal": 0,
+      "ml_signal": 0.0276,
+      "prediction_direction": "up",
+      "prediction_confidence": 0.687,
+      "has_position": true
+    },
+    {
+      "date": "2026-07-26",
+      "ticker": "ADRO.JK",
+      "action": "HOLD",
+      "score": 0.1483,
+      "strategy_signal": 0,
+      "ml_signal": -0.0109,
+      "prediction_direction": "up",
+      "prediction_confidence": 0.379,
+      "has_position": true
+    },
+    {
+      "date": "2026-07-31",
+      "ticker": "BBCA.JK",
+      "action": "BUY",
+      "score": 0.2436,
+      "strategy_signal": 0,
+      "ml_signal": 0.0892,
+      "prediction_direction": "up",
+      "prediction_confidence": 0.542,
+      "has_position": true
+    },
+    {
+      "date": "2026-07-31",
+      "ticker": "BBRI.JK",
+      "action": "SELL",
+      "score": -0.1843,
+      "strategy_signal": 0,
+      "ml_signal": 0.011,
+      "prediction_direction": "down",
+      "prediction_confidence": 0.469,
+      "has_position": false
+    },
+    {
+      "date": "2026-07-31",
+      "ticker": "BMRI.JK",
+      "action": "BUY",
+      "score": 0.2925,
+      "strategy_signal": 0,
+      "ml_signal": 0.0431,
+      "prediction_direction": "up",
+      "prediction_confidence": 0.699,
+      "has_position": false
+    },
+    {
+      "date": "2026-07-31",
+      "ticker": "TLKM.JK",
+      "action": "BUY",
+      "score": 0.2592,
+      "strategy_signal": 0,
+      "ml_signal": -0.0012,
+      "prediction_direction": "up",
+      "prediction_confidence": 0.649,
+      "has_position": true
+    },
+    {
+      "date": "2026-07-31",
+      "ticker": "ASII.JK",
+      "action": "BUY",
+      "score": 0.277,
+      "strategy_signal": 0,
+      "ml_signal": -0.0182,
+      "prediction_direction": "up",
+      "prediction_confidence": 0.706,
+      "has_position": true
+    },
+    {
+      "date": "2026-07-31",
+      "ticker": "UNTR.JK",
+      "action": "BUY",
+      "score": 0.3201,
+      "strategy_signal": 0,
+      "ml_signal": 0.0682,
+      "prediction_direction": "up",
+      "prediction_confidence": 0.749,
+      "has_position": false
+    },
+    {
+      "date": "2026-07-31",
+      "ticker": "ANTM.JK",
+      "action": "HOLD",
+      "score": 0.1247,
+      "strategy_signal": 0,
+      "ml_signal": -0.1084,
+      "prediction_direction": "up",
+      "prediction_confidence": 0.393,
+      "has_position": false
+    },
+    {
+      "date": "2026-07-31",
+      "ticker": "MDKA.JK",
+      "action": "BUY",
+      "score": 0.1677,
+      "strategy_signal": 0,
+      "ml_signal": 0.0322,
+      "prediction_direction": "up",
+      "prediction_confidence": 0.395,
+      "has_position": false
+    },
+    {
+      "date": "2026-07-31",
+      "ticker": "ICBP.JK",
+      "action": "BUY",
+      "score": 0.27,
+      "strategy_signal": 0,
+      "ml_signal": 0.0373,
+      "prediction_direction": "up",
+      "prediction_confidence": 0.647,
+      "has_position": true
+    },
+    {
+      "date": "2026-07-31",
+      "ticker": "ADRO.JK",
+      "action": "BUY",
+      "score": 0.1532,
+      "strategy_signal": 0,
+      "ml_signal": -0.0133,
+      "prediction_direction": "up",
+      "prediction_confidence": 0.393,
+      "has_position": true
+    }
+  ],
+  "elapsed_seconds": 1425.1
+}
