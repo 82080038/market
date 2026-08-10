@@ -7,8 +7,13 @@ Features used:
 - Technical: RSI, MA ratio, momentum, ATR%
 - Volume: relative volume
 - Price: close, high-low range
+- Regime: trend regime label (ADX-based)
 
-Target: 5-day forward return direction (binary: 1 if up, 0 if down)
+Target: Triple-barrier labels (López de Prado Ch. 3):
+  - 1 = take-profit hit (upward barrier)
+  - 0 = vertical/time barrier (neutral)
+  - -1 = stop-loss hit (downward barrier)
+  Binary mode: 1 = up barrier hit, 0 = down or vertical barrier
 
 The model is trained per-ticker with walk-forward CV to avoid look-ahead bias.
 """
@@ -55,6 +60,11 @@ class MLSignalProvider:
         colsample_bytree: float = 0.7,
         early_stopping_rounds: int = 20,
         min_gain_to_split: float = 0.01,
+        use_triple_barrier: bool = True,
+        tp_barrier: float = 0.015,
+        sl_barrier: float = 0.015,
+        use_atr_barriers: bool = True,
+        atr_multiplier: float = 1.5,
     ) -> None:
         self.horizon = horizon
         self.min_train_samples = min_train_samples
@@ -68,6 +78,11 @@ class MLSignalProvider:
         self.colsample_bytree = colsample_bytree
         self.early_stopping_rounds = early_stopping_rounds
         self.min_gain_to_split = min_gain_to_split
+        self.use_triple_barrier = use_triple_barrier
+        self.tp_barrier = tp_barrier
+        self.sl_barrier = sl_barrier
+        self.use_atr_barriers = use_atr_barriers
+        self.atr_multiplier = atr_multiplier
         self._models: dict[str, object] = {}
 
     def _prepare_features(self, df: pd.DataFrame) -> pd.DataFrame:
@@ -156,11 +171,71 @@ class MLSignalProvider:
             (price_change * vol_norm).rolling(10).mean()
         )
 
-        # Forward return target
-        data["forward_return"] = close.shift(-self.horizon) / close - 1
-        data["target"] = (data["forward_return"] > 0).astype(int)
+        # ADX-based trend regime (pustaka/23 §5)
+        # Simple proxy: 20-bar directional movement strength
+        up_move = high.diff()
+        down_move = -low.diff()
+        plus_dm = up_move.where((up_move > down_move) & (up_move > 0), 0.0)
+        minus_dm = down_move.where((down_move > up_move) & (down_move > 0), 0.0)
+        atr_val = (high - low).rolling(14).mean()
+        plus_di = 100 * plus_dm.rolling(14).mean() / atr_val.replace(0, np.nan)
+        minus_di = 100 * minus_dm.rolling(14).mean() / atr_val.replace(0, np.nan)
+        dx = 100 * (plus_di - minus_di).abs() / (plus_di + minus_di).replace(0, np.nan)
+        adx = dx.rolling(14).mean()
+        data["trend_regime"] = (adx > 25).astype(int)  # 1 = trending, 0 = ranging
+
+        # Target: triple-barrier labels (López de Prado)
+        if self.use_triple_barrier:
+            data["target"] = self._compute_triple_barrier_labels(data)
+        else:
+            # Fallback: simple binary up/down
+            data["forward_return"] = close.shift(-self.horizon) / close - 1
+            data["target"] = (data["forward_return"] > 0).astype(int)
 
         return data
+
+    def _compute_triple_barrier_labels(self, data: pd.DataFrame) -> pd.Series:
+        """Compute triple-barrier labels (López de Prado Ch. 3).
+
+        For each bar, simulate forward H bars and check which barrier is hit first:
+        - Upper barrier (take-profit): +tp_barrier or ATR * atr_multiplier
+        - Lower barrier (stop-loss): -sl_barrier or -ATR * atr_multiplier
+        - Vertical barrier (time): H bars elapsed → neutral
+
+        Returns binary target: 1 = upper barrier hit, 0 = lower or vertical.
+        """
+        close = data["close"].astype(float)
+        high = data["high"].astype(float)
+        low = data["low"].astype(float)
+        n = len(close)
+        labels = pd.Series(0, index=data.index, dtype=int)
+
+        # Compute ATR for dynamic barriers
+        if self.use_atr_barriers:
+            atr = (high - low).rolling(14).mean()
+            tp = atr * self.atr_multiplier
+            sl = atr * self.atr_multiplier
+        else:
+            tp = pd.Series(self.tp_barrier, index=data.index)
+            sl = pd.Series(self.sl_barrier, index=data.index)
+
+        for i in range(n - self.horizon):
+            entry_price = float(close.iloc[i])
+            tp_val = float(tp.iloc[i]) if not np.isnan(tp.iloc[i]) else self.tp_barrier
+            sl_val = float(sl.iloc[i]) if not np.isnan(sl.iloc[i]) else self.sl_barrier
+
+            for j in range(1, self.horizon + 1):
+                ret = (float(close.iloc[i + j]) - entry_price) / entry_price
+                if ret >= tp_val:
+                    labels.iloc[i] = 1  # take-profit hit
+                    break
+                elif ret <= -sl_val:
+                    labels.iloc[i] = 0  # stop-loss hit
+                    break
+            # If neither barrier hit within horizon → vertical barrier → 0 (neutral/down)
+            # Labels[i] stays 0 for vertical barrier
+
+        return labels
 
     def _get_feature_cols(self) -> list[str]:
         return [
@@ -173,6 +248,8 @@ class MLSignalProvider:
             "rsi_change", "vol_trend", "price_accel", "vol_regime",
             # Volume dynamics features
             "vwap_ratio", "vol_roc_10", "obv_slope", "vol_price_trend",
+            # Regime feature (P3-2)
+            "trend_regime",
         ]
 
     def train_and_predict(

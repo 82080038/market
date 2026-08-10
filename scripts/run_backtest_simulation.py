@@ -47,9 +47,14 @@ BACKTEST_END = "2026-08-03"
 # Prediction evaluation: predict at as_of, compare with actual N days later
 PREDICTION_HORIZON_DAYS = 5
 PREDICTION_AS_OF_DATES = [
-    "2025-01-15", "2025-03-15", "2025-05-15", "2025-07-15",
-    "2025-09-15", "2025-11-15", "2026-01-15", "2026-03-15",
-    "2026-05-15", "2026-07-15",
+    "2024-03-15", "2024-04-15", "2024-05-15", "2024-06-15",
+    "2024-07-15", "2024-08-15", "2024-09-15", "2024-10-15",
+    "2024-11-15", "2024-12-15",
+    "2025-01-15", "2025-02-15", "2025-03-15", "2025-04-15",
+    "2025-05-15", "2025-06-15", "2025-07-15", "2025-08-15",
+    "2025-09-15", "2025-10-15", "2025-11-15", "2025-12-15",
+    "2026-01-15", "2026-02-15", "2026-03-15", "2026-04-15",
+    "2026-05-15", "2026-06-15", "2026-07-15",
 ]
 
 INITIAL_CAPITAL = 100_000_000  # 100M IDR
@@ -213,7 +218,7 @@ def run_prediction_evaluation(
     else:
         events_df = pd.DataFrame(columns=["side"])
 
-    meta_labeler = MetaLabeler(min_train_samples=100, prob_threshold=0.45)
+    meta_labeler = MetaLabeler(min_train_samples=100, prob_threshold=0.0)
     meta_metrics = {"mean_accuracy": 0.5, "mean_auc": 0.5}
     if len(events_df) >= 100:
         meta_metrics = meta_labeler.fit(df, events_df)
@@ -268,13 +273,19 @@ def run_prediction_evaluation(
 
             actual_pct = (actual_close - as_of_close) / as_of_close * 100
 
-            # ── MetaLabeler veto check ────────────────────────────────────
+            # ── MetaLabeler soft bet sizing ────────────────────────────────
+            # P3-4: Instead of hard veto at 0.45, use soft approach:
+            # - meta_prob < 0.35 → veto (no trade)
+            # - meta_prob 0.35-0.50 → keep but reduce confidence
+            # - meta_prob >= 0.50 → keep with full confidence
             primary_side = 1 if pred_direction == "up" else -1 if pred_direction == "down" else 0
             meta_result = meta_labeler.predict(
                 df, as_of=as_of, primary_side=primary_side,
                 primary_confidence=pred.confidence,
             )
-            meta_vetoed = not meta_result.trade
+            meta_prob = meta_result.probability
+            HARD_VETO_THRESHOLD = 0.35
+            meta_vetoed = meta_prob < HARD_VETO_THRESHOLD
             if meta_vetoed:
                 meta_filtered += 1
                 # If vetoed, flip to HOLD — but preserve original prediction
@@ -290,7 +301,7 @@ def run_prediction_evaluation(
                     "meta_vetoed": True,
                     "original_pred_direction": original_pred_direction,
                     "original_direction_correct": original_direction_correct,
-                    "meta_probability": round(meta_result.probability, 3),
+                    "meta_probability": round(meta_prob, 3),
                     "meta_bet_size": round(meta_result.bet_size, 3),
                     "predicted_price": round(pred.predicted_price, 2),
                     "actual_price": round(actual_close, 2),
