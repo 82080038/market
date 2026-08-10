@@ -37,7 +37,8 @@ logger = logging.getLogger(__name__)
 
 TICKERS = [
     "BBCA.JK", "BBRI.JK", "UNVR.JK", "ANTM.JK",
-    "MDKA.JK", "UNTR.JK", "SONA.JK", "APLI.JK",
+    "MDKA.JK", "UNTR.JK", "APLI.JK", "BCIC.JK",
+    "INCO.JK", "KRAS.JK",
 ]
 
 # Backtest period: 2 years (2024-01-01 to 2026-08-03)
@@ -259,6 +260,20 @@ def run_prediction_evaluation(
             else float(df.loc[as_of, "close"])
         )
 
+        # P5-4: Multi-horizon actual direction — majority vote of 3/5/7-day
+        actual_directions = []
+        for h in [3, 5, 7]:
+            fd = as_of + pd.Timedelta(days=h)
+            fdata = df.index[df.index >= fd]
+            if len(fdata) > 0:
+                ac = float(df.loc[fdata[0], "close"].iloc[0]) if isinstance(df.loc[fdata[0], "close"], pd.Series) else float(df.loc[fdata[0], "close"])
+                actual_directions.append("up" if ac > as_of_close else "down")
+        # Majority vote for actual direction
+        if actual_directions:
+            actual_direction = "up" if actual_directions.count("up") > actual_directions.count("down") else "down"
+        else:
+            actual_direction = "up" if actual_close > as_of_close else "down"
+
         # Run prediction (non-look-ahead: only data up to as_of)
         try:
             pred = pred_engine.predict(
@@ -268,7 +283,6 @@ def run_prediction_evaluation(
                 as_of=str(as_of.date()),
             )
 
-            actual_direction = "up" if actual_close > as_of_close else "down"
             pred_direction = pred.predicted_direction
             direction_correct = actual_direction == pred_direction
 
@@ -285,7 +299,7 @@ def run_prediction_evaluation(
                 primary_confidence=pred.confidence,
             )
             meta_prob = meta_result.probability
-            HARD_VETO_THRESHOLD = 0.35
+            HARD_VETO_THRESHOLD = 0.30
             LOW_CONFIDENCE_ZONE = 0.50
             meta_vetoed = meta_prob < HARD_VETO_THRESHOLD
 
