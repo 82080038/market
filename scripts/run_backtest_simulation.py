@@ -91,6 +91,40 @@ def load_ticker_data(session, ticker: str) -> pd.DataFrame:
     return df
 
 
+def load_vix_series(session) -> pd.Series:
+    """Load VIX close prices from DB as a Series indexed by date."""
+    rows = session.execute(
+        select(OHLCV)
+        .where(OHLCV.ticker == "^VIX", OHLCV.timeframe == "1d")
+        .order_by(OHLCV.timestamp)
+    ).scalars().all()
+    if not rows:
+        return pd.Series(dtype=float)
+    return pd.Series(
+        [float(r.close) for r in rows],
+        index=pd.DatetimeIndex([r.timestamp for r in rows]),
+        name="vix",
+    )
+
+
+def load_foreign_flow_series(session, ticker: str) -> pd.Series:
+    """Load foreign net flow for a ticker from DB as a Series indexed by date."""
+    from market.db.models import ForeignFlow
+
+    rows = session.execute(
+        select(ForeignFlow)
+        .where(ForeignFlow.ticker == ticker)
+        .order_by(ForeignFlow.date)
+    ).scalars().all()
+    if not rows:
+        return pd.Series(dtype=float)
+    return pd.Series(
+        [float(r.foreign_net) if r.foreign_net is not None else 0.0 for r in rows],
+        index=pd.DatetimeIndex([r.date for r in rows]),
+        name="foreign_flow",
+    )
+
+
 def run_backtest_for_ticker(df: pd.DataFrame, ticker: str) -> dict:
     """Run backtest with MA crossover strategy on a single ticker."""
     # Filter to backtest period
@@ -144,6 +178,8 @@ def run_backtest_for_ticker(df: pd.DataFrame, ticker: str) -> dict:
 
 def run_prediction_evaluation(
     df: pd.DataFrame, ticker: str, context_provider: MarketContextProvider,
+    vix_series: pd.Series | None = None,
+    foreign_flow_series: pd.Series | None = None,
 ) -> dict:
     """Run prediction at multiple as_of dates, compare with actual.
 
@@ -335,6 +371,17 @@ def main() -> None:
         ml_provider=ml_provider,
         multifactor_model=multifactor,
     )
+
+    # Load VIX series once (shared across all tickers)
+    logger.info("Loading VIX series from DB...")
+    vix_series = load_vix_series(session)
+    if vix_series.empty:
+        logger.warning("VIX data not found in DB — meta-model will use rolling std proxy")
+    else:
+        logger.info("  VIX: %d bars (%s to %s)",
+                    len(vix_series), vix_series.index[0].date(),
+                    vix_series.index[-1].date())
+
     all_backtest_results = []
     all_prediction_results = []
     errors = []
@@ -368,9 +415,16 @@ def main() -> None:
                 bt_result.get("buy_hold_return_pct", "N/A"),
             )
 
-            # Run prediction evaluation with market context
-            logger.info("  Running prediction evaluation (with market context)...")
-            pred_result = run_prediction_evaluation(df, ticker, context_provider)
+            # Run prediction evaluation with market context + exogenous signals
+            logger.info("  Running prediction evaluation (with market context + meta-labeling)...")
+            ff_series = load_foreign_flow_series(session, ticker)
+            if ff_series.empty:
+                logger.info("  No foreign flow data for %s — using endogenous only", ticker)
+            pred_result = run_prediction_evaluation(
+                df, ticker, context_provider,
+                vix_series=vix_series if not vix_series.empty else None,
+                foreign_flow_series=ff_series if not ff_series.empty else None,
+            )
             all_prediction_results.append(pred_result)
             if pred_result["direction_accuracy_pct"] is not None:
                 logger.info(

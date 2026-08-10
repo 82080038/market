@@ -352,19 +352,22 @@ def compute_meta_features(
 
     # Exogenous signals (default to neutral when not provided)
     if foreign_flow is not None:
-        data["foreign_flow_signal"] = foreign_flow.reindex(data.index).fillna(0.0)
+        ff_dedup = foreign_flow[~foreign_flow.index.duplicated(keep="last")]
+        data["foreign_flow_signal"] = ff_dedup.reindex(data.index).fillna(0.0)
     else:
         data["foreign_flow_signal"] = 0.0
 
     if vix_proxy is not None:
-        data["vix_proxy"] = vix_proxy.reindex(data.index).fillna(0.0)
+        vp_dedup = vix_proxy[~vix_proxy.index.duplicated(keep="last")]
+        data["vix_proxy"] = vp_dedup.reindex(data.index).fillna(0.0)
     else:
         # Default proxy: 20-bar rolling std of returns * 100
         data["vix_proxy"] = (close.pct_change().rolling(20).std() * 100).fillna(0.0)
 
     if primary_confidence is not None:
+        pc_dedup = primary_confidence[~primary_confidence.index.duplicated(keep="last")]
         data["prediction_confidence"] = (
-            primary_confidence.reindex(data.index).fillna(0.5).clip(0.0, 1.0)
+            pc_dedup.reindex(data.index).fillna(0.5).clip(0.0, 1.0)
         )
     else:
         data["prediction_confidence"] = 0.5
