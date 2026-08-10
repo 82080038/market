@@ -708,6 +708,11 @@ class MultiFactorModel:
         n_estimators: int = 300,
         max_depth: int = 5,
         learning_rate: float = 0.05,
+        min_data_in_leaf: int = 50,
+        reg_alpha: float = 0.1,
+        reg_lambda: float = 1.0,
+        subsample: float = 0.8,
+        colsample_bytree: float = 0.8,
         use_pca: bool = True,
         select_features: bool = True,
         top_k_features: int = 25,
@@ -717,6 +722,11 @@ class MultiFactorModel:
         self.n_estimators = n_estimators
         self.max_depth = max_depth
         self.learning_rate = learning_rate
+        self.min_data_in_leaf = min_data_in_leaf
+        self.reg_alpha = reg_alpha
+        self.reg_lambda = reg_lambda
+        self.subsample = subsample
+        self.colsample_bytree = colsample_bytree
         self.pipeline = MultiFactorFeaturePipeline(
             horizon=horizon,
             use_pca=use_pca,
@@ -780,18 +790,34 @@ class MultiFactorModel:
         X_train = train_data[feature_cols].values
         y_train = train_data["target_3class"].values
 
-        # Walk-forward split: 80% train, 20% validation
-        split_idx = int(len(X_train) * 0.8)
-        X_tr, X_val = X_train[:split_idx], X_train[split_idx:]
-        y_tr, y_val = y_train[:split_idx], y_train[split_idx:]
+        # Walk-forward CV: use mlops.cross_validation for consistent splitting
+        from market.mlops.cross_validation import walk_forward_splits
+        splits = walk_forward_splits(
+            n_samples=len(X_train),
+            train_size=int(len(X_train) * 0.8),
+            test_size=len(X_train) - int(len(X_train) * 0.8),
+        )
+        if splits:
+            split = splits[0]
+            X_tr = X_train[split.train_start:split.train_end]
+            y_tr = y_train[split.train_start:split.train_end]
+            X_val = X_train[split.test_start:split.test_end]
+            y_val = y_train[split.test_start:split.test_end]
+        else:
+            split_idx = int(len(X_train) * 0.8)
+            X_tr, X_val = X_train[:split_idx], X_train[split_idx:]
+            y_tr, y_val = y_train[:split_idx], y_train[split_idx:]
 
         model = lgb.LGBMClassifier(
             n_estimators=self.n_estimators,
             max_depth=self.max_depth,
             learning_rate=self.learning_rate,
+            min_data_in_leaf=self.min_data_in_leaf,
+            reg_alpha=self.reg_alpha,
+            reg_lambda=self.reg_lambda,
+            subsample=self.subsample,
+            colsample_bytree=self.colsample_bytree,
             verbose=-1,
-            subsample=0.8,
-            colsample_bytree=0.8,
             n_jobs=1,
             num_classes=3,
             objective="multiclass",

@@ -47,11 +47,23 @@ class MLSignalProvider:
         min_train_samples: int = 200,
         n_estimators: int = 200,
         max_depth: int = 6,
+        min_data_in_leaf: int = 40,
+        reg_alpha: float = 0.1,
+        reg_lambda: float = 1.0,
+        learning_rate: float = 0.05,
+        subsample: float = 0.8,
+        colsample_bytree: float = 0.8,
     ) -> None:
         self.horizon = horizon
         self.min_train_samples = min_train_samples
         self.n_estimators = n_estimators
         self.max_depth = max_depth
+        self.min_data_in_leaf = min_data_in_leaf
+        self.reg_alpha = reg_alpha
+        self.reg_lambda = reg_lambda
+        self.learning_rate = learning_rate
+        self.subsample = subsample
+        self.colsample_bytree = colsample_bytree
         self._models: dict[str, object] = {}
 
     def _prepare_features(self, df: pd.DataFrame) -> pd.DataFrame:
@@ -219,10 +231,13 @@ class MLSignalProvider:
         model = lgb.LGBMClassifier(
             n_estimators=self.n_estimators,
             max_depth=self.max_depth,
-            learning_rate=0.05,
+            learning_rate=self.learning_rate,
+            min_data_in_leaf=self.min_data_in_leaf,
+            reg_alpha=self.reg_alpha,
+            reg_lambda=self.reg_lambda,
+            subsample=self.subsample,
+            colsample_bytree=self.colsample_bytree,
             verbose=-1,
-            subsample=0.8,
-            colsample_bytree=0.8,
         )
 
         model.fit(

@@ -409,4 +409,63 @@ Model bisa decay bukan karena model buruk, tapi karena **regime pasar berubah**:
 
 ---
 
-> Dibuat: 7 Agustus 2026 | Dokumen: `pustaka/96-ai-ml-audit-framework.md` | Cross-ref: `23`, `29`, `51`, `71`, `85`
+## 10. Update Status (10 Agustus 2026) — Post-Normalisasi & Modularisasi
+
+### 10.1 Database Normalization
+
+| Perubahan | Sebelum | Sesudah | Status |
+|-----------|---------|---------|--------|
+| technical_indicators | EAV (1 row per indicator) | `technical_indicators_wide` (1 row per date+ticker) | 3M+ rows, 0% NULL |
+| stock_personality | Single table (profile + prediction) | Split: `stock_personality` (profile) + `stock_prediction` (prediction) | 1,020 rows di stock_prediction |
+| FK declarations | Tidak ada | Migration `0012` menambah FK declarations | Applied |
+
+### 10.2 Hyperparameter Anti-Overfit
+
+**MLSignalProvider** (`src/market/analysis/ml_signal.py`):
+- `min_data_in_leaf=40` — mencegah leaf dengan terlalu sedikit sample (anti-overfit)
+- `reg_alpha=0.1` (L1) — sparse feature selection, mengurangi noise features
+- `reg_lambda=1.0` (L2) — weight regularization
+- `learning_rate=0.05` — lower LR = slower but more stable convergence
+- `subsample=0.8`, `colsample_bytree=0.8` — row & column sampling untuk diversity
+
+**MultiFactorModel** (`src/market/analysis/multi_factor.py`):
+- `min_data_in_leaf=50` — lebih konservatif dari MLSignal (25+ features → butuh lebih banyak data per leaf)
+- `reg_alpha=0.1`, `reg_lambda=1.0` — same regularization
+- `subsample=0.8`, `colsample_bytree=0.8` — same sampling strategy
+- `n_estimators=300` (diturunkan dari default ke 200 dengan early stopping 15)
+
+**Parameter lain yang dapat di-tune untuk MARGINAL → KEEP:**
+- `signal_threshold` (ReformConfig) — turunkan dari 0.1 ke 0.05 untuk lebih banyak sinyal
+- `adapt_kappa` — kappa adaptif per ticker berdasarkan vol regime
+- `meta_prob_threshold` — turunkan dari 0.5 ke 0.4 untuk lebih banyak trade pass meta-labeling
+- `vol_aggressiveness` — naikkan dari 2.5 ke 3.0 untuk cut posisi volatil lebih cepat
+- `horizon` — coba 3 (shorter) vs 5 (current) vs 10 (longer) untuk capture different regimes
+- `n_estimators` — 100-200 dengan early stopping lebih agresif (5-10 rounds)
+
+### 10.3 Walk-Forward CV Konsistensi
+
+Sebelumnya `MLSignalProvider` dan `MultiFactorModel` masing-masing mengimplementasikan manual 80/20 split. Sekarang keduanya menggunakan `mlops/cross_validation.walk_forward_splits` untuk konsistensi dan reproducibility.
+
+### 10.4 Stale Data Detection
+
+`src/market/data/refresh_stale.py` — engine deteksi data usang (>24h) dengan auto-refresh:
+- Tabel yang dimonitor: `stock_personality`, `stock_prediction`, `technical_indicators_wide`, `fundamental_data`, `recompute_watermark`, `data_watermark`
+- Excluded: 139 tickers (suspended/delisting/inactive via `instrument_master`)
+- CLI: `python -m market.data.refresh_stale --dry-run`
+
+### 10.5 MLOps Integration
+
+| Komponen | Lokasi | Fungsi |
+|----------|--------|--------|
+| ModelRegistry | `batch_compute_predictions.py` | Register model per ticker dengan `@experiment` alias |
+| DriftDetector | `scripts/weekly_drift_check.py` | PSI-based feature drift, weekly cron (Saturday 04:00 UTC) |
+| EvalGate | `fast_portfolio_pipeline.py` | Replaces hardcoded Score >= 3.5 dengan criteria-based evaluation |
+| SignalEnhancer | `daily_signal_cron.py` | 5 non-trend signals (volume, policy, sector, pairs, meta-labeling) |
+
+### 10.6 Pipeline Replacement
+
+Pipeline lama 14-jam (`run_production_pipeline.sh`) **dihapus**. Pengganti: `fast_portfolio_pipeline.py` (~4-65 detik). Lihat `MEGAPLAN.md` untuk detail.
+
+---
+
+> Dibuat: 7 Agustus 2026 | Update: 10 Agustus 2026 | Dokumen: `pustaka/96-ai-ml-audit-framework.md` | Cross-ref: `23`, `29`, `51`, `71`, `85`, `97`

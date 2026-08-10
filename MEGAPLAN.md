@@ -657,36 +657,70 @@ Walk-forward backtest (10 tickers, 80/20 split, LightGBM):
 3. Gunakan fitur yang sudah diremediasi (Step 1) untuk retraining
 4. Tambahkan exogenous features (global market) untuk MultiFactor
 
-### Production Pipeline — Real DB Execution (8-9 Agustus 2026)
+### Production Pipeline — Fast Portfolio Pipeline (10 Agustus 2026)
 
-Pipeline orkestrasi produksi dijalankan pada real DB (9.23 GB) dengan 20 ticker fokus IDX.
+Pipeline 14-jam lama (`run_production_pipeline.sh`) **telah dihapus** dan diganti dengan `fast_portfolio_pipeline.py` yang menyelesaikan dalam **~4 detik** (5 tickers) hingga **~65 detik** (100 tickers).
 
-**Script:** `scripts/run_production_pipeline.sh` + `scripts/daily_signal_cron.py`
+**Perbandingan:**
 
-**Hasil Step 1 — Remediation (14 jam, 20 ticker):**
+| Metrik | Pipeline Lama (14 jam) | Fast Pipeline |
+|--------|----------------------|---------------|
+| Durasi | ~14 jam | ~4-65 detik |
+| Tickers | 20 | 5-100 (configurable) |
+| Portfolio Weight | IV (bug: collapse) | HRP (Hierarchical Risk Parity) |
+| Walk-forward | Manual 80/20 | mlops/cross_validation.py |
+| Score Gate | Hardcoded >= 3.5 | EvalGate (mlops.promotion) |
+| Signal Enhancement | None | SignalEnhancer (5 non-trend signals) |
 
-| Metrik | Mock DB | Real DB | Status |
-|--------|---------|---------|--------|
-| Score | 4.19/5.00 | 3.71/5.00 | ✓ (≥ 3.5) |
-| Alpha | +0.0021 | ~0.0 | ✗ (> 0) |
-| Sharpe | +0.85 | -10.0 | ✗ (> 0) |
-| Max DD | -3.98% | ~0.0% | ✓ |
-| Promoted KEEP | True | False | ✗ |
-| Durasi | ~3 menit | ~14 jam | — |
+**Crontab aktif:**
+- `15 9 * * 1-5` — daily signal cron (16:15 WIB, Mon-Fri)
+- `0 3 * * 6` — weekly HRP recompute (Saturday 03:00 UTC)
+- `0 4 * * 6` — weekly drift check (Saturday 04:00 UTC)
 
-**Root cause:** Inverse-variance weighting collapse — BVIC.JK (AcceptRate=0%, zero variance) mendapat 100% bobot. Portfolio Sharpe = -10.0, Alpha ≈ 0.
+**File lama yang dihapus:** `run_production_pipeline.sh`, `RENCANA-LANJUTAN-PRODUCTION-PIPELINE.md`
 
-**Top 4 ticker dengan Alpha positif:**
-- UNTR.JK: Sharpe=+0.263, Alpha=+0.115, Accept=70.9%
-- SONA.JK: Sharpe=+0.188, Alpha=+0.090, Accept=12.2%
-- BCIC.JK: Sharpe=+0.093, Alpha=+0.068, Accept=52.8%
-- APLI.JK: Sharpe=+0.075, Alpha=+0.087, Accept=40.4%
+**File dependency yang tetap (sebagai library):** `alpha_rescue_pipeline.py`, `alpha_hyper_tuner.py`, `portfolio_cluster_tuner.py`, `portfolio_data_remediation.py`, `portfolio_final_execution.py` — digunakan oleh `daily_signal_cron.py` untuk signal generation.
 
-**Step 2 & 3:** Tidak berjalan (bash `set -euo pipefail` abort pada Step 1 exit code 1).
+### Database Normalization & AI/ML Modularisasi (10 Agustus 2026)
 
-**File generated:** `best_ticker_quant_config.json` (26 KB), `portfolio_data_remediation_report.json` (31 KB).
+**Audit Mendalam** — 4 isu kritis diperbaiki:
 
-**Rencana lanjutan:** Lihat `RENCANA-LANJUTAN-PRODUCTION-PIPELINE.md` untuk detail fix weighting, re-run pipeline, dan evaluasi model quality.
+1. **EAV → Wide Table:** `technical_indicators` (EAV) → `technical_indicators_wide` (3M+ rows). Migration `0012_wide_tables_and_fk.py` + backfill script. Semua consumer updated dengan fallback.
+
+2. **stock_personality split:** Prediction columns → `stock_prediction` table (1,020 rows). Profile columns tetap di `stock_personality`.
+
+3. **SignalEnhancer integration:** 5 non-trend signals (volume, policy, sector, pairs, meta-labeling) di-wire ke `daily_signal_cron.py`. Meta-labeler dapat veto prediction (bet_size < 0.1 → flat).
+
+4. **Walk-forward CV dedup:** `ml_signal.py` dan `multi_factor.py` sekarang menggunakan `mlops/cross_validation.walk_forward_splits` (sebelumnya manual 80/20 split).
+
+**MLOps integrations:**
+- `ModelRegistry` → `batch_compute_predictions.py` (register model per ticker)
+- `DriftDetector` → `weekly_drift_check.py` (Saturday cron, PSI-based)
+- `EvalGate` → `fast_portfolio_pipeline.py` (replaces hardcoded Score >= 3.5)
+
+**Hyperparameter tuning (anti-overfit):**
+- `MLSignalProvider`: ditambah `min_data_in_leaf=40`, `reg_alpha=0.1`, `reg_lambda=1.0`, configurable `learning_rate`, `subsample`, `colsample_bytree`
+- `MultiFactorModel`: ditambah `min_data_in_leaf=50`, `reg_alpha=0.1`, `reg_lambda=1.0`, configurable `subsample`, `colsample_bytree`
+- Kedua model sekarang menggunakan `mlops.cross_validation.walk_forward_splits` untuk konsistensi
+
+**Stale Data Detection Engine:**
+- `src/market/data/refresh_stale.py` — `refresh_stale_data()` function
+- Deteksi stale >24h berdasarkan `updated_at`/`timestamp` columns
+- Auto-refresh: stock_personality, stock_prediction, technical_indicators_wide
+- Excluded: 139 tickers (suspended/delisted/inactive)
+- CLI: `python -m market.data.refresh_stale --dry-run`
+
+**Database status terkini:**
+
+| Tabel | Rows | NULL Status | Stale Status |
+|-------|------|-------------|--------------|
+| technical_indicators_wide | 3,049,358 | 0% NULL | Latest: 2026-08-06 |
+| stock_prediction | 1,020 | 0% NULL | 0 stale |
+| stock_personality | 1,026 | 6 NULL predicted_direction | 108 stale (>24h) |
+| fundamental_data | 4,786 | >80% NULL (pe, pb, roe, der) | Stale (data fundamental jarang update) |
+| ohlcv | 3,215,048 | 0% NULL | Latest: 2026-08-07 |
+
+**Catatan fundamental_data:** NULL >80% adalah expected — data fundamental hanya update quarterly. Tidak dapat di-refresh harian. Stale detection mengabaikan tabel ini untuk refresh harian.
 
 ### Strategi Alternatif & Ekspansi Data (10 Agustus 2026)
 
