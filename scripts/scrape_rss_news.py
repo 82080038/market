@@ -21,8 +21,13 @@ from datetime import datetime, timezone
 import psycopg2
 import requests
 
+# Use unified NewsSentimentAnalyzer
+from market.analysis.news_sentiment import NewsSentimentAnalyzer
+
 logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(levelname)s] %(message)s")
 logger = logging.getLogger(__name__)
+
+_analyzer = NewsSentimentAnalyzer()
 
 PG_DSN = "postgresql://petrick:market_dev@localhost:5432/market"
 
@@ -120,22 +125,9 @@ NEGATIVE_WORDS = {
 
 
 def compute_sentiment(title: str, body: str | None = None) -> tuple[float, str]:
-    text = (title or "").lower()
-    if body:
-        text += " " + body.lower()
-    if not text.strip():
-        return 0.0, "neutral"
-    pos = sum(len(re.findall(r"\b" + re.escape(w) + r"\b", text)) for w in POSITIVE_WORDS)
-    neg = sum(len(re.findall(r"\b" + re.escape(w) + r"\b", text)) for w in NEGATIVE_WORDS)
-    total = pos + neg
-    if total == 0:
-        return 0.0, "neutral"
-    score = (pos - neg) / total
-    if score > 0.15:
-        return score, "positive"
-    elif score < -0.15:
-        return score, "negative"
-    return score, "neutral"
+    """Compute sentiment using unified NewsSentimentAnalyzer."""
+    result = _analyzer.analyze_text(title, body)
+    return result.score, result.label
 
 
 def extract_tickers(text: str) -> list[str]:
@@ -306,7 +298,7 @@ def main():
             continue
 
         try:
-            score, label = compute_sentiment(a["headline"], a["body"])
+            result = _analyzer.analyze_text(a["headline"], a["body"])
             tickers = extract_tickers(a["headline"] + " " + (a["body"] or ""))
             ticker = tickers[0] if tickers else None
 
@@ -322,9 +314,9 @@ def main():
                 ticker,
                 pub_date,
                 headline,
-                score,
-                label,
-                abs(score),
+                result.score,
+                result.label,
+                result.relevance,
                 a["source"],
             ))
             inserted += 1

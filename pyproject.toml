@@ -47,6 +47,7 @@ dev = [
 ]
 gpu = [
     "torch>=2.5",
+    "transformers>=4.44",
 ]
 
 [project.scripts]

@@ -149,7 +149,10 @@ class SentimentEngine:
         )
 
     def _analyze_news(self, texts: list[str]) -> float:
-        """Analyze news texts using Indonesian lexicon-based NLP.
+        """Analyze news texts using unified NewsSentimentAnalyzer.
+
+        Delegates to market.analysis.news_sentiment for consistent scoring.
+        Score is converted to 0-100 scale (50 = neutral).
 
         Args:
             texts: List of news headlines or text snippets.
@@ -157,33 +160,6 @@ class SentimentEngine:
         Returns:
             Sentiment score 0-100 (50 = neutral).
         """
-        if not texts:
-            return 50.0
+        from market.analysis.news_sentiment import analyze_news_texts
 
-        total_score = 0.0
-        for text in texts:
-            words = text.lower().split()
-            positive = 0
-            negative = 0
-
-            for i, word in enumerate(words):
-                # Check negation
-                negated = False
-                if i > 0 and words[i - 1] in NEGATION_WORDS:
-                    negated = True
-
-                if word in INDONESIAN_POSITIVE_WORDS:
-                    if negated:
-                        negative += 1
-                    else:
-                        positive += 1
-                elif word in INDONESIAN_NEGATIVE_WORDS:
-                    if negated:
-                        positive += 1
-                    else:
-                        negative += 1
-
-            text_score = positive / (positive + negative) * 100 if positive + negative > 0 else 50.0
-            total_score += text_score
-
-        return round(total_score / len(texts), 2)
+        return analyze_news_texts(texts)

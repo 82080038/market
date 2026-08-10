@@ -318,32 +318,15 @@ NEGATIVE_WORDS = {
 
 
 def classify_sentiment(text: str) -> tuple[float, str]:
-    """Classify text sentiment using keyword matching.
+    """Classify text sentiment using unified NewsSentimentAnalyzer.
 
     Returns:
         Tuple of (sentiment_score, impact_label).
         Score: -1.0 (very negative) to 1.0 (very positive).
         Impact: "positive", "negative", "neutral".
     """
-    if not text:
-        return 0.0, "neutral"
-
-    text_lower = text.lower()
-    set(text_lower.split())
-
-    pos_count = sum(1 for w in POSITIVE_WORDS if w in text_lower)
-    neg_count = sum(1 for w in NEGATIVE_WORDS if w in text_lower)
-
-    total = pos_count + neg_count
-    if total == 0:
-        return 0.0, "neutral"
-
-    score = (pos_count - neg_count) / total
-    if score > 0.2:
-        return score, "positive"
-    elif score < -0.2:
-        return score, "negative"
-    return 0.0, "neutral"
+    from market.analysis.news_sentiment import compute_sentiment as _cs
+    return _cs(text)
 
 
 def backfill_news_sentiment(session) -> None:

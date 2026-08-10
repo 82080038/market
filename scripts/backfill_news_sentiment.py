@@ -15,64 +15,21 @@ from datetime import datetime
 
 import psycopg2
 
+from market.analysis.news_sentiment import NewsSentimentAnalyzer
+
 logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(levelname)s] %(message)s")
 logger = logging.getLogger(__name__)
+
+_analyzer = NewsSentimentAnalyzer()
 
 SQLITE_PATH = "/home/petrick/projects/market/data/market_research.db"
 PG_DSN = "postgresql://petrick:market_dev@localhost:5432/market"
 
-POSITIVE_WORDS = {
-    "naik", "unggul", "untung", "laba", "pertumbuhan", "positif", "optimis",
-    "beli", "akumulasi", "rally", "bullish", "kenaikan", "melonjak", "menguat",
-    "surplus", "dividen", "buyback", "ekspansi", "peningkatan", "rekomen",
-    "rekomendasi", "overweight", "target", "upgrade", "potensi", "peluang",
-    "mendukung", "memperkuat", "memperluas", "meraih", "mencapai",
-    "tembus", "rekor", "tinggi", "bangkit", "pulih", "tumbuh",
-    "inovasi", "transformatif", "strategis", "investasi", "capex",
-    "surge", "soar", "rally", "gain", "profit", "growth", "positive",
-    "buy", "accumulate", "upgrade", "outperform", "strong",
-    "beat", "exceed", "record", "high", "opportunity", "expansion",
-    "dividend", "buyback", "breakthrough", "innovation",
-}
-
-NEGATIVE_WORDS = {
-    "turun", "rugi", "kerugian", "negatif", "pesimis", "jual", "distribusi",
-    "bearish", "penurunan", "anjlok", "melemah", "defisit", "merosot",
-    "gagal", "terhenti", "suspensi", "delisting", "pailit", "default",
-    "downgrade", "underperform", "risiko", "ancaman", "tekanan",
-    "korupsi", "skandal", "pelanggaran", "sanksi", "denda", "gugatan",
-    "pembekuan", "perampasan", "terjun", "jatuh", "krisis",
-    "konsolidasi", "pelemahan", "tertekan", "memble", "stagnan",
-    "plunge", "crash", "drop", "fall", "loss", "negative", "bearish",
-    "sell", "distribution", "downgrade", "underperform", "weak", "miss",
-    "suspend", "delist", "bankrupt", "default", "scandal", "fraud",
-    "corruption", "penalty", "lawsuit", "risk", "threat", "pressure",
-    "crisis", "stagnant", "decline", "slump",
-}
-
 
 def compute_sentiment(title: str, body: str | None = None) -> tuple[float, str]:
-    text = (title or "").lower()
-    if body:
-        text += " " + body.lower()
-    if not text.strip():
-        return 0.0, "neutral"
-
-    pos_count = sum(len(re.findall(r"\b" + re.escape(w) + r"\b", text)) for w in POSITIVE_WORDS)
-    neg_count = sum(len(re.findall(r"\b" + re.escape(w) + r"\b", text)) for w in NEGATIVE_WORDS)
-
-    total = pos_count + neg_count
-    if total == 0:
-        return 0.0, "neutral"
-
-    score = (pos_count - neg_count) / total
-    if score > 0.15:
-        label = "positive"
-    elif score < -0.15:
-        label = "negative"
-    else:
-        label = "neutral"
-    return score, label
+    """Compute sentiment using unified NewsSentimentAnalyzer."""
+    result = _analyzer.analyze_text(title, body)
+    return result.score, result.label
 
 
 def parse_date(date_str: str) -> str:

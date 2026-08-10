@@ -595,24 +595,26 @@ class MarketContextProvider:
         self, session: Session, ticker: str, ctx: MarketContext,
         cutoff: date,
     ) -> None:
-        """Fetch recent news sentiment for ticker.
+        """Fetch recent news sentiment for ticker with time-decay weighting.
 
         Priority 1: PostgreSQL news_sentiment table (continuous score -1.0 to 1.0,
-        from keyword NLP EN+ID lexicon via scrape_rss_news.py).
+        from unified NewsSentimentAnalyzer via scrape_rss_news.py).
+        Uses exponential time-decay weighting (half-life=7 days).
         Priority 2: Legacy news table (sentiment 0/1/-1).
         Looks back 30 days before cutoff.
         """
         from sqlalchemy import func, select
 
-        # --- Priority 1: PostgreSQL news_sentiment ---
+        # --- Priority 1: PostgreSQL news_sentiment with time-decay ---
         try:
             from market.db.models import NewsSentiment
 
+            from market.analysis.news_sentiment import NewsSentimentAnalyzer
             from datetime import timedelta
             lookback = cutoff - timedelta(days=30)
 
             rows = session.execute(
-                select(NewsSentiment.sentiment_score, NewsSentiment.sentiment_label)
+                select(NewsSentiment.sentiment_score, NewsSentiment.sentiment_label, NewsSentiment.date)
                 .where(NewsSentiment.ticker == ticker)
                 .where(NewsSentiment.date >= lookback)
                 .where(NewsSentiment.date <= cutoff)
@@ -620,9 +622,20 @@ class MarketContextProvider:
             ).all()
 
             if rows:
-                scores = [float(r[0]) for r in rows if r[0] is not None]
-                if scores:
-                    ctx.news_sentiment = sum(scores) / len(scores)
+                # Build items for time-decay weighted sentiment
+                items = [
+                    {"date": r[2], "title": "", "score": float(r[0])}
+                    for r in rows if r[0] is not None
+                ]
+                if items:
+                    analyzer = NewsSentimentAnalyzer()
+                    # Use pre-computed scores with time-decay
+                    decay_score = analyzer.weighted_sentiment(
+                        items, reference_date=cutoff, half_life_days=7.0,
+                    )
+                    # Also compute simple average for comparison
+                    scores = [float(r[0]) for r in rows if r[0] is not None]
+                    ctx.news_sentiment = decay_score if decay_score != 0.0 else sum(scores) / len(scores)
                     ctx.news_count = len(scores)
                     return
         except Exception:
