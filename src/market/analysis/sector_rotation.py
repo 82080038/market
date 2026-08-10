@@ -470,3 +470,91 @@ def recommend_sectors(
         )
 
     return recommendations[:top_n] if top_n > 0 else recommendations
+
+
+class SectorRotationEngine:
+    """Engine wrapper for sector rotation analysis.
+
+    Wraps the standalone functions in this module into a class interface
+    expected by ``SignalEnhancer``. Provides ``recommend_sectors`` which
+    takes prices and tickers, computes momentum/rotation/RS internally,
+    and returns ``SectorRecommendation`` objects with a ``rotation_signal``
+    attribute for compatibility with ``SignalEnhancer._compute_sector_signal``.
+    """
+
+    def __init__(
+        self,
+        short_window: int = 20,
+        long_window: int = 60,
+        rotation_window: int = 20,
+        rs_window: int = 60,
+    ) -> None:
+        self.short_window = short_window
+        self.long_window = long_window
+        self.rotation_window = rotation_window
+        self.rs_window = rs_window
+
+    def recommend_sectors(
+        self,
+        prices: pd.DataFrame | None = None,
+        tickers: list[str] | None = None,
+        market_prices: pd.Series | None = None,
+        top_n: int = 3,
+    ) -> list[SectorRecommendation]:
+        """Compute sector recommendations from price data.
+
+        Args:
+            prices: DataFrame where each column is a sector/asset close price.
+            tickers: List of column names to use (defaults to all columns).
+            market_prices: Optional market benchmark for RS calculation.
+            top_n: Number of top sectors to return.
+
+        Returns:
+            List of SectorRecommendation with rotation_signal populated.
+        """
+        if prices is None or prices.empty:
+            return []
+
+        sectors = tickers or list(prices.columns)
+        returns = prices.pct_change().dropna()
+
+        market_returns = (
+            market_prices.pct_change().dropna()
+            if market_prices is not None and not market_prices.empty
+            else None
+        )
+
+        momentum_dict: dict[str, SectorMomentum] = {}
+        rotation_dict: dict[str, RotationSignal] = {}
+        rs_dict: dict[str, float] = {}
+
+        for sector in sectors:
+            if sector not in returns.columns:
+                continue
+            sr = returns[sector].dropna()
+            if sr.empty:
+                continue
+
+            momentum_dict[sector] = compute_sector_momentum(
+                sr, short_window=self.short_window, long_window=self.long_window,
+            )
+
+            short_ret = sr.tail(self.rotation_window)
+            long_ret = sr.tail(self.long_window)
+            rotation_dict[sector] = detect_rotation(short_ret, long_ret)
+
+            if market_returns is not None:
+                rs_val, _ = compute_relative_strength(
+                    sr, market_returns, window=self.rs_window,
+                )
+                rs_dict[sector] = rs_val
+            else:
+                rs_dict[sector] = 0.0
+
+        recs = recommend_sectors(momentum_dict, rotation_dict, rs_dict, top_n=top_n)
+
+        # Attach rotation_signal for SignalEnhancer compatibility
+        for rec in recs:
+            rec.rotation_signal = rec.rotation_score  # type: ignore[attr-defined]
+
+        return recs

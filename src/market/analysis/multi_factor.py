@@ -306,19 +306,44 @@ def compute_endogenous_features(df: pd.DataFrame) -> pd.DataFrame:
 # ── 2. GLOBAL MARKET CROSS-CORRELATION (Exogenous) ────────────────────────
 
 
-# Global indices and commodities
+# Global indices and commodities — expanded with causal factors from Granger testing
 GLOBAL_ASSETS: dict[str, str] = {
+    # US indices
     "^GSPC": "sp500",
     "^IXIC": "nasdaq",
-    "^FTSE": "ftse",
+    "^DJI": "dowjones",
+    "^VIX": "vix",
+    "^TNX": "us10y",
+    "^IRX": "us13w",
+    # Asia-Pacific indices (causal: ^KS11, ^STI, ^KLSE, ^AXJO, ^BSESN)
     "^N225": "nikkei",
     "^HSI": "hangseng",
+    "000001.SS": "shanghai",
+    "^KS11": "kospi",
+    "^STI": "sti",
+    "^KLSE": "klse",
+    "^AXJO": "asx200",
+    "^BSESN": "sensex",
+    # Europe indices
+    "^FTSE": "ftse",
+    "^GDAXI": "dax",
+    # FX pairs (causal: IDR=X, EURIDR=X, JPYIDR=X, SGDIDR=X, DX-Y.NYB)
+    "IDR=X": "usd_idr",
+    "EURIDR=X": "eur_idr",
+    "JPYIDR=X": "jpy_idr",
+    "SGDIDR=X": "sgd_idr",
+    "DX-Y.NYB": "dxy",
+    # Commodities (causal: BZ=F, NG=F, SI=F added)
     "GC=F": "gold",
-    "CL=F": "oil",
+    "CL=F": "oil_wti",
+    "BZ=F": "oil_brent",
+    "NG=F": "natgas",
     "HG=F": "copper",
-    "MTF=F": "coal",
+    "SI=F": "silver",
     "CPO=F": "cpo",
-    "NI=F": "nickel",
+    # Sector ETFs (causal: XLE, DBA)
+    "XLE": "energy_etf",
+    "DBA": "agri_etf",
 }
 
 
@@ -563,6 +588,8 @@ class MultiFactorFeaturePipeline:
         global_data: dict[str, pd.DataFrame] | None = None,
         as_of: pd.Timestamp | None = None,
         select_features: bool = False,
+        macro_data: pd.DataFrame | None = None,
+        fundamental_data: dict[str, float] | None = None,
     ) -> FeatureMatrix:
         """Build unified feature matrix.
 
@@ -571,6 +598,8 @@ class MultiFactorFeaturePipeline:
             global_data: Dict of global asset DataFrames.
             as_of: Cutoff date for non-look-ahead.
             select_features: If True, run feature selection.
+            macro_data: Optional macro DataFrame (BI rate, inflation, etc.).
+            fundamental_data: Optional dict of fundamental metrics for this ticker.
 
         Returns:
             FeatureMatrix with all components.
@@ -617,6 +646,32 @@ class MultiFactorFeaturePipeline:
             combined[col] = exo[col]
 
         all_features = endo_names + exo_names
+
+        # Step 5b: Add macro features (Layer 2 causality)
+        macro_names: list[str] = []
+        if macro_data is not None and not macro_data.empty:
+            macro_aligned = macro_data.reindex(df.index, method="ffill")
+            for col in macro_aligned.columns:
+                if col == "BI_7DAY_REPO_RATE":
+                    # BI rate level and change regime
+                    combined["bi_rate_level"] = macro_aligned[col].fillna(0.0)
+                    combined["bi_rate_change"] = macro_aligned[col].diff().fillna(0.0)
+                    macro_names.extend(["bi_rate_level", "bi_rate_change"])
+                elif col in ("ID_INFLATION_CPI", "ID_GDP_GROWTH", "ID_REAL_INTEREST_RATE"):
+                    # Annual macro level (slow-changing regime)
+                    combined[f"macro_{col.lower()}"] = macro_aligned[col].fillna(0.0)
+                    macro_names.append(f"macro_{col.lower()}")
+
+        # Step 5c: Add fundamental features (Layer 3 causality)
+        fund_names: list[str] = []
+        if fundamental_data:
+            for key, val in fundamental_data.items():
+                if val is not None and np.isfinite(val):
+                    col_name = f"fund_{key}"
+                    combined[col_name] = float(val)
+                    fund_names.append(col_name)
+
+        all_features = all_features + macro_names + fund_names
 
         # Step 6: Optional PCA on exogenous block
         pca_result = None
@@ -759,6 +814,8 @@ class MultiFactorModel:
         df: pd.DataFrame,
         as_of: str | pd.Timestamp,
         global_data: dict[str, pd.DataFrame] | None = None,
+        macro_data: pd.DataFrame | None = None,
+        fundamental_data: dict[str, float] | None = None,
     ) -> MultiFactorPrediction:
         """Train model on data up to as_of, then predict action.
 
@@ -767,6 +824,8 @@ class MultiFactorModel:
             df: Full OHLCV DataFrame (adjusted prices).
             as_of: Cutoff date — only data <= as_of used for training.
             global_data: Dict of global asset DataFrames.
+            macro_data: Optional macro DataFrame (BI rate, inflation, etc.).
+            fundamental_data: Optional dict of fundamental metrics for this ticker.
 
         Returns:
             MultiFactorPrediction with BUY/SELL/HOLD and probabilities.
@@ -777,6 +836,8 @@ class MultiFactorModel:
         fmatrix = self.pipeline.build(
             df, global_data=global_data, as_of=cutoff,
             select_features=self.select_features,
+            macro_data=macro_data,
+            fundamental_data=fundamental_data,
         )
 
         feature_cols = fmatrix.feature_names

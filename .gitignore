@@ -43,6 +43,9 @@ data/*.db-shm
 data/database/*.part.*
 data/backups/
 data/backtest_simulation_report.json
+data/autonomous_trading_report*.json
+data/causality_*_report.json
+data/tune_ai_*.json
 data/parquet_export/*.parquet
 logs/
 *.log

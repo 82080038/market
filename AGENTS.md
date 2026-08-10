@@ -53,6 +53,7 @@
 - Ticker suffix helper: `src/market/data/ticker_util.py` (`to_yf_ticker`, `from_yf_ticker`, `get_currency`)
 - Cross-platform path helper: `src/market/paths.py` (`default_parquet_archive`, `default_external_data`, `default_parquet_seed`, `default_global_trading_data`)
 - Sync DB → Parquet (hybrid incremental): `src/market/data/sync_to_parquet.py` (`sync_all`, `PARTITIONED_TABLES`, `REFERENCE_TABLES`, `RUNTIME_TABLES`), wrapper `scripts/sync_db_to_parquet.py`, state table `parquet_sync_state` (migration 0008). Lihat `pustaka/95-sync-db-to-parquet.md`.
+- Migrasi SQLite → PostgreSQL: `docs/domino_effect_schema.sql` (DDL), `scripts/migrate_sqlite_to_pg.py` (migrasi), `scripts/backfill_broker_transactions.py` (backfill), `src/market/db/raw.py` (multi-DB helper). Lihat `pustaka/98-migrasi-sqlite-ke-postgresql.md`. Set `DATABASE_URL` di `.env` untuk switch backend.
 
 ## 7. Cross-Platform OS Awareness (Wajib)
 

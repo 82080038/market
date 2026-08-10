@@ -38,7 +38,7 @@ class ScheduledTask:
     task_id: str
     name: str
     func: Callable[[], Any]
-    schedule: str  # "daily", "weekly", "hourly", "EOD"
+    schedule: str  # "daily", "weekly", "monthly", "hourly", "EOD"
     time_of_day: str = "17:30"  # HH:MM in WIB
     enabled: bool = True
     last_run: str | None = None
@@ -98,7 +98,7 @@ class DailyScheduler:
             task_id: Unique task identifier.
             name: Human-readable task name.
             func: Callable to execute.
-            schedule: Schedule type ("daily", "weekly", "hourly", "EOD").
+            schedule: Schedule type ("daily", "weekly", "monthly", "hourly", "EOD").
             time_of_day: Time to run (HH:MM in WIB).
 
         Returns:
@@ -166,25 +166,38 @@ class DailyScheduler:
         """
         session = self._get_session()
         try:
+            from sqlalchemy import select as _select
+
+            from market.db.models import SystemState
+
+            import json
+
             rows = session.execute(
-                text("SELECT task_id, last_run, last_status, last_error, run_count FROM scheduler_state")
-            ).fetchall()
+                _select(SystemState.key, SystemState.value).where(
+                    SystemState.key.like("scheduler:%")
+                )
+            ).all()
             restored = 0
             for row in rows:
-                task = self._tasks.get(row[0])
+                task_id = row[0].replace("scheduler:", "", 1)
+                task = self._tasks.get(task_id)
                 if task is None:
                     continue
-                if row[1] is not None:
-                    task.last_run = str(row[1])
-                if row[2]:
+                try:
+                    state = json.loads(row[1]) if row[1] else {}
+                except (json.JSONDecodeError, TypeError):
+                    continue
+                if state.get("last_run"):
+                    task.last_run = state["last_run"]
+                if state.get("last_status"):
                     try:
-                        task.last_status = TaskStatus(row[2])
+                        task.last_status = TaskStatus(state["last_status"])
                     except ValueError:
                         pass
-                if row[3]:
-                    task.last_error = row[3]
-                if row[4]:
-                    task.run_count = row[4]
+                if state.get("last_error"):
+                    task.last_error = state["last_error"]
+                if state.get("run_count"):
+                    task.run_count = state["run_count"]
                 restored += 1
             logger.info("Loaded scheduler state: %d tasks restored", restored)
             return restored
@@ -197,24 +210,33 @@ class DailyScheduler:
     def save_state(self, task: ScheduledTask) -> None:
         """Save a single task's state to scheduler_state table.
 
-        Uses UPSERT (INSERT OR REPLACE) to update or insert the row.
+        Uses check-then-update/insert pattern for cross-DB compatibility.
         """
+        from sqlalchemy import select as _select
+
+        from market.db.models import SystemState
+
         session = self._get_session()
         try:
-            session.execute(
-                text(
-                    "INSERT OR REPLACE INTO scheduler_state "
-                    "(task_id, last_run, last_status, last_error, run_count, updated_at) "
-                    "VALUES (:tid, :lr, :ls, :le, :rc, datetime('now'))"
-                ),
-                {
-                    "tid": task.task_id,
-                    "lr": task.last_run,
-                    "ls": task.last_status.value,
-                    "le": task.last_error or None,
-                    "rc": task.run_count,
-                },
-            )
+            existing = session.execute(
+                _select(SystemState).where(SystemState.key == f"scheduler:{task.task_id}")
+            ).scalar_one_or_none()
+
+            import json
+            state_val = json.dumps({
+                "last_run": task.last_run.isoformat() if task.last_run else None,
+                "last_status": task.last_status.value,
+                "last_error": task.last_error,
+                "run_count": task.run_count,
+            })
+
+            if existing:
+                existing.value = state_val
+            else:
+                session.add(SystemState(
+                    key=f"scheduler:{task.task_id}",
+                    value=state_val,
+                ))
             session.commit()
         except Exception as e:
             logger.warning("Failed to save scheduler state for %s: %s", task.task_id, e)
@@ -331,6 +353,8 @@ class DailyScheduler:
             return (now - last) >= timedelta(hours=20)
         elif task.schedule == "weekly":
             return (now - last) >= timedelta(days=6)
+        elif task.schedule == "monthly":
+            return (now - last) >= timedelta(days=28)
         else:
             return (now - last) >= timedelta(hours=24)
 

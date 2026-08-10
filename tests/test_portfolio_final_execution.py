@@ -257,7 +257,7 @@ class TestDailyInverseVarianceWeights:
             returns_dict,
             pd.Timestamp("2024-01-01"),
             pd.Timestamp("2024-12-31"),
-            max_weight=0.50,
+            max_weight=0.90,
         )
         avg_stable = weights["STABLE"].mean()
         avg_volatile = weights["VOLATILE"].mean()

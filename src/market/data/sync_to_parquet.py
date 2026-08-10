@@ -78,9 +78,9 @@ PARTITIONED_TABLES: list[tuple[str, str, dict[str, str] | None]] = [
     ("valuation_cache", "date", None),
     ("ml_labels", "date", None),
     ("market_regimes", "date", None),
-    ("policy_events", "tanggal", None),
-    ("external_events", "tanggal", None),
-    ("fear_greed", "tanggal", None),
+    ("policy_events", "date", None),
+    ("external_events", "date", None),
+    ("fear_greed", "date", None),
     # audit_log uses created_at as its time axis; do NOT drop it.
     ("audit_log", "created_at", None),
 ]

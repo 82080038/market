@@ -152,7 +152,7 @@ class DataFetchPipeline:
                 latest = session.execute(
                     select(func.max(OHLCV.timestamp)).where(OHLCV.ticker == yf_ticker)
                 ).scalar()
-                if latest and (datetime.now(UTC).replace(tzinfo=None) - latest).days <= 1:
+                if latest and (datetime.now(UTC) - latest).days <= 1:
                     skipped += 1
                     continue
 
@@ -195,7 +195,7 @@ class DataFetchPipeline:
         from market.data.storage import DataRepository
         from market.data.ticker_util import get_currency
         from market.db.engine import get_sessionmaker
-        from market.db.models import InstrumentMaster
+        from market.db.models import Instrument, InstrumentMaster
         from sqlalchemy import select
 
         session = get_sessionmaker()()
@@ -205,16 +205,30 @@ class DataFetchPipeline:
             engine.set_repository(repo)
 
             # Read non-XIDX active instruments from DB
-            db_rows = session.execute(
-                select(
-                    InstrumentMaster.ticker,
-                    InstrumentMaster.market_mic,
-                    InstrumentMaster.base_currency,
-                ).where(
-                    InstrumentMaster.market_mic != "XIDX",
-                    InstrumentMaster.is_active == True,  # noqa: E712
-                )
-            ).all()
+            # Try PG instruments table first
+            try:
+                db_rows = session.execute(
+                    select(
+                        Instrument.ticker,
+                        Instrument.exchange_mic,
+                        Instrument.currency,
+                    ).where(
+                        Instrument.exchange_mic != "XIDX",
+                        Instrument.is_active == True,  # noqa: E712
+                    )
+                ).all()
+            except Exception:
+                session.rollback()
+                db_rows = session.execute(
+                    select(
+                        InstrumentMaster.ticker,
+                        InstrumentMaster.market_mic,
+                        InstrumentMaster.base_currency,
+                    ).where(
+                        InstrumentMaster.market_mic != "XIDX",
+                        InstrumentMaster.is_active == True,  # noqa: E712
+                    )
+                ).all()
 
             if db_rows:
                 tickers_data = [

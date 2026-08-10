@@ -139,40 +139,60 @@ class TickerScreener:
         """
         result = ScreeningResult()
 
-        # Layer 1: Active instruments from InstrumentMaster
-        active_tickers = session.execute(
-            select(InstrumentMaster.ticker).where(
-                InstrumentMaster.is_active == True,  # noqa: E712
-                InstrumentMaster.asset_class == asset_class,
+        # Layer 1: Active instruments — try PG instruments first, fallback to InstrumentMaster
+        try:
+            from market.db.models import Instrument
+
+            pg_asset = asset_class.upper() if asset_class else "EQUITY"
+            active_tickers = session.execute(
+                select(Instrument.ticker).where(
+                    Instrument.is_active == True,  # noqa: E712
+                    Instrument.asset_class == pg_asset,
+                )
+            ).scalars().all()
+            if active_tickers:
+                # PG instruments table doesn't have delisting_date/underlying_ticker
+                delisted: set[str] = set()
+                merged: set[str] = set()
+            else:
+                raise Exception("No rows in PG instruments, trying SQLite")
+        except Exception:
+            try:
+                session.rollback()
+            except Exception:
+                pass
+            active_tickers = session.execute(
+                select(InstrumentMaster.ticker).where(
+                    InstrumentMaster.is_active == True,  # noqa: E712
+                    InstrumentMaster.asset_class == asset_class,
+                )
+            ).scalars().all()
+
+            if not active_tickers:
+                logger.info("Screener: 0 active %s tickers in InstrumentMaster", asset_class)
+                return result
+
+            # Layer 2: Exclude tickers with delisting_date set
+            delisted = set(
+                session.execute(
+                    select(InstrumentMaster.ticker).where(
+                        InstrumentMaster.is_active == True,  # noqa: E712
+                        InstrumentMaster.asset_class == asset_class,
+                        InstrumentMaster.delisting_date.is_not(None),
+                    )
+                ).scalars().all()
             )
-        ).scalars().all()
 
-        if not active_tickers:
-            logger.info("Screener: 0 active %s tickers in InstrumentMaster", asset_class)
-            return result
-
-        # Layer 2: Exclude tickers with delisting_date set
-        # (already filtered in Layer 1, but keep for backward compat)
-        delisted = set(
-            session.execute(
-                select(InstrumentMaster.ticker).where(
-                    InstrumentMaster.is_active == True,  # noqa: E712
-                    InstrumentMaster.asset_class == asset_class,
-                    InstrumentMaster.delisting_date.is_not(None),
-                )
-            ).scalars().all()
-        )
-
-        # Layer 2b: Exclude tickers that have been merged (underlying_ticker set)
-        merged = set(
-            session.execute(
-                select(InstrumentMaster.ticker).where(
-                    InstrumentMaster.is_active == True,  # noqa: E712
-                    InstrumentMaster.asset_class == asset_class,
-                    InstrumentMaster.underlying_ticker.is_not(None),
-                )
-            ).scalars().all()
-        )
+            # Layer 2b: Exclude tickers that have been merged (underlying_ticker set)
+            merged = set(
+                session.execute(
+                    select(InstrumentMaster.ticker).where(
+                        InstrumentMaster.is_active == True,  # noqa: E712
+                        InstrumentMaster.asset_class == asset_class,
+                        InstrumentMaster.underlying_ticker.is_not(None),
+                    )
+                ).scalars().all()
+            )
 
         # Layer 3: Exclude currently suspended tickers (no resume_date)
         suspended_rows = session.execute(

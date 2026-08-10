@@ -14,9 +14,10 @@ from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy import desc, select
 from sqlalchemy.orm import Session
 
+from market.api._shared import to_jakarta
 from market.core.events import broker
 from market.db.engine import get_session
-from market.db.models import OHLCV
+from market.db.models import OHLCV, StockPrice
 
 router = APIRouter(prefix="/api/prices", tags=["prices"])
 
@@ -34,21 +35,43 @@ async def prices_latest(
     Query params:
         ticker: Optional ticker filter (e.g. "^JKSE", "BBCA.JK")
     """
-    stmt = (
-        select(OHLCV)
-        .where(OHLCV.timeframe == "15m")
-        .order_by(desc(OHLCV.timestamp))
-        .limit(50)
-    )
-    if ticker:
+    # Try PG stock_prices first, fallback to SQLite ohlcv
+    try:
+        stmt = (
+            select(StockPrice)
+            .where(StockPrice.timeframe == "15m")
+            .order_by(desc(StockPrice.timestamp))
+            .limit(50)
+        )
+        if ticker:
+            stmt = (
+                select(StockPrice)
+                .where(StockPrice.timeframe == "15m", StockPrice.ticker == ticker)
+                .order_by(desc(StockPrice.timestamp))
+                .limit(20)
+            )
+        rows = session.execute(stmt).scalars().all()
+        if not rows:
+            raise Exception("No PG stock_prices data")
+    except Exception:
+        try:
+            session.rollback()
+        except Exception:
+            pass
         stmt = (
             select(OHLCV)
-            .where(OHLCV.timeframe == "15m", OHLCV.ticker == ticker)
+            .where(OHLCV.timeframe == "15m")
             .order_by(desc(OHLCV.timestamp))
-            .limit(20)
+            .limit(50)
         )
-
-    rows = session.execute(stmt).scalars().all()
+        if ticker:
+            stmt = (
+                select(OHLCV)
+                .where(OHLCV.timeframe == "15m", OHLCV.ticker == ticker)
+                .order_by(desc(OHLCV.timestamp))
+                .limit(20)
+            )
+        rows = session.execute(stmt).scalars().all()
 
     if not rows:
         return {
@@ -67,7 +90,7 @@ async def prices_latest(
             "high": float(r.high),
             "low": float(r.low),
             "volume": r.volume,
-            "timestamp": r.timestamp.isoformat() if r.timestamp else None,
+            "timestamp": to_jakarta(r.timestamp),
             "timeframe": r.timeframe,
             "source": r.source,
         }
@@ -128,12 +151,27 @@ async def prices_compare(
     from market.analysis.prediction import PredictionMethod
     from market.api._engines import engines
 
-    rows = session.execute(
-        select(OHLCV)
-        .where(OHLCV.ticker == ticker, OHLCV.timeframe == "1d")
-        .order_by(OHLCV.timestamp)
-        .limit(300)
-    ).scalars().all()
+    # Try PG stock_prices first, fallback to SQLite ohlcv
+    try:
+        rows = session.execute(
+            select(StockPrice)
+            .where(StockPrice.ticker == ticker, StockPrice.timeframe == "1d")
+            .order_by(StockPrice.timestamp)
+            .limit(300)
+        ).scalars().all()
+        if len(rows) < 50:
+            raise Exception("Insufficient PG data")
+    except Exception:
+        try:
+            session.rollback()
+        except Exception:
+            pass
+        rows = session.execute(
+            select(OHLCV)
+            .where(OHLCV.ticker == ticker, OHLCV.timeframe == "1d")
+            .order_by(OHLCV.timestamp)
+            .limit(300)
+        ).scalars().all()
 
     if len(rows) < 50:
         raise HTTPException(

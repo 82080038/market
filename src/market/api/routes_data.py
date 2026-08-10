@@ -9,6 +9,7 @@ from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
+from market.api._shared import to_jakarta
 from market.db.engine import get_session
 from market.db.models import (
     OHLCV,
@@ -36,12 +37,12 @@ async def data_sources(
         {
             "source": r.source,
             "status": r.status,
-            "last_success": r.last_success.isoformat() if r.last_success else None,
-            "last_error": r.last_error.isoformat() if r.last_error else None,
+            "last_success": to_jakarta(r.last_success),
+            "last_error": to_jakarta(r.last_error),
             "last_error_msg": r.last_error_msg,
             "total_fetches": r.total_fetches,
             "total_failures": r.total_failures,
-            "updated_at": r.updated_at.isoformat() if r.updated_at else None,
+            "updated_at": to_jakarta(r.updated_at),
         }
         for r in rows
     ]
@@ -67,7 +68,7 @@ async def data_watermarks(
         {
             "ticker": r.ticker,
             "table_name": r.table_name,
-            "last_updated": r.last_updated.isoformat() if r.last_updated else None,
+            "last_updated": to_jakarta(r.last_updated),
             "row_count": r.row_count,
             "source": r.source,
         }
@@ -110,7 +111,7 @@ async def data_audit(
                 "event_type": r.event_type,
                 "event_payload": r.event_payload,
                 "actor": r.actor,
-                "created_at": r.created_at.isoformat() if r.created_at else None,
+                "created_at": to_jakarta(r.created_at),
             }
             for r in rows
         ],

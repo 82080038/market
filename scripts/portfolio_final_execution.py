@@ -388,9 +388,24 @@ def compute_daily_inverse_variance_weights(
     row_sums = inv_var.sum(axis=1).replace(0, 1.0)
     weights_df = inv_var.div(row_sums, axis=0)
 
-    # Cap max weight per ticker
+    # Cap max weight per ticker — iterative cap+redistribute
+    for _ in range(20):
+        capped = weights_df.clip(upper=max_weight)
+        excess = (weights_df - capped).sum(axis=1)
+        if (excess.abs() < 1e-9).all():
+            weights_df = capped
+            break
+        weights_df = capped.copy()
+        # Redistribute excess to uncapped tickers
+        uncapped_mask = weights_df < max_weight
+        uncapped_total = weights_df.where(uncapped_mask, 0).sum(axis=1).replace(0, 1.0)
+        for col in weights_df.columns:
+            mask = uncapped_mask[col]
+            weights_df.loc[mask, col] = weights_df.loc[mask, col] + excess.loc[mask] * (
+                weights_df.loc[mask, col] / uncapped_total.loc[mask]
+            )
+    # Final hard clip + renormalize
     weights_df = weights_df.clip(upper=max_weight)
-    # Renormalize setelah cap
     row_sums = weights_df.sum(axis=1).replace(0, 1.0)
     weights_df = weights_df.div(row_sums, axis=0)
 

@@ -1,4 +1,4 @@
-.PHONY: help install dev test lint typecheck migrate api frontend scheduler run-live run-paper run-research
+.PHONY: help install dev test lint typecheck migrate migrate-pg api frontend scheduler news strategy run-live run-paper run-research
 
 help:
 	@echo "Market App — Local Development"
@@ -9,10 +9,13 @@ help:
 	@echo "  make test        Run pytest with coverage"
 	@echo "  make lint        Run ruff check"
 	@echo "  make typecheck   Run mypy"
-	@echo "  make migrate     Run Alembic migrations (research env)"
+	@echo "  make migrate     Run Alembic migrations (SQLite)"
+	@echo "  make migrate-pg  Run Alembic migrations (PostgreSQL)"
 	@echo "  make api         Start FastAPI server (127.0.0.1:8000)"
 	@echo "  make frontend    Start Next.js dev server (127.0.0.1:3000)"
 	@echo "  make scheduler   List scheduled tasks"
+	@echo "  make news        Scrape RSS news sentiment (daily)"
+	@echo "  make strategy    Re-evaluate strategy assignments (weekly)"
 	@echo ""
 	@echo "Environments:"
 	@echo "  make run-research  Start API with ENV=research"
@@ -37,6 +40,9 @@ typecheck:
 migrate:
 	uv run alembic upgrade head
 
+migrate-pg:
+	DATABASE_URL=postgresql://petrick:market_dev@localhost:5432/market uv run alembic upgrade head
+
 api:
 	uv run market api --reload
 
@@ -54,3 +60,9 @@ run-paper:
 
 run-live:
 	ENV=live uv run market api --host 127.0.0.1 --port 8002
+
+news:
+	uv run python scripts/scrape_rss_news.py --days 7
+
+strategy:
+	uv run python -c "from market.scheduler_tasks import _task_strategy_assignment; _task_strategy_assignment()"

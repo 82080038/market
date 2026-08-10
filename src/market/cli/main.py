@@ -25,12 +25,12 @@ def cmd_migrate(args: argparse.Namespace) -> int:
     from alembic.config import Config as AlembicConfig
 
     print(f"Running migrations for environment: {settings.env}")
-    print(f"Database: {settings.resolved_db_path}")
+    print(f"Database: {settings.resolved_database_url}")
 
     alembic_cfg = AlembicConfig("alembic.ini")
     alembic_cfg.set_main_option(
         "sqlalchemy.url",
-        f"sqlite:///{settings.resolved_db_path}",
+        settings.resolved_database_url,
     )
     command.upgrade(alembic_cfg, "head")
     print("Migrations complete.")
@@ -45,7 +45,7 @@ def cmd_api(args: argparse.Namespace) -> int:
     port = args.port
     print(f"Starting API server for environment: {settings.env}")
     print(f"  Host: {host}:{port}")
-    print(f"  DB: {settings.resolved_db_path}")
+    print(f"  DB: {settings.resolved_database_url}")
     uvicorn.run(
         "market.api.app:create_app",
         host=host,

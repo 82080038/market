@@ -130,6 +130,7 @@ class SignalEnhancer:
         pairs_weight: float = 0.10,
         meta_weight: float = 0.20,
         smart_money_weight: float = 0.12,
+        cross_market_weight: float = 0.12,
         signal_threshold: float = 0.15,
         smart_money_streak_threshold: int = 3,
         mid_cap_relax_factor: float = 0.15,
@@ -164,6 +165,7 @@ class SignalEnhancer:
         self.pairs_weight = pairs_weight
         self.meta_weight = meta_weight
         self.smart_money_weight = smart_money_weight
+        self.cross_market_weight = cross_market_weight
         self.signal_threshold = signal_threshold
         self.smart_money_streak_threshold = smart_money_streak_threshold
         self.mid_cap_relax_factor = mid_cap_relax_factor
@@ -227,7 +229,11 @@ class SignalEnhancer:
         smart_money_sig = self._compute_smart_money_signal(df_trunc, ticker)
         signals.append(smart_money_sig)
 
-        # 6. Meta-labeler bet sizing (with optional threshold relaxation).
+        # 6. Cross-market domino signal (causal chain from v_domino_timeline).
+        domino_sig = self._compute_cross_market_signal(df_trunc, ticker, as_of)
+        signals.append(domino_sig)
+
+        # 7. Meta-labeler bet sizing (with optional threshold relaxation).
         # If Smart Money Score shows accumulation for >=3 consecutive days,
         # relax the meta-labeler prob_threshold for Mid-Cap stocks.
         relax_factor = 0.0
@@ -268,6 +274,8 @@ class SignalEnhancer:
                 total_adj += sig.signal * self.pairs_weight
             elif sig.source == "smart_money":
                 total_adj += sig.signal * self.smart_money_weight
+            elif sig.source == "cross_market":
+                total_adj += sig.signal * self.cross_market_weight
             elif sig.source == "meta":
                 bet_size = sig.signal  # meta-labeler returns bet size directly
             conf_mult *= sig.confidence_adjustment
@@ -562,6 +570,138 @@ class SignalEnhancer:
         except Exception as e:
             logger.debug("Smart money signal failed: %s", e)
             return EnhancementSignal(source="smart_money")
+
+    def _compute_cross_market_signal(
+        self,
+        df: pd.DataFrame,
+        ticker: str,
+        as_of: str | pd.Timestamp,
+    ) -> EnhancementSignal:
+        """Compute cross-market domino causal chain signal.
+
+        Queries ``v_domino_timeline`` (PostgreSQL) to get the sequence of
+        market closes on the prediction date. Markets that close BEFORE IDX
+        (Tokyo, Hong Kong, Shanghai) provide same-day directional signal.
+        Markets that close AFTER IDX (US, Europe) use previous day's close.
+
+        Anti look-ahead: only uses data from markets that have already closed
+        before IDX close (08:50 UTC). US/European markets use T-1 data.
+
+        The signal is a weighted average of pre-IDX market returns:
+        - Tokyo (^N225, close 06:30 UTC): weight 0.35
+        - Hong Kong (^HSI, close 08:00 UTC): weight 0.35
+        - Shanghai (000001.SS, close 07:00 UTC): weight 0.15
+        - Bursa Malaysia (CPO=F, close 10:00 UTC): weight 0.15 (T-1)
+
+        Falls back to computing from OHLCV data if v_domino_timeline unavailable.
+        """
+        try:
+            if "close" not in df.columns or len(df) < 2:
+                return EnhancementSignal(source="cross_market")
+
+            cutoff = pd.Timestamp(as_of)
+            pred_date = cutoff.date()
+
+            # Try PostgreSQL v_domino_timeline first
+            try:
+                from market.db.raw import execute_query
+
+                rows = execute_query(
+                    """SELECT ticker, exchange_mic, impact_direction, price,
+                       utc_timestamp
+                       FROM v_domino_timeline
+                       WHERE utc_timestamp >= %s
+                         AND utc_timestamp < %s
+                         AND event_type = 'PRICE_TICK'
+                         AND ticker IN ('^N225', '^HSI', '000001.SS', 'CPO=F')
+                       ORDER BY utc_timestamp""",
+                    (f"{pred_date}T00:00:00+00:00",
+                     f"{pred_date}T12:00:00+00:00"),
+                )
+
+                if rows and len(rows) >= 2:
+                    # Build signal from pre-IDX market directions
+                    weights = {
+                        "^N225": 0.35,
+                        "^HSI": 0.35,
+                        "000001.SS": 0.15,
+                        "CPO=F": 0.15,
+                    }
+                    direction_map = {
+                        "BULLISH": 1.0, "BEARISH": -1.0, "NEUTRAL": 0.0,
+                    }
+
+                    total_signal = 0.0
+                    total_weight = 0.0
+                    parts = []
+
+                    for row in rows:
+                        t = row[0]
+                        direction = row[2]
+                        w = weights.get(t, 0.0)
+                        if w > 0 and direction in direction_map:
+                            contrib = direction_map[direction] * w
+                            total_signal += contrib
+                            total_weight += w
+                            parts.append(f"{t}={direction}")
+
+                    if total_weight > 0:
+                        signal = float(np.clip(total_signal / total_weight, -1, 1))
+                        conf_adj = 1.0 + abs(signal) * 0.08
+                        return EnhancementSignal(
+                            source="cross_market",
+                            signal=signal,
+                            confidence_adjustment=conf_adj,
+                            rationale=f"domino[{', '.join(parts)}] → {signal:.2f}",
+                            available=True,
+                        )
+            except Exception:
+                pass
+
+            # Fallback: compute from OHLCV data in df
+            # Use T-0 for Asian markets (close before IDX), T-1 for others
+            from market.analysis.cross_market_timezone import get_ticker_lag
+
+            asian_tickers = {
+                "^N225": ("nikkei", 0.35),
+                "^HSI": ("hangseng", 0.35),
+                "000001.SS": ("shanghai", 0.15),
+                "CPO=F": ("cpo", 0.15),
+            }
+
+            # Check if global data columns exist in df (from compute_exogenous_features)
+            total_signal = 0.0
+            total_weight = 0.0
+            parts = []
+
+            for gticker, (name, weight) in asian_tickers.items():
+                lag = get_ticker_lag(gticker)
+                col_1 = f"{name}_lag1_ret"
+                if col_1 in df.columns:
+                    val = float(df[col_1].iloc[-1]) if not df[col_1].empty else 0.0
+                    if np.isnan(val):
+                        val = 0.0
+                    contrib = np.clip(val * 10, -1, 1) * weight
+                    total_signal += contrib
+                    total_weight += weight
+                    direction = "BULLISH" if val > 0 else "BEARISH" if val < 0 else "NEUTRAL"
+                    parts.append(f"{gticker}={direction}")
+
+            if total_weight > 0:
+                signal = float(np.clip(total_signal / total_weight, -1, 1))
+                conf_adj = 1.0 + abs(signal) * 0.08
+                return EnhancementSignal(
+                    source="cross_market",
+                    signal=signal,
+                    confidence_adjustment=conf_adj,
+                    rationale=f"domino[{', '.join(parts)}] → {signal:.2f}",
+                    available=True,
+                )
+
+            return EnhancementSignal(source="cross_market")
+        except Exception as e:
+            logger.debug("Cross-market signal failed: %s", e)
+            return EnhancementSignal(source="cross_market")
 
     def _compute_meta_signal(
         self,

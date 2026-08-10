@@ -30,6 +30,7 @@ class Settings(BaseSettings):
 
     env: str = Field(default="research", pattern=r"^(research|paper|live)$")
     db_path: str | None = None
+    database_url: str | None = None  # e.g. postgresql://user:pass@host:5432/db
     reporting_currency: str = "IDR"
     device: str = "cuda:1"
     log_level: str = "INFO"
@@ -73,10 +74,28 @@ class Settings(BaseSettings):
         return self.env == "live"
 
     @property
+    def db_backend(self) -> str:
+        """Return 'postgresql' if database_url is set, else 'sqlite'."""
+        if self.database_url:
+            return "postgresql"
+        return "sqlite"
+
+    @property
     def resolved_db_path(self) -> Path:
         if self.db_path is None:
             raise RuntimeError("db_path is unexpectedly None")
         return Path(self.db_path)
+
+    @property
+    def resolved_database_url(self) -> str:
+        """Return SQLAlchemy URL for the active database backend.
+
+        If database_url is set (e.g. postgresql://...), use it directly.
+        Otherwise, fall back to sqlite:///{db_path}.
+        """
+        if self.database_url:
+            return self.database_url
+        return f"sqlite:///{self.resolved_db_path}"
 
     @property
     def live_approved(self) -> bool:

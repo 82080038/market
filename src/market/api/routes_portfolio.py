@@ -8,9 +8,9 @@ from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from market.api._shared import WatchlistItem, _dataclass_to_dict
+from market.api._shared import WatchlistItem, _dataclass_to_dict, to_jakarta
 from market.db.engine import get_session
-from market.db.models import OHLCV, Watchlist
+from market.db.models import OHLCV, StockPrice, Watchlist
 from market.execution.portfolio import PortfolioEngine
 
 router = APIRouter(prefix="/api", tags=["portfolio"])
@@ -20,24 +20,44 @@ router = APIRouter(prefix="/api", tags=["portfolio"])
 async def portfolio(session: Annotated[Session, Depends(get_session)]) -> dict[str, Any]:
     """Get portfolio summary with real positions from DB.
 
-    Loads latest OHLCV close prices for position valuation.
+    Loads latest close prices for position valuation.
     Returns PortfolioEngine summary or empty state if no positions.
     """
     engine = PortfolioEngine()
 
     prices: dict[str, float] = {}
 
-    tickers = session.execute(
-        select(OHLCV.ticker).distinct()
-    ).scalars().all()
+    # Try PG stock_prices first, fallback to SQLite ohlcv
+    try:
+        tickers = session.execute(
+            select(StockPrice.ticker).distinct()
+        ).scalars().all()
 
-    for ticker in tickers[:50]:
-        latest = session.execute(
-            select(OHLCV).where(OHLCV.ticker == ticker)
-            .order_by(OHLCV.timestamp.desc()).limit(1)
-        ).scalar_one_or_none()
-        if latest:
-            prices[ticker] = float(latest.close)
+        for ticker in tickers[:50]:
+            latest = session.execute(
+                select(StockPrice).where(StockPrice.ticker == ticker)
+                .order_by(StockPrice.timestamp.desc()).limit(1)
+            ).scalar_one_or_none()
+            if latest:
+                prices[ticker] = float(latest.close)
+        if not prices:
+            raise Exception("No PG stock_prices data")
+    except Exception:
+        try:
+            session.rollback()
+        except Exception:
+            pass
+        tickers = session.execute(
+            select(OHLCV.ticker).distinct()
+        ).scalars().all()
+
+        for ticker in tickers[:50]:
+            latest = session.execute(
+                select(OHLCV).where(OHLCV.ticker == ticker)
+                .order_by(OHLCV.timestamp.desc()).limit(1)
+            ).scalar_one_or_none()
+            if latest:
+                prices[ticker] = float(latest.close)
 
     summary = engine.get_summary(prices)
     return dict(_dataclass_to_dict(summary))
@@ -57,7 +77,7 @@ async def get_watchlist(
             "ticker": r.ticker,
             "is_favorite": r.is_favorite,
             "notes": r.notes,
-            "added_at": r.created_at.isoformat() if r.created_at else None,
+            "added_at": to_jakarta(r.created_at),
         }
         for r in rows
     ]

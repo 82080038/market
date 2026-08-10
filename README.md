@@ -25,10 +25,10 @@ Aplikasi **decision-support** untuk pasar modal Indonesia (IDX) dan global, diba
 │  │ MACD,BB) │  │ 24 exo)    │  │ sentiment│  │ context adj)│  │
 │  └──────────┘  └────────────┘  └──────────┘  └──────────────┘  │
 │  ┌──────────┐  ┌────────────┐  ┌──────────┐  ┌──────────────┐  │
-│  │Pattern   │  │ML Signal   │  │Risk      │  │Robo Advisor │  │
-│  │Detector  │  │Provider    │  │Manager   │  │(NLP keyword │  │
-│  │(candlest)│  │(LightGBM   │  │(VaR,CVaR │  │ EN+ID lexicon│  │
-│  │          │  │ walk-fwd)  │  │ drawdown)│  │)            │  │
+│  │Pattern   │  │ML Signal   │  │Risk      │  │Strategy     │  │
+│  │Detector  │  │Provider    │  │Manager   │  │Selector     │  │
+│  │(candlest)│  │(LightGBM   │  │(VaR,CVaR │  │(personality │  │
+│  │          │  │ walk-fwd)  │  │ drawdown)│  │ + backtest) │  │
 │  └──────────┘  └────────────┘  └──────────┘  └──────────────┘  │
 │  ┌──────────┐  ┌────────────┐  ┌──────────┐  ┌──────────────┐  │
 │  │Signal    │  │Meta-Labeler│  │Pairs     │  │Sector       │  │
@@ -37,12 +37,13 @@ Aplikasi **decision-support** untuk pasar modal Indonesia (IDX) dan global, diba
 │  │ trend)   │  │ ML filter) │  │ statarb) │  │ rotation)   │  │
 │  └──────────┘  └────────────┘  └──────────┘  └──────────────┘  │
 ├─────────────────────────────────────────────────────────────────┤
-│                    Data Access Layer                             │
-│  Yahoo Finance, IDX API, BPS/BI/NOAA/WorldBank, Parquet,         │
-│  SQLAlchemy ORM, Wide Tables, Stale Data Refresh, Watermark      │
+│                      Data Access Layer                             │
+│  Yahoo Finance, IDX API, BPS/BI/NOAA/WorldBank/FRED, Parquet,    │
+│  SQLAlchemy ORM, Multi-DB (SQLite/PostgreSQL), Wide Tables       │
 ├─────────────────────────────────────────────────────────────────┤
-│              Database (SQLite + Parquet + Alembic)               │
-│  50+ tables: OHLCV, Wide TI, Risk Metrics, ML Labels, Scores...  │
+│        Database (SQLite/PostgreSQL + Parquet + Alembic)          │
+│  55+ tables: OHLCV, Wide TI, Risk Metrics, ML Labels, Scores,    │
+│  Model Performance History, Strategy Assignment, Banking Metrics │
 └─────────────────────────────────────────────────────────────────┘
 ```
 
@@ -66,6 +67,11 @@ Aplikasi **decision-support** untuk pasar modal Indonesia (IDX) dan global, diba
 - **Macro Data Fetcher** (`src/market/data/macro_data_fetcher.py`): Fetcher dinamis untuk BPS API, BI SEKI, NOAA ONI, World Bank, commodity futures (rate-limited).
 - **Compute Device** (`src/market/compute/device.py`): Dynamic dispatch GPU `cuda:1` / CPU berdasarkan workload type + VRAM check.
 - **Stale Data Engine** (`src/market/data/refresh_stale.py`): Deteksi & auto-refresh data stale >24h (stock_personality, stock_prediction, technical_indicators_wide).
+- **Strategy Selector** (`src/market/analysis/strategy_selector.py`): Pemilihan strategi berbasis personality profile + volatility regime + in-sample backtesting. 8 strategy classes (trend_following, mean_reversion, momentum_breakout, sector_rotation, pairs_trading, value_dividend, macro_regime, technical_only) dengan persistensi ke `strategy_assignment` table.
+- **Model Performance Tracker** (`src/market/analysis/profiling.py`): Persistensi metrik model (Sharpe, MAE, directional accuracy, degradation) ke `model_performance_history` table dengan auto-adjustment recommendations.
+- **Multi-DB Support** (`src/market/db/raw.py`): `get_raw_connection()` + `execute_query()` untuk raw SQL yang kompatibel SQLite dan PostgreSQL (auto-convert `?` → `$1`/`%s`).
+- **Instrument Profiler** (`src/market/analysis/profiling.py`): Klasifikasi personality (blue_chip, gorengan, dividend_stock, high_beta, dll), volatility regime, factor relevance mapping, pattern knowledge assessment, dan readiness gate.
+- **RSS News Scraper** (`scripts/scrape_rss_news.py`): Scrape 8 RSS feeds Indonesia, keyword-based sentiment (EN+ID), ticker extraction, adaptive rate limiter, daily scheduler at 20:00 WIB.
 
 ---
 
@@ -75,7 +81,7 @@ Aplikasi **decision-support** untuk pasar modal Indonesia (IDX) dan global, diba
 
 - **Python 3.11+** dan [uv](https://github.com/astral-sh/uv) package manager
 - **Node.js 18+** dan npm (untuk frontend)
-- **SQLite** (sudah bundled, tidak perlu instalasi terpisah)
+- **SQLite** (default) atau **PostgreSQL 16** (opsional, set `DATABASE_URL` di `.env`)
 - Opsional: **NVIDIA GPU** dengan CUDA untuk LSTM/Monte Carlo (gunakan `cuda:1`)
 
 ### Instalasi
@@ -271,11 +277,11 @@ market/
 │   ├── risk/             # Risk manager (VaR, position sizing)
 │   └── social/           # Robo advisor, NLP sentiment
 ├── frontend/             # Next.js 14 dashboard (10 pages, TailwindCSS, TypeScript)
-├── tests/                # Pytest unit + integration tests (1274 tests, 64 files)
-├── alembic/              # Database migrations (0001-0012)
+├── tests/                # Pytest unit + integration tests (1370+ tests, 70+ files)
+├── alembic/              # Database migrations (0001-0015)
 ├── data/                 # Local SQLite, Parquet seeds/exports
-├── scripts/              # Automation scripts (39 scripts: backfill, seed, pipeline)
-├── pustaka/              # Knowledge base (98 Markdown docs, 00-97)
+├── scripts/              # Automation scripts (55+ scripts: backfill, seed, pipeline, migration)
+├── pustaka/              # Knowledge base (99 Markdown docs, 00-98)
 ├── docs/                 # ADRs, audit findings, database issues
 └── .github/workflows/    # CI (lint + test)
 ```
@@ -326,6 +332,9 @@ Aplikasi menangani corporate events IDX secara komprehensif sebagai memory untuk
 | 0010 | Add index_category and region columns to instrument_master |
 | 0011 | Add ticker column to daily_risk_metrics (per-ticker risk) |
 | 0012 | Wide tables (technical_indicators_wide) + FK declarations + stock_prediction split |
+| 0013 | Add app_notifications table for daily signal notifications |
+| 0014 | Drop redundant tables (emiten, instrumen, sektor, bursa_efek, indeks_pasar, fx_rates, regulator, transaksi_investor) |
+| 0015 | Add banking metrics (NPL, CAR, LDR, NIM) to fundamental_data + model_performance_history + strategy_assignment tables |
 
 ---
 
@@ -417,7 +426,7 @@ uv run python -m market.data.refresh_stale --dry-run
 ## Testing
 
 ```bash
-# Run all tests (1274 tests, 64 files)
+# Run all tests (1370+ tests, 70+ files)
 uv run pytest tests/ -q
 
 # Run specific test modules
@@ -435,7 +444,7 @@ Rencana implementasi lengkap tersedia di [MEGAPLAN.md](MEGAPLAN.md) dengan 12 fa
 
 ## Dokumentasi
 
-- [pustaka/00-README.md](pustaka/00-README.md) — indeks pustaka lengkap (98 dokumen, 00-97).
+- [pustaka/00-README.md](pustaka/00-README.md) — indeks pustaka lengkap (99 dokumen, 00-98).
 - [AGENTS.md](AGENTS.md) — aturan AI global untuk project ini.
 - [MEGAPLAN.md](MEGAPLAN.md) — rencana implementasi 12 fase + log perkembangan.
 - [CONTRIBUTING.md](CONTRIBUTING.md) — panduan kontribusi untuk contributor.
@@ -446,3 +455,6 @@ Rencana implementasi lengkap tersedia di [MEGAPLAN.md](MEGAPLAN.md) dengan 12 fa
 - [PROGRESS-OPTIMASI-RECOMPUTE.md](PROGRESS-OPTIMASI-RECOMPUTE.md) — progress optimasi incremental recompute + ML pipeline.
 - [pustaka/96-ai-ml-audit-framework.md](pustaka/96-ai-ml-audit-framework.md) — framework audit AI/ML utility (Delta Alpha, significance, drift).
 - [pustaka/97-strategi-alternatif-ekspansi-data-2026.md](pustaka/97-strategi-alternatif-ekspansi-data-2026.md) — 7 strategi alternatif + data expansion roadmap (17 sumber riset 2025-2026).
+- [pustaka/98-migrasi-sqlite-ke-postgresql.md](pustaka/98-migrasi-sqlite-ke-postgresql.md) — panduan migrasi SQLite → PostgreSQL (DDL, data transfer, multi-DB helper).
+- [docs/VALIDASI-PASCA-MIGRASI-PG.md](docs/VALIDASI-PASCA-MIGRASI-PG.md) — laporan validasi post-migrasi PostgreSQL.
+- [docs/domino_effect_schema.sql](docs/domino_effect_schema.sql) — PostgreSQL schema untuk Domino Effect Timeline (TIMESTAMPTZ, partitioning, JSONB).

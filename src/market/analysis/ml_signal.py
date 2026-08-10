@@ -92,6 +92,8 @@ class MLSignalProvider:
         sl_barrier: float = 0.015,
         use_atr_barriers: bool = True,
         atr_multiplier: float = 1.5,
+        use_precomputed_labels: bool = False,
+        db_path: str | None = None,
     ) -> None:
         self.horizon = horizon
         self.min_train_samples = min_train_samples
@@ -110,6 +112,8 @@ class MLSignalProvider:
         self.sl_barrier = sl_barrier
         self.use_atr_barriers = use_atr_barriers
         self.atr_multiplier = atr_multiplier
+        self.use_precomputed_labels = use_precomputed_labels
+        self._db_path = db_path
         self.use_regime_conditional = False  # P4-1: disabled — reduces training samples too much
         self._models: dict[str, object] = {}
         self._regime_models: dict[str, dict[int, object]] = {}  # ticker → {regime_label: model}
@@ -224,7 +228,9 @@ class MLSignalProvider:
         data = self._add_exogenous_features(data, ticker=ticker)
 
         # Target: triple-barrier labels (López de Prado)
-        if self.use_triple_barrier:
+        if self.use_precomputed_labels and ticker is not None:
+            data["target"] = self._load_precomputed_labels(data, ticker)
+        elif self.use_triple_barrier:
             data["target"] = self._compute_triple_barrier_labels(data)
         else:
             # Fallback: simple binary up/down
@@ -285,120 +291,153 @@ class MLSignalProvider:
 
         return labels
 
+    def _load_precomputed_labels(self, data: pd.DataFrame, ticker: str) -> pd.Series:
+        """Load pre-computed triple-barrier labels from ml_labels table.
+
+        Maps direction to binary target:
+          'up' → 1 (take-profit hit)
+          'down'/'static' → 0 (stop-loss or time expired)
+
+        Falls back to on-the-fly computation if DB unavailable or no data.
+        """
+        from market.db.raw import execute_query
+
+        try:
+            rows = execute_query(
+                "SELECT date, direction FROM ml_labels WHERE ticker=? AND horizon=? ORDER BY date",
+                (ticker, self.horizon),
+            )
+
+            if not rows:
+                logger.debug(
+                    "ml_labels: no precomputed labels for %s h=%d, falling back",
+                    ticker, self.horizon,
+                )
+                return self._compute_triple_barrier_labels(data)
+
+            label_map = {d: 1 if direction == "up" else 0 for d, direction in rows}
+            labels = pd.Series(0, index=data.index, dtype=int)
+            for ts in data.index:
+                date_str = ts.strftime("%Y-%m-%d") if hasattr(ts, "strftime") else str(ts)[:10]
+                if date_str in label_map:
+                    labels[ts] = label_map[date_str]
+
+            logger.debug(
+                "ml_labels: loaded %d labels for %s h=%d (%d up, %d down/static)",
+                len(rows), ticker, self.horizon,
+                sum(1 for _, d in rows if d == "up"),
+                sum(1 for _, d in rows if d != "up"),
+            )
+            return labels
+        except Exception as e:
+            logger.debug("ml_labels load failed for %s: %s, falling back", ticker, e)
+            return self._compute_triple_barrier_labels(data)
+
     def _add_exogenous_features(self, data: pd.DataFrame, ticker: str | None = None) -> pd.DataFrame:
-        """P7: Add exogenous ecosystem features from DB.
-        
-        Loads:
-        - USD/IDR FX rate (lag-1 and lag-5 returns)
-        - Shanghai Composite Index (lag-1 and lag-5 returns) — China demand proxy
+        """P7: Add exogenous ecosystem features from DB with timezone-aware lag.
+
+        Uses ``compute_exogenous_features()`` from ``multi_factor.py`` which
+        applies asymmetric T-0/T-1 lag per ticker to prevent look-ahead bias:
+        - Asian markets (^N225, ^HSI): T-0 (close before IDX → same-day valid)
+        - US markets (^GSPC, ^VIX, ^TNX): T-1 (close after IDX → prev day only)
+        - Commodities (GC=F, CL=F, HG=F, CPO=F): T-1 (US-centric settle)
+
+        Also loads:
         - Indonesia CPI (inflation, monthly → forward-filled)
         - Corporate action event flags (dividend/split within ±5 days)
         """
-        import sqlite3
-        from market.config import settings
-        
-        db_path = settings.db_path
-        if not db_path:
-            return data
-        
+        from market.db.raw import get_raw_connection
+
+        # ── Global market features with timezone-aware lag ────────────────
         try:
-            conn = sqlite3.connect(db_path)
-            
-            # 1. USD/IDR FX rate from OHLCV
-            try:
-                fx_df = pd.read_sql(
-                    "SELECT timestamp as date, close FROM ohlcv WHERE ticker='IDR=X' ORDER BY timestamp",
-                    conn,
+            from market.analysis.multi_factor import GLOBAL_ASSETS, compute_exogenous_features
+
+            global_data: dict[str, pd.DataFrame] = {}
+            with get_raw_connection() as conn:
+                for gticker in GLOBAL_ASSETS:
+                    try:
+                        gdf = pd.read_sql(
+                            f"SELECT timestamp as date, close FROM ohlcv WHERE ticker='{gticker}' ORDER BY timestamp",
+                            conn,
+                        )
+                        if not gdf.empty:
+                            gdf["date"] = pd.to_datetime(gdf["date"])
+                            gdf = gdf.set_index("date").sort_index()
+                            if not gdf.index.is_unique:
+                                gdf = gdf[~gdf.index.duplicated(keep="last")]
+                            global_data[gticker] = gdf
+                    except Exception:
+                        pass
+
+            if global_data:
+                exog_df = compute_exogenous_features(
+                    data, global_data, as_of=None, lookback=5, corr_window=60,
                 )
-                if not fx_df.empty:
-                    fx_df["date"] = pd.to_datetime(fx_df["date"])
-                    fx_df = fx_df.set_index("date")
-                    fx_ret_1 = fx_df["close"].pct_change(1)
-                    fx_ret_5 = fx_df["close"].pct_change(5)
-                    data["usd_idr_ret_1"] = data.index.map(lambda d: fx_ret_1.get(d, np.nan) if d in fx_ret_1.index else np.nan)
-                    data["usd_idr_ret_5"] = data.index.map(lambda d: fx_ret_5.get(d, np.nan) if d in fx_ret_5.index else np.nan)
-            except Exception:
-                pass
-            
-            # 2. Shanghai Composite (000001.SS) from OHLCV — China demand proxy
-            try:
-                sh_df = pd.read_sql(
-                    "SELECT timestamp as date, close FROM ohlcv WHERE ticker='000001.SS' ORDER BY timestamp",
-                    conn,
-                )
-                if not sh_df.empty:
-                    sh_df["date"] = pd.to_datetime(sh_df["date"])
-                    sh_df = sh_df.set_index("date")
-                    sh_ret_1 = sh_df["close"].pct_change(1)
-                    sh_ret_5 = sh_df["close"].pct_change(5)
-                    data["shanghai_ret_1"] = data.index.map(lambda d: sh_ret_1.get(d, np.nan) if d in sh_ret_1.index else np.nan)
-                    data["shanghai_ret_5"] = data.index.map(lambda d: sh_ret_5.get(d, np.nan) if d in sh_ret_5.index else np.nan)
-            except Exception:
-                pass
-            
-            # 3. Indonesia CPI from macro_data (monthly → forward-fill to daily)
-            try:
-                cpi_df = pd.read_sql(
-                    "SELECT date, value FROM macro_data WHERE series_name='ID_CPI' ORDER BY date",
-                    conn,
-                )
-                if not cpi_df.empty:
-                    cpi_df["date"] = pd.to_datetime(cpi_df["date"])
-                    cpi_df = cpi_df.set_index("date").sort_index()
-                    # Forward-fill monthly CPI to daily
-                    cpi_series = cpi_df["value"].reindex(data.index, method="ffill")
-                    # Use CPI change as inflation proxy
-                    cpi_change = cpi_series.pct_change(60)  # ~3 months
-                    data["id_inflation_3m"] = cpi_change.values
-            except Exception:
-                pass
-            
-            # 4. Corporate action event flags (dividend/split within ±5 days)
-            if ticker:
+                for col in exog_df.columns:
+                    data[col] = exog_df[col].fillna(0.0)
+        except Exception as e:
+            logger.debug("compute_exogenous_features failed: %s", e)
+
+        # ── CPI and corporate actions (non-market features) ──────────────
+        try:
+            with get_raw_connection() as conn:
+                # Indonesia CPI from macro_data (monthly → forward-fill to daily)
                 try:
-                    ca_df = pd.read_sql(
-                        f"SELECT ex_date, action_type FROM corporate_actions WHERE ticker='{ticker}' AND ex_date IS NOT NULL",
+                    cpi_df = pd.read_sql(
+                        "SELECT date, value FROM macro_data WHERE series_name='ID_CPI' ORDER BY date",
                         conn,
                     )
-                    if not ca_df.empty:
-                        ca_df["ex_date"] = pd.to_datetime(ca_df["ex_date"])
-                        # Binary flag: 1 if any corporate action within ±5 days
-                        event_dates = ca_df["ex_date"].values
-                        data["has_corp_action"] = 0
-                        for ed in event_dates:
-                            mask = (data.index >= ed - pd.Timedelta(days=5)) & (data.index <= ed + pd.Timedelta(days=5))
-                            data.loc[mask, "has_corp_action"] = 1
-                    else:
-                        data["has_corp_action"] = 0
+                    if not cpi_df.empty:
+                        cpi_df["date"] = pd.to_datetime(cpi_df["date"])
+                        cpi_df = cpi_df.set_index("date").sort_index()
+                        cpi_series = cpi_df["value"].reindex(data.index, method="ffill")
+                        cpi_change = cpi_series.pct_change(60)
+                        data["id_inflation_3m"] = cpi_change.values
                 except Exception:
+                    pass
+
+                # Corporate action event flags (dividend/split within ±5 days)
+                if ticker:
+                    try:
+                        ca_df = pd.read_sql(
+                            f"SELECT ex_date, action_type FROM corporate_actions WHERE ticker='{ticker}' AND ex_date IS NOT NULL",
+                            conn,
+                        )
+                        if not ca_df.empty:
+                            ca_df["ex_date"] = pd.to_datetime(ca_df["ex_date"])
+                            event_dates = ca_df["ex_date"].values
+                            data["has_corp_action"] = 0
+                            for ed in event_dates:
+                                mask = (data.index >= ed - pd.Timedelta(days=5)) & (data.index <= ed + pd.Timedelta(days=5))
+                                data.loc[mask, "has_corp_action"] = 1
+                        else:
+                            data["has_corp_action"] = 0
+                    except Exception:
+                        data["has_corp_action"] = 0
+
+                    try:
+                        div_df = pd.read_sql(
+                            f"SELECT ex_date FROM dividends WHERE ticker='{ticker}' AND ex_date IS NOT NULL",
+                            conn,
+                        )
+                        if not div_df.empty:
+                            div_df["ex_date"] = pd.to_datetime(div_df["ex_date"])
+                            data["has_dividend"] = 0
+                            for ed in div_df["ex_date"].values:
+                                mask = (data.index >= ed - pd.Timedelta(days=5)) & (data.index <= ed + pd.Timedelta(days=5))
+                                data.loc[mask, "has_dividend"] = 1
+                        else:
+                            data["has_dividend"] = 0
+                    except Exception:
+                        data["has_dividend"] = 0
+                else:
                     data["has_corp_action"] = 0
-                
-                try:
-                    div_df = pd.read_sql(
-                        f"SELECT ex_date FROM dividends WHERE ticker='{ticker}' AND ex_date IS NOT NULL",
-                        conn,
-                    )
-                    if not div_df.empty:
-                        div_df["ex_date"] = pd.to_datetime(div_df["ex_date"])
-                        data["has_dividend"] = 0
-                        for ed in div_df["ex_date"].values:
-                            mask = (data.index >= ed - pd.Timedelta(days=5)) & (data.index <= ed + pd.Timedelta(days=5))
-                            data.loc[mask, "has_dividend"] = 1
-                    else:
-                        data["has_dividend"] = 0
-                except Exception:
                     data["has_dividend"] = 0
-            else:
-                data["has_corp_action"] = 0
-                data["has_dividend"] = 0
-            
-            conn.close()
         except Exception:
             pass
-        
-        # Fill NaN for exogenous features
+
+        # Fill NaN for all exogenous features
         exog_cols = [
-            "usd_idr_ret_1", "usd_idr_ret_5", "shanghai_ret_1", "shanghai_ret_5",
             "id_inflation_3m", "has_corp_action", "has_dividend",
         ]
         for col in exog_cols:
@@ -406,7 +445,7 @@ class MLSignalProvider:
                 data[col] = 0.0
             else:
                 data[col] = data[col].fillna(0.0)
-        
+
         return data
 
     def _get_feature_cols(self) -> list[str]:
@@ -425,9 +464,17 @@ class MLSignalProvider:
             # Feature interactions (P4-2)
             "rsi_x_vol", "momentum_x_regime", "ma_ratio_x_vol_pctile",
             "rsi_rank_x_regime",
-            # P7: Exogenous ecosystem features
-            "usd_idr_ret_1", "usd_idr_ret_5",
-            "shanghai_ret_1", "shanghai_ret_5",
+            # P7: Exogenous ecosystem features (timezone-aware T-0/T-1 lag)
+            "sp500_lag1_ret", "sp500_lag5_ret", "sp500_corr",
+            "nasdaq_lag1_ret", "nasdaq_lag5_ret", "nasdaq_corr",
+            "ftse_lag1_ret", "ftse_lag5_ret", "ftse_corr",
+            "nikkei_lag1_ret", "nikkei_lag5_ret", "nikkei_corr",
+            "hangseng_lag1_ret", "hangseng_lag5_ret", "hangseng_corr",
+            "gold_lag1_ret", "gold_lag5_ret", "gold_corr",
+            "oil_lag1_ret", "oil_lag5_ret", "oil_corr",
+            "copper_lag1_ret", "copper_lag5_ret", "copper_corr",
+            "coal_lag1_ret", "coal_lag5_ret", "coal_corr",
+            "cpo_lag1_ret", "cpo_lag5_ret", "cpo_corr",
             "id_inflation_3m",
             "has_corp_action", "has_dividend",
         ]

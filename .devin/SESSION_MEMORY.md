@@ -1,5 +1,48 @@
 # Session Memory — Pustaka Pasar Modal
 
+## Checkpoint Sesi 2026-08-10 — Migrasi SQLite → PostgreSQL
+
+- **Topik:** Migrasi database dari SQLite ke PostgreSQL (domino effect schema).
+- **PostgreSQL 16** terinstall di Linux, user `petrick`, database `market`.
+- **Connection string:** `postgresql://petrick:market_dev@localhost:5432/market`
+- **Schema:** `docs/domino_effect_schema.sql` — TIMESTAMPTZ, partitioning, JSONB, GIN indexes, view `v_domino_timeline`.
+- **Migration script:** `scripts/migrate_sqlite_to_pg.py` — DDL + data transfer + market_sessions generator.
+- **Backfill script:** `scripts/backfill_broker_transactions.py` — render per-ticker broker transactions dari OHLCV volume + broker list.
+
+### Data Migrated
+| Tabel PostgreSQL | Rows | Sumber SQLite |
+|-----------------|------|--------------|
+| `stock_prices` | 3,219,474 | `ohlcv` (1927–2026, full history) |
+| `market_sessions` | 8,307 | Generated dari `market_registry.trading_hours` (2024-01-01 s/d 2026-08-10) |
+| `corporate_actions` | 5,974 | `dividends` |
+| `instruments` | 1,056 | `instrument_master` |
+| `events` | 298 | `policy_events` (179) + `external_events` (119) |
+| `brokers` | 20 | `broker` |
+| `exchanges` | 12 | `market_registry` (11) + `OFF` catch-all |
+| `broker_transactions` | ~400K (backfill) | Rendered dari OHLCV volume + broker list (deterministic seeded) |
+
+### Kode Update untuk Multi-DB Support
+- `src/market/config.py` — `database_url` field + `db_backend` property + `resolved_database_url` property
+- `src/market/db/engine.py` — `_make_sqlite_engine` + `_make_postgresql_engine`, auto-select via `settings.db_backend`
+- `src/market/db/raw.py` (BARU) — `get_raw_connection()` + `execute_query()` untuk raw SQL (SQLite `?` → PG `%s` auto-convert)
+- `src/market/analysis/ml_signal.py` — `_load_precomputed_labels` + `_add_exogenous_features` pakai `market.db.raw`
+- `src/market/cli/main.py` — `cmd_migrate` + `cmd_api` pakai `resolved_database_url`
+- `alembic/env.py` — pakai `resolved_database_url` + conditional `connect_args`
+- `.env.example` — dokumentasi `DATABASE_URL`
+- `pyproject.toml` — `psycopg2-binary>=2.9` dependency
+
+### Cara Switch ke PostgreSQL
+Set di `.env`:
+```
+DATABASE_URL=postgresql://petrick:market_dev@localhost:5432/market
+```
+Tanpa `DATABASE_URL`, aplikasi otomatis fallback ke SQLite (`data/market_{env}.db`).
+
+### Pending
+- Scripts (`daily_signal_cron.py`, dll) masih pakai `sqlite3.connect` — perlu refactoring bertahap
+- Alembic migrations perlu di-generate ulang untuk PostgreSQL schema
+- Test suite perlu di-run dengan `DATABASE_URL` set untuk verifikasi PG compatibility
+
 ## Checkpoint Sesi 2026-08-10 — Smart Money Integration (Recall)
 
 - **Sumber:** Ringkasan percakapan "Smart Money Integration" yang diberikan user di awal sesi audit E2E.
@@ -359,3 +402,59 @@
 - These are structural laggards (TLKM: -14.98% B&H, ASII: +12.39% B&H but volatile)
 - Without TLKM + ASII: aggregate = (10+15+15+18+11+12) / (16+25+25+28+23+21) = 81/138 = **58.7%**
 - Path to 55%+: consider ticker-specific model tuning or excluding structural laggards
+
+## Checkpoint Sesi 2026-08-11 — Stock Pattern & Influence Analysis
+
+- **Topik:** Enhancement sistem profiling, factor relevance, strategy selection, dan data completeness.
+- **6 item "Yang perlu dilengkapi" — SEMUA SELESAI:**
+
+### 1. NPL Ratio untuk Banking Stocks
+- Migration 0015: kolom `npl_ratio`, `car`, `loan_to_deposit`, `nim` di `fundamental_data`
+- `backfill_fundamentals.py`: ekstrak 5 banking metrics dari yfinance info
+- `backfill_fundamental_quarterly.py`: ekstrak NPL/LDR/NIM dari quarterly balance sheet/income statement
+
+### 2. Persist ModelPerformanceTracker ke DB
+- Table `model_performance_history` (migration 0015)
+- `ModelPerformanceTracker` di `profiling.py` sekarang menerima `session_factory`, persist via `_persist_to_db()`, load via `_load_from_db()`
+
+### 3. Strategy Selection Lebih Kaya
+- New module `src/market/analysis/strategy_selector.py` — 8 strategy classes, 6 signal generators
+- Personality→class mapping (GORENGAN→technical_only, BLUE_CHIP→mean_reversion, DIVIDEND_STOCK→value_dividend, dll)
+- Volatility regime override (EXTREME→macro_regime, HIGH→technical_only)
+- In-sample backtesting (Sharpe, max DD, win rate)
+- Table `strategy_assignment` (migration 0015)
+- 8 test cases di `tests/test_strategy_selector.py`
+
+### 4. Backfill News Sentiment (Scheduler Harian)
+- `_task_scrape_news()` di `scheduler_tasks.py` — runs `scrape_rss_news.py` daily at 20:00 WIB
+- 8 RSS feeds Indonesia, keyword-based sentiment EN+ID, adaptive rate limiter
+
+### 5. Expand Fundamental Quarterly (100+ Tickers)
+- `_task_fetch_fundamental_quarterly()` — monthly at 12:00 WIB
+- Script sudah fetch ALL active IDX tickers dari `instrument_master`
+- Banking metrics (NPL, LDR, NIM) ditambahkan ke quarterly script
+
+### 6. Backfill Macro Data (FRED)
+- `_task_fetch_macro_fred()` — monthly at 12:30 WIB, runs `fetch_macro_all.py`
+- FRED: BI Rate (INTDSBIDM193N), CPI (IDNCPIALLMINMEI), GDP (NGDPRXDCID)
+- yfinance: US10Y, VIX, Gold, Oil, USD/IDR, DXY
+
+### Scheduler Updates
+- `scheduler.py`: added `"monthly"` schedule type (28-day threshold)
+- 4 new tasks registered: scrape_news, strategy_assignment, fetch_fundamental_quarterly, fetch_macro_fred
+- Total tasks: 17 (was 13)
+- Tests updated: `test_scheduler_tasks.py` — 17 tasks, all PASS
+
+### Files Modified/Created
+- `alembic/versions/0015_add_npl_model_perf_strategy.py` (NEW)
+- `src/market/db/models.py` — banking columns + ModelPerformanceHistory + StrategyAssignment
+- `src/market/analysis/strategy_selector.py` (NEW)
+- `src/market/analysis/profiling.py` — ModelPerformanceTracker DB persistence
+- `src/market/scheduler.py` — monthly schedule support
+- `src/market/scheduler_tasks.py` — 4 new task functions + registrations
+- `scripts/backfill_fundamentals.py` — banking metrics extraction
+- `scripts/backfill_fundamental_quarterly.py` — banking quarterly metrics
+- `tests/test_strategy_selector.py` (NEW) — 8 tests
+- `tests/test_scheduler_tasks.py` — updated for 17 tasks
+- `README.md` — updated components, migrations, stats, docs links
+- `pustaka/00-README.md` — updated statistics (99 docs)

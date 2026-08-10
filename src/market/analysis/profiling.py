@@ -909,6 +909,10 @@ class ModelPerformanceTracker:
     - Performance degradation detection
     - Auto-adjustment recommendations
     - Model retraining triggers
+
+    Records are persisted to ``model_performance_history`` table when a
+    SQLAlchemy session is provided. Falls back to in-memory only when
+    no session is available (backward compatibility).
     """
 
     def __init__(
@@ -916,15 +920,83 @@ class ModelPerformanceTracker:
         degradation_sharpe_threshold: float = 0.5,
         degradation_accuracy_threshold: float = 55.0,
         baseline_window: int = 30,
+        session_factory=None,
     ) -> None:
         self.degradation_sharpe_threshold = degradation_sharpe_threshold
         self.degradation_accuracy_threshold = degradation_accuracy_threshold
         self.baseline_window = baseline_window
         self._records: dict[str, list[ModelPerformanceRecord]] = {}
+        self._session_factory = session_factory
 
     def record_performance(self, record: ModelPerformanceRecord) -> None:
-        """Record a model performance entry for a ticker."""
+        """Record a model performance entry for a ticker.
+
+        Persists to DB if session_factory is available, otherwise in-memory only.
+        """
         self._records.setdefault(record.ticker, []).append(record)
+
+        if self._session_factory is not None:
+            self._persist_to_db(record)
+
+    def _persist_to_db(self, record: ModelPerformanceRecord) -> None:
+        """Persist a single record to model_performance_history table."""
+        import json as _json
+
+        from market.db.models import ModelPerformanceHistory
+
+        session = self._session_factory()
+        try:
+            row = ModelPerformanceHistory(
+                ticker=record.ticker,
+                model_id=record.model_id,
+                model_type=record.model_type,
+                sharpe_ratio=record.sharpe_ratio,
+                mae=record.mae,
+                directional_accuracy=record.directional_accuracy,
+                is_degraded=record.is_degraded,
+                evaluated_at=datetime.fromisoformat(record.evaluated_at)
+                if isinstance(record.evaluated_at, str)
+                else record.evaluated_at,
+            )
+            session.merge(row)
+            session.commit()
+        except Exception:
+            session.rollback()
+        finally:
+            session.close()
+
+    def _load_from_db(self, ticker: str, limit: int = 50) -> list[ModelPerformanceRecord]:
+        """Load recent records from DB for a ticker."""
+        if self._session_factory is None:
+            return []
+
+        from market.db.models import ModelPerformanceHistory
+
+        session = self._session_factory()
+        try:
+            rows = session.query(ModelPerformanceHistory).filter(
+                ModelPerformanceHistory.ticker == ticker,
+            ).order_by(
+                ModelPerformanceHistory.evaluated_at.desc(),
+            ).limit(limit).all()
+
+            return [
+                ModelPerformanceRecord(
+                    ticker=r.ticker,
+                    model_id=r.model_id,
+                    model_type=r.model_type,
+                    sharpe_ratio=float(r.sharpe_ratio),
+                    mae=float(r.mae),
+                    directional_accuracy=float(r.directional_accuracy),
+                    evaluated_at=r.evaluated_at.isoformat() if r.evaluated_at else "",
+                    is_degraded=r.is_degraded,
+                )
+                for r in reversed(rows)
+            ]
+        except Exception:
+            return []
+        finally:
+            session.close()
 
     def assess(self, ticker: str) -> ModelPerformanceAssessment:
         """Assess model performance for a ticker.
@@ -936,6 +1008,12 @@ class ModelPerformanceTracker:
             ModelPerformanceAssessment with degradation check and recommendation.
         """
         records = self._records.get(ticker, [])
+
+        # Try loading from DB if not in memory
+        if not records and self._session_factory is not None:
+            records = self._load_from_db(ticker)
+            if records:
+                self._records[ticker] = records
 
         if not records:
             return ModelPerformanceAssessment(

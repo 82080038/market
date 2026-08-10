@@ -19,10 +19,11 @@ config = context.config
 if config.config_file_name is not None:
     fileConfig(config.config_file_name)
 
-# Override sqlalchemy.url with the active environment's database path
+# Override sqlalchemy.url with the active environment's database URL
+# Supports both SQLite (sqlite:///) and PostgreSQL (postgresql://)
 config.set_main_option(
     "sqlalchemy.url",
-    f"sqlite:///{settings.resolved_db_path}",
+    settings.resolved_database_url,
 )
 
 target_metadata = Base.metadata
@@ -43,11 +44,12 @@ def run_migrations_offline() -> None:
 
 def run_migrations_online() -> None:
     """Run migrations in 'online' mode."""
+    connect_args = {"timeout": 30} if settings.db_backend == "sqlite" else {}
     connectable = engine_from_config(
         config.get_section(config.config_ini_section, {}),
         prefix="sqlalchemy.",
         poolclass=pool.NullPool,
-        connect_args={"timeout": 30},
+        connect_args=connect_args,
     )
 
     with connectable.connect() as connection:

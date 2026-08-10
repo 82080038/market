@@ -148,9 +148,29 @@ def _set_watermark(
 
 
 def _load_all_idx_tickers(session: Session) -> list[str]:
-    """Get all IDX equity tickers from instrument_master."""
-    from market.db.models import InstrumentMaster
+    """Get all IDX equity tickers from instruments table."""
     from market.data.ticker_util import to_yf_ticker
+
+    # Try PG instruments table first
+    try:
+        from market.db.models import Instrument
+
+        rows = session.execute(
+            select(Instrument.ticker, Instrument.exchange_mic).where(
+                Instrument.exchange_mic == "XIDX",
+                Instrument.asset_class == "EQUITY",
+            )
+        ).all()
+        if rows:
+            return [to_yf_ticker(r[0], r[1], session) for r in rows]
+    except Exception:
+        try:
+            session.rollback()
+        except Exception:
+            pass
+
+    # Fallback: SQLite instrument_master
+    from market.db.models import InstrumentMaster
 
     rows = session.execute(
         select(InstrumentMaster.ticker, InstrumentMaster.market_mic).where(
@@ -255,15 +275,23 @@ def recompute_technical_indicators(
                 wide_values[col_name] = float(val)
 
         if wide_values:
-            col_names = ", ".join(["ticker", "date", "timeframe"] + list(wide_values.keys()))
-            placeholders = ", ".join(["?"] * (3 + len(wide_values)))
-            session.execute(
-                text(
-                    f"INSERT OR REPLACE INTO technical_indicators_wide ({col_names}) "
-                    f"VALUES ({placeholders})"
-                ),
-                [ticker, today, "1d"] + list(wide_values.values()),
-            )
+            from market.db.models import TechnicalIndicatorWide as _TIW
+
+            existing = session.execute(
+                select(_TIW).where(
+                    _TIW.ticker == ticker,
+                    _TIW.date == today,
+                    _TIW.timeframe == "1d",
+                )
+            ).scalar_one_or_none()
+
+            if existing:
+                for col_name, val in wide_values.items():
+                    setattr(existing, col_name, val)
+            else:
+                kwargs = {"ticker": ticker, "date": today, "timeframe": "1d"}
+                kwargs.update(wide_values)
+                session.add(_TIW(**kwargs))
 
         if count % 1000 == 0:
             session.commit()
@@ -630,7 +658,7 @@ def recompute_fear_greed(
         if wm is None:
             # Fallback: check existing data
             last_date = session.execute(
-                text("SELECT MAX(tanggal) FROM fear_greed")
+                text("SELECT MAX(date) FROM fear_greed")
             ).scalar()
             if last_date is not None:
                 if isinstance(last_date, str):
@@ -712,10 +740,15 @@ def recompute_fear_greed(
         else:
             label = "Extreme Fear"
 
-        session.execute(text(
-            "INSERT OR REPLACE INTO fear_greed (tanggal, nilai, label) "
-            "VALUES (:d, :n, :l)"
-        ), {"d": date_val, "n": fgi, "l": label})
+        from market.db.models import FearGreed as _FG
+        existing = session.execute(
+            select(_FG).where(_FG.date == date_val)
+        ).scalar_one_or_none()
+        if existing:
+            existing.value = fgi
+            existing.label = label
+        else:
+            session.add(_FG(date=date_val, value=fgi, label=label))
         count += 1
 
     # Update watermark
@@ -1122,9 +1155,9 @@ def recompute_market_regimes(
 
     # Load Fear & Greed
     fg_rows = session.execute(
-        select(FearGreed).order_by(FearGreed.tanggal)
+        select(FearGreed).order_by(FearGreed.date)
     ).scalars().all()
-    fg_map = {r.tanggal: (r.nilai, r.label) for r in fg_rows}
+    fg_map = {r.date: (r.value, r.label) for r in fg_rows}
 
     # Load VIX if available
     vix_df = _load_ohlcv_df(session, "^VIX")
@@ -1198,19 +1231,55 @@ def recompute_market_regimes(
         else:
             regime = "sideways"
 
-        session.execute(text(
-            "INSERT OR REPLACE INTO market_regimes "
-            "(date, regime, vix_level, fear_greed_label, foreign_flow_trend, source, created_at) "
-            "VALUES (:d, :r, :v, :f, :ff, :s, :c)"
-        ), {
-            "d": date_val,
-            "r": regime,
-            "v": vix_level,
-            "f": fg_label,
-            "ff": ff_trend,
-            "s": "computed",
-            "c": datetime.now().isoformat(),
-        })
+        # Compute IHSG trend
+        ihsg_trend = "up" if above_ma50 and above_ma200 else ("down" if not above_ma50 and not above_ma200 else "flat")
+
+        # Volatility level
+        if vol > 3.0 or vix_level == "extreme":
+            vol_level = "extreme"
+        elif vix_level == "high" or vol > 2.0:
+            vol_level = "high"
+        elif vix_level == "normal" or vol > 1.0:
+            vol_level = "normal"
+        else:
+            vol_level = "low"
+
+        # Breadth score (simplified: based on MA alignment)
+        breadth = 0.0
+        if above_ma50:
+            breadth += 33.3
+        if above_ma200:
+            breadth += 33.3
+        if ma50_above_ma200:
+            breadth += 33.4
+
+        # Description
+        desc_parts = [f"trend={ihsg_trend}", f"vol={vol_level}"]
+        if fg_label:
+            desc_parts.append(f"FG={fg_label}")
+        if ff_trend:
+            desc_parts.append(f"flow={ff_trend}")
+        description = ", ".join(desc_parts)
+
+        from market.db.models import MarketRegime as _MR
+        existing = session.execute(
+            select(_MR).where(_MR.date == date_val)
+        ).scalar_one_or_none()
+        if existing:
+            existing.regime = regime
+            existing.ihsg_trend = ihsg_trend
+            existing.volatility_level = vol_level
+            existing.breadth_score = breadth
+            existing.description = description
+        else:
+            session.add(_MR(
+                date=date_val,
+                regime=regime,
+                ihsg_trend=ihsg_trend,
+                volatility_level=vol_level,
+                breadth_score=breadth,
+                description=description,
+            ))
         count += 1
 
     # Update watermark
@@ -1220,6 +1289,125 @@ def recompute_market_regimes(
     session.commit()
     if progress_cb:
         progress_cb("market_regimes", 1, 1, f"Done: {count} rows")
+    return count
+
+
+CROSS_MARKET_PAIRS = [
+    ("^N225", "XTSE"),
+    ("^HSI", "XHKG"),
+    ("^GSPC", "XNYS"),
+    ("^IXIC", "XNAS"),
+    ("^FTSE", "XLON"),
+    ("^GDAXI", "XFRA"),
+    ("GC=F", "XCEC"),
+    ("CL=F", "XCEC"),
+    ("CPO=F", "XKLSE"),
+    ("IDR=X", "XFXS"),
+    ("^VIX", "XNYS"),
+    ("^TNX", "XNYS"),
+    ("000001.SS", "XSHG"),
+]
+
+
+def recompute_cross_market(
+    session: Session, dry_run: bool = False, progress_cb: ProgressCb = None,
+    incremental: bool = False,
+) -> int:
+    """Compute cross-market lead-lag and volatility spillover.
+
+    Uses ``CrossMarketEngine`` to analyze lead-lag relationships and
+    spillover between global markets and IDX (IHSG). Results are saved
+    to ``relationship_matrix`` with ``window=0`` (cross-market marker)
+    and ``lag`` storing the optimal lead-lag in days.
+
+    Anti look-ahead: all returns computed from close prices only,
+    no future data used. Lead-lag is computed on historical returns.
+
+    Always full recompute — snapshot table.
+    """
+    from market.multi_asset.cross_market import CrossMarketEngine
+
+    ihsg_ticker = IHSG_TICKER
+    total_pairs = len(CROSS_MARKET_PAIRS)
+    logger.info("Recomputing cross_market lead-lag for %d pairs", total_pairs)
+    if progress_cb:
+        progress_cb("cross_market", 0, total_pairs, "Starting")
+
+    if dry_run:
+        return total_pairs
+
+    # Delete existing cross-market rows (window=0 marker)
+    session.execute(text("DELETE FROM relationship_matrix WHERE window = 0"))
+    session.commit()
+
+    engine = CrossMarketEngine(min_samples=30)
+    count = 0
+
+    # Load IHSG returns
+    ihsg_df = _load_ohlcv_df(session, ihsg_ticker)
+    if ihsg_df.empty or len(ihsg_df) < 60:
+        logger.warning("cross_market: IHSG data insufficient (%d rows)", len(ihsg_df))
+        return 0
+
+    if not ihsg_df.index.is_unique:
+        ihsg_df = ihsg_df[~ihsg_df.index.duplicated(keep="last")]
+    ihsg_returns = ihsg_df["close"].astype(float).pct_change(fill_method=None).dropna()
+    ihsg_vol = ihsg_returns.rolling(20).std().dropna()
+
+    for idx, (ticker, mic) in enumerate(CROSS_MARKET_PAIRS):
+        try:
+            gdf = _load_ohlcv_df(session, ticker)
+            if gdf.empty or len(gdf) < 60:
+                continue
+            if not gdf.index.is_unique:
+                gdf = gdf[~gdf.index.duplicated(keep="last")]
+            g_returns = gdf["close"].astype(float).pct_change(fill_method=None).dropna()
+            g_vol = g_returns.rolling(20).std().dropna()
+
+            # Lead-lag: does global market lead IHSG?
+            ll = engine.compute_lead_lag(
+                g_returns, ihsg_returns, ticker, ihsg_ticker, max_lag=5,
+            )
+            if ll:
+                session.add(RelationshipMatrix(
+                    asset_a=ticker,
+                    asset_b=ihsg_ticker,
+                    window=0,
+                    correlation=float(ll.correlation_at_lag),
+                    lag=int(ll.optimal_lag),
+                ))
+                count += 1
+                logger.info(
+                    "  cross_market: %s → %s: lag=%dd, corr=%.4f, leader=%s",
+                    ticker, ihsg_ticker, ll.optimal_lag,
+                    ll.correlation_at_lag, ll.leader,
+                )
+
+            # Spillover: volatility transmission
+            sp = engine.compute_spillover(g_vol, ihsg_vol, ticker, ihsg_ticker)
+            if sp:
+                # Store spillover as a relationship with negative lag marker
+                session.add(RelationshipMatrix(
+                    asset_a=sp.source,
+                    asset_b=sp.target,
+                    window=-1,
+                    correlation=float(sp.spillover_pct) / 100.0,
+                    lag=-1,
+                ))
+                count += 1
+                logger.info(
+                    "  cross_market spillover: %s → %s: %.1f%% (%s)",
+                    sp.source, sp.target, sp.spillover_pct, sp.direction,
+                )
+
+            if progress_cb:
+                progress_cb("cross_market", idx + 1, total_pairs, f"{count} rows")
+        except Exception as exc:
+            logger.warning("  cross_market: skipping %s: %s", ticker, exc)
+
+    session.commit()
+    if progress_cb:
+        progress_cb("cross_market", total_pairs, total_pairs, f"Done: {count} rows")
     return count
 
 
@@ -1241,6 +1429,7 @@ def run_all_recompute(
         ("technical_indicators", recompute_technical_indicators),
         ("scores", recompute_scores),
         ("relationship_matrix", recompute_relationship_matrix),
+        ("cross_market", recompute_cross_market),
         ("fear_greed", recompute_fear_greed),
         ("stock_personality", recompute_stock_personality),
         ("ml_labels", recompute_ml_labels),

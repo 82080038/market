@@ -72,6 +72,13 @@ class MarketContext:
     # Global sentiment from Time-Zone Bucket Grid
     global_sentiment: float | None = None  # -1.0 to 1.0
 
+    # ESG & corporate governance (pustaka/18 §13 D28, D29)
+    esg_score: float | None = None           # numeric ESG score
+    esg_rating: str | None = None            # letter rating (e.g. 'AAA')
+    governance_score: float | None = None    # normalized 0-100
+    has_whistleblowing: bool | None = None
+    has_risk_committee: bool | None = None
+
     # Derived signals
     signals: dict[str, str] = field(default_factory=dict)
 
@@ -84,7 +91,7 @@ class MarketContext:
                 self.pe_ratio, self.vix, self.fear_greed_index,
                 self.foreign_net_flow, self.technical_score,
                 self.corr_us, self.corr_ihsg, self.ml_signal,
-                self.news_sentiment,
+                self.news_sentiment, self.esg_score, self.governance_score,
             ]
         )
 
@@ -237,6 +244,37 @@ class MarketContext:
             return self.news_sentiment * weight
         return 0.0
 
+    def governance_signal(self) -> float:
+        """Return governance/ESG signal: -1.0 (poor) to 1.0 (strong).
+
+        Combines ESG score (normalized to 0-1 → -1 to +1) and governance
+        quality indicators (whistleblowing, risk committee, board independence).
+        """
+        score = 0.0
+        n = 0
+
+        if self.esg_score is not None:
+            # ESG scores typically 0-100; normalize to [-1, 1]
+            esg_norm = max(-1.0, min(1.0, (self.esg_score - 50) / 50.0))
+            score += esg_norm * 0.5
+            n += 1
+
+        if self.governance_score is not None:
+            # Governance score 0-100; normalize to [-1, 1]
+            gov_norm = max(-1.0, min(1.0, (self.governance_score - 50) / 50.0))
+            score += gov_norm * 0.3
+            n += 1
+
+        if self.has_whistleblowing is not None:
+            score += 0.1 if self.has_whistleblowing else -0.1
+            n += 1
+
+        if self.has_risk_committee is not None:
+            score += 0.1 if self.has_risk_committee else -0.1
+            n += 1
+
+        return score / n if n > 0 else 0.0
+
     def composite_signal(self) -> float:
         """Weighted composite of all context signals: -1.0 to 1.0.
 
@@ -255,7 +293,8 @@ class MarketContext:
             "ml": 0.15,
             "news": 0.08,
             "commodity": 0.08,
-            "global_sentiment": 0.17,
+            "global_sentiment": 0.12,
+            "governance": 0.05,
         }
 
         # Sector-specific adjustments
@@ -267,15 +306,18 @@ class MarketContext:
             weights["macro"] = 0.18
             weights["flow"] = 0.12
             weights["commodity"] = 0.0
-            weights["global_sentiment"] = 0.12
+            weights["global_sentiment"] = 0.08
+            weights["governance"] = 0.07
         elif self.sector == "Consumer Defensive":
-            weights["fundamental"] = 0.22
+            weights["fundamental"] = 0.20
             weights["commodity"] = 0.04
-            weights["global_sentiment"] = 0.12
+            weights["global_sentiment"] = 0.10
+            weights["governance"] = 0.07
         elif self.sector == "Communication Services":
-            weights["fundamental"] = 0.17
+            weights["fundamental"] = 0.15
             weights["commodity"] = 0.0
-            weights["global_sentiment"] = 0.12
+            weights["global_sentiment"] = 0.10
+            weights["governance"] = 0.07
 
         return (
             self.fundamental_signal() * weights["fundamental"]
@@ -287,6 +329,7 @@ class MarketContext:
             + self.news_sentiment_signal() * weights["news"]
             + (self.commodity_signal or 0.0) * weights["commodity"]
             + (self.global_sentiment or 0.0) * weights["global_sentiment"]
+            + self.governance_signal() * weights["governance"]
         )
 
 
@@ -334,16 +377,28 @@ class MarketContextProvider:
         session = self._get_session()
 
         try:
-            self._fetch_fundamental(session, ticker, ctx, cutoff, strict_cutoff)
-            self._fetch_macro(session, ctx, cutoff)
-            self._fetch_sentiment(session, ctx, cutoff)
-            self._fetch_foreign_flow(session, ticker, ctx, cutoff)
-            self._fetch_scores(session, ticker, ctx, cutoff, strict_cutoff)
-            self._fetch_cross_market(session, ticker, ctx, cutoff, strict_cutoff)
-            self._fetch_news_sentiment(session, ticker, ctx, cutoff)
-            self._fetch_sector(session, ticker, ctx)
-            self._fetch_commodity_signal(session, ticker, ctx, cutoff)
-            self._fetch_global_sentiment(session, ctx, cutoff)
+            fetchers = [
+                ("fundamental", lambda: self._fetch_fundamental(session, ticker, ctx, cutoff, strict_cutoff)),
+                ("macro", lambda: self._fetch_macro(session, ctx, cutoff)),
+                ("sentiment", lambda: self._fetch_sentiment(session, ctx, cutoff)),
+                ("foreign_flow", lambda: self._fetch_foreign_flow(session, ticker, ctx, cutoff)),
+                ("scores", lambda: self._fetch_scores(session, ticker, ctx, cutoff, strict_cutoff)),
+                ("cross_market", lambda: self._fetch_cross_market(session, ticker, ctx, cutoff, strict_cutoff)),
+                ("news_sentiment", lambda: self._fetch_news_sentiment(session, ticker, ctx, cutoff)),
+                ("sector", lambda: self._fetch_sector(session, ticker, ctx)),
+                ("commodity", lambda: self._fetch_commodity_signal(session, ticker, ctx, cutoff)),
+                ("global_sentiment", lambda: self._fetch_global_sentiment(session, ctx, cutoff)),
+                ("esg_governance", lambda: self._fetch_esg_governance(session, ticker, ctx)),
+            ]
+            for name, fetcher in fetchers:
+                try:
+                    fetcher()
+                except Exception as e:
+                    logger.debug("Skip %s for %s: %s", name, ticker, e)
+                    try:
+                        session.rollback()
+                    except Exception:
+                        pass
         except Exception as e:
             logger.warning("Failed to fetch market context for %s: %s", ticker, e)
         finally:
@@ -443,13 +498,13 @@ class MarketContextProvider:
 
         row = session.execute(
             select(FearGreed)
-            .where(FearGreed.tanggal <= cutoff)
-            .order_by(FearGreed.tanggal.desc())
+            .where(FearGreed.date <= cutoff)
+            .order_by(FearGreed.date.desc())
             .limit(1)
         ).scalar_one_or_none()
 
         if row:
-            ctx.fear_greed_index = float(row.nilai) if row.nilai is not None else None
+            ctx.fear_greed_index = float(row.value) if row.value is not None else None
             ctx.fear_greed_label = row.label
 
     def _fetch_foreign_flow(
@@ -542,11 +597,41 @@ class MarketContextProvider:
     ) -> None:
         """Fetch recent news sentiment for ticker.
 
-        Gets news from the last 30 days before cutoff and computes
-        average sentiment score.
+        Priority 1: PostgreSQL news_sentiment table (continuous score -1.0 to 1.0,
+        from keyword NLP EN+ID lexicon via scrape_rss_news.py).
+        Priority 2: Legacy news table (sentiment 0/1/-1).
+        Looks back 30 days before cutoff.
         """
         from sqlalchemy import func, select
 
+        # --- Priority 1: PostgreSQL news_sentiment ---
+        try:
+            from market.db.models import NewsSentiment
+
+            from datetime import timedelta
+            lookback = cutoff - timedelta(days=30)
+
+            rows = session.execute(
+                select(NewsSentiment.sentiment_score, NewsSentiment.sentiment_label)
+                .where(NewsSentiment.ticker == ticker)
+                .where(NewsSentiment.date >= lookback)
+                .where(NewsSentiment.date <= cutoff)
+                .where(NewsSentiment.sentiment_score.isnot(None))
+            ).all()
+
+            if rows:
+                scores = [float(r[0]) for r in rows if r[0] is not None]
+                if scores:
+                    ctx.news_sentiment = sum(scores) / len(scores)
+                    ctx.news_count = len(scores)
+                    return
+        except Exception:
+            try:
+                session.rollback()
+            except Exception:
+                pass  # Table might not exist (SQLite fallback)
+
+        # --- Priority 2: Legacy news table ---
         from market.db.models import News
 
         rows = session.execute(
@@ -585,9 +670,28 @@ class MarketContextProvider:
     def _fetch_sector(
         self, session: Session, ticker: str, ctx: MarketContext,
     ) -> None:
-        """Fetch sector classification from InstrumentMaster."""
+        """Fetch sector classification from instruments table."""
         from sqlalchemy import select
 
+        # Try PG instruments table first
+        try:
+            from market.db.models import Instrument
+
+            row = session.execute(
+                select(Instrument.sector)
+                .where(Instrument.ticker == ticker)
+            ).scalar_one_or_none()
+
+            if row:
+                ctx.sector = row
+                return
+        except Exception:
+            try:
+                session.rollback()
+            except Exception:
+                pass
+
+        # Fallback: SQLite instrument_master table
         from market.db.models import InstrumentMaster
 
         row = session.execute(
@@ -597,6 +701,60 @@ class MarketContextProvider:
 
         if row:
             ctx.sector = row
+
+    def _load_close_prices(
+        self, session: Session, ticker: str, cutoff: date,
+        limit: int | None = None, order_desc: bool = False,
+    ) -> list[tuple[float, datetime]]:
+        """Load (close, timestamp) pairs from StockPrice (PG) or OHLCV (SQLite)."""
+        from sqlalchemy import select
+
+        # Try PG stock_prices table first
+        try:
+            from market.db.models import StockPrice
+
+            stmt = (
+                select(StockPrice.close, StockPrice.timestamp)
+                .where(StockPrice.ticker == ticker)
+                .where(StockPrice.timeframe == "1d")
+            )
+            if cutoff is not None:
+                stmt = stmt.where(StockPrice.timestamp <= pd.Timestamp(cutoff))
+            if order_desc:
+                stmt = stmt.order_by(StockPrice.timestamp.desc())
+            else:
+                stmt = stmt.order_by(StockPrice.timestamp)
+            if limit is not None:
+                stmt = stmt.limit(limit)
+
+            rows = session.execute(stmt).all()
+            if rows:
+                return [(float(r[0]), r[1]) for r in rows]
+        except Exception:
+            try:
+                session.rollback()
+            except Exception:
+                pass
+
+        # Fallback: SQLite ohlcv table
+        from market.db.models import OHLCV
+
+        stmt = (
+            select(OHLCV.close, OHLCV.timestamp)
+            .where(OHLCV.ticker == ticker)
+            .where(OHLCV.timeframe == "1d")
+        )
+        if cutoff is not None:
+            stmt = stmt.where(OHLCV.timestamp <= pd.Timestamp(cutoff))
+        if order_desc:
+            stmt = stmt.order_by(OHLCV.timestamp.desc())
+        else:
+            stmt = stmt.order_by(OHLCV.timestamp)
+        if limit is not None:
+            stmt = stmt.limit(limit)
+
+        rows = session.execute(stmt).all()
+        return [(float(r[0]), r[1]) for r in rows]
 
     def _fetch_commodity_signal(
         self, session: Session, ticker: str, ctx: MarketContext,
@@ -610,10 +768,6 @@ class MarketContextProvider:
         - Industrials (ASII): CL=F (oil) + broader commodities
         - Others: no commodity signal
         """
-        from sqlalchemy import select
-
-        from market.db.models import OHLCV
-
         if ctx.sector is None:
             return
 
@@ -635,21 +789,14 @@ class MarketContextProvider:
 
         signals: list[float] = []
         for comm_ticker in commodity_tickers:
-            rows = session.execute(
-                select(OHLCV.close, OHLCV.timestamp)
-                .where(
-                    OHLCV.ticker == comm_ticker,
-                    OHLCV.timeframe == "1d",
-                    OHLCV.timestamp <= pd.Timestamp(cutoff),
-                )
-                .order_by(OHLCV.timestamp.desc())
-                .limit(25)
-            ).all()
+            rows = self._load_close_prices(
+                session, comm_ticker, cutoff, limit=25, order_desc=True,
+            )
 
             if len(rows) < 20:
                 continue
 
-            closes = [float(r[0]) for r in rows]
+            closes = [r[0] for r in rows]
             closes.reverse()  # oldest first
             current = closes[-1]
             ma_20 = sum(closes[-20:]) / 20.0
@@ -673,32 +820,29 @@ class MarketContextProvider:
         strict no-look-ahead: only data available before IDX opened
         is used to compute the sentiment signal.
 
-        Transmission mapping:
-        - Wall Street close (previous day, 21:00 UTC) → IDX open (02:00 UTC)
-        - Tokyo close (same day, 06:30 UTC) → IDX morning session
+        Time-Zone Buckets (UTC):
+        - B0: 00:00-05:59 (US overnight, no new signals)
+        - B1: 06:00-07:59 (Asia pre-open: Japan open 00:00, HK 01:30)
+        - B2: 08:00-09:59 (IDX open 02:00, Europe pre-open)
+        - B3: 10:00-13:59 (Europe open, US pre-open)
+        - B4: 14:00-23:59 (US open, IDX close)
+
+        Signal weights:
+        - US close (previous day, 21:00 UTC) → IDX morning session
+        - Japan close (same day, 06:00 UTC) → IDX morning session
         - Hong Kong close (same day, 08:00 UTC) → IDX afternoon session
         """
-        from sqlalchemy import select
-
         from market.analysis.market_factors import compute_global_sentiment_signal
-        from market.db.models import OHLCV
 
         global_tickers = ["^GSPC", "^N225", "^HSI"]
         global_data: dict[str, pd.DataFrame] = {}
 
         for gt in global_tickers:
-            rows = session.execute(
-                select(OHLCV.close, OHLCV.timestamp)
-                .where(
-                    OHLCV.ticker == gt,
-                    OHLCV.timeframe == "1d",
-                )
-                .order_by(OHLCV.timestamp)
-            ).all()
+            rows = self._load_close_prices(session, gt, cutoff=None, order_desc=False)
 
             if rows:
                 global_data[gt] = pd.DataFrame(
-                    {"close": [float(r[0]) for r in rows]},
+                    {"close": [r[0] for r in rows]},
                     index=pd.DatetimeIndex([r[1] for r in rows]),
                 )
 
@@ -719,24 +863,60 @@ class MarketContextProvider:
         Returns dict of {ticker: DataFrame} for all global assets
         used in the multi-factor feature pipeline.
         """
-        from sqlalchemy import select
-
         from market.analysis.multi_factor import GLOBAL_ASSETS
-        from market.db.models import OHLCV
 
         global_data: dict[str, pd.DataFrame] = {}
         for gticker in GLOBAL_ASSETS:
-            rows = session.execute(
-                select(OHLCV.close, OHLCV.timestamp)
-                .where(
-                    OHLCV.ticker == gticker,
-                    OHLCV.timeframe == "1d",
-                )
-                .order_by(OHLCV.timestamp)
-            ).all()
+            rows = self._load_close_prices(session, gticker, cutoff=None, order_desc=False)
             if rows:
                 global_data[gticker] = pd.DataFrame(
-                    {"close": [float(r[0]) for r in rows]},
+                    {"close": [r[0] for r in rows]},
                     index=pd.DatetimeIndex([r[1] for r in rows]),
                 )
         return global_data
+
+    def _fetch_esg_governance(
+        self, session: Session, ticker: str, ctx: MarketContext,
+    ) -> None:
+        """Fetch ESG scores and corporate governance data from DB.
+
+        Loads the latest ESG score and corporate governance record for the
+        ticker. ESG scores are typically slow-changing (annual), so no
+        as_of cutoff is applied — the latest available record is used.
+        """
+        from sqlalchemy import select
+
+        from market.db.models import CorporateGovernance, ESGScore
+
+        # Latest ESG score
+        esg_row = session.execute(
+            select(ESGScore)
+            .where(ESGScore.ticker == ticker)
+            .order_by(ESGScore.year.desc())
+            .limit(1)
+        ).scalar_one_or_none()
+
+        if esg_row:
+            ctx.esg_score = float(esg_row.score) if esg_row.score is not None else None
+            ctx.esg_rating = esg_row.rating
+
+        # Latest corporate governance
+        cg_row = session.execute(
+            select(CorporateGovernance)
+            .where(CorporateGovernance.ticker == ticker)
+            .order_by(CorporateGovernance.year.desc())
+            .limit(1)
+        ).scalar_one_or_none()
+
+        if cg_row:
+            # Normalize ACGS score to 0-100 if it's a letter grade
+            acgs = cg_row.acgs_score
+            if acgs is not None:
+                try:
+                    ctx.governance_score = float(acgs)
+                except (ValueError, TypeError):
+                    # Letter grade mapping: A=90, B=75, C=60, D=40
+                    grade_map = {"A": 90.0, "B": 75.0, "C": 60.0, "D": 40.0}
+                    ctx.governance_score = grade_map.get(str(acgs).strip().upper(), 50.0)
+            ctx.has_whistleblowing = cg_row.has_whistleblowing
+            ctx.has_risk_committee = cg_row.has_risk_committee

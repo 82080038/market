@@ -592,9 +592,21 @@ def compute_inverse_variance_weights(
 
     weights = {t: iv / total_inv for t, iv in inv_vars.items()}
 
-    # Cap max weight per ticker
+    # Cap max weight per ticker — iterative cap+redistribute
+    for _ in range(20):
+        capped = {t: min(w, max_weight) for t, w in weights.items()}
+        excess = sum(weights[t] - capped[t] for t in weights)
+        if excess < 1e-9:
+            break
+        weights = dict(capped)
+        # Redistribute excess to uncapped tickers
+        uncapped_total = sum(w for t, w in weights.items() if w < max_weight)
+        if uncapped_total > 0:
+            for t in weights:
+                if weights[t] < max_weight:
+                    weights[t] += excess * (weights[t] / uncapped_total)
+    # Final hard clip + renormalize
     weights = {t: min(w, max_weight) for t, w in weights.items()}
-    # Renormalize
     total_w = sum(weights.values())
     if total_w > 0:
         weights = {t: w / total_w for t, w in weights.items()}

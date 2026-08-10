@@ -6,9 +6,25 @@ from dataclasses import is_dataclass
 from datetime import datetime
 from decimal import Decimal
 from typing import Any
+from zoneinfo import ZoneInfo
 
 import numpy as np
 from pydantic import BaseModel
+
+_JAKARTA_TZ = ZoneInfo("Asia/Jakarta")
+
+
+def to_jakarta(dt: datetime | None) -> str | None:
+    """Convert UTC datetime to Asia/Jakarta (WIB, UTC+7) ISO string.
+
+    This is the presentation-layer conversion — backend logic stays in UTC,
+    only API responses convert to local time for the frontend.
+    """
+    if dt is None:
+        return None
+    if dt.tzinfo is None:
+        dt = dt.replace(tzinfo=ZoneInfo("UTC"))
+    return dt.astimezone(_JAKARTA_TZ).isoformat()
 
 
 def _dataclass_to_dict(obj: Any) -> Any:
@@ -26,7 +42,7 @@ def _dataclass_to_dict(obj: Any) -> Any:
     if isinstance(obj, Decimal):
         return float(obj)
     if isinstance(obj, datetime):
-        return obj.isoformat()
+        return to_jakarta(obj)
     return obj
 
 

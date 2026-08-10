@@ -17,7 +17,6 @@ from __future__ import annotations
 
 import logging
 import os
-import sqlite3
 from dataclasses import dataclass, field
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
@@ -65,30 +64,49 @@ class HealthReport:
         return f"{crit} critical, {warn} warning, {info} info"
 
 
-def check_stale_data(con: sqlite3.Connection) -> list[HealthIssue]:
+def check_stale_data(con: object) -> list[HealthIssue]:
     """Check for tickers with stale OHLCV data."""
+    from market.config import settings
+    _ph = "%s" if settings.db_backend == "postgresql" else "?"
+
     issues: list[HealthIssue] = []
     now = datetime.now(UTC)
+    _now_str = now.strftime("%Y-%m-%d")
 
-    # Active IDX equity tickers stale >7 days
-    stale = con.execute(
+    if settings.db_backend == "postgresql":
+        _stale_sql = f"""
+            SELECT o.ticker, MAX(o.timestamp::date)::text last_date,
+                   EXTRACT(EPOCH FROM (NOW() - MAX(o.timestamp)))/86400 days_old
+            FROM ohlcv o
+            JOIN instrument_master im ON (
+                im.ticker = REPLACE(o.ticker, '.JK', '')
+                AND im.market_mic = 'XIDX'
+                AND im.is_active = 1
+                AND im.asset_class = 'equity'
+            )
+            WHERE o.ticker LIKE '%.JK'
+            GROUP BY o.ticker
+            HAVING EXTRACT(EPOCH FROM (NOW() - MAX(o.timestamp)))/86400 > {_ph}
+            ORDER BY days_old DESC
         """
-        SELECT o.ticker, MAX(date(o.timestamp)) last_date,
-               julianday('now') - julianday(MAX(date(o.timestamp))) days_old
-        FROM ohlcv o
-        JOIN instrument_master im ON (
-            im.ticker = REPLACE(o.ticker, '.JK', '')
-            AND im.market_mic = 'XIDX'
-            AND im.is_active = 1
-            AND im.asset_class = 'equity'
-        )
-        WHERE o.ticker LIKE '%.JK'
-        GROUP BY o.ticker
-        HAVING days_old > ?
-        ORDER BY days_old DESC
-        """,
-        (STALE_DAYS_CRITICAL,),
-    ).fetchall()
+    else:
+        _stale_sql = f"""
+            SELECT o.ticker, MAX(date(o.timestamp)) last_date,
+                   julianday('now') - julianday(MAX(date(o.timestamp))) days_old
+            FROM ohlcv o
+            JOIN instrument_master im ON (
+                im.ticker = REPLACE(o.ticker, '.JK', '')
+                AND im.market_mic = 'XIDX'
+                AND im.is_active = 1
+                AND im.asset_class = 'equity'
+            )
+            WHERE o.ticker LIKE '%.JK'
+            GROUP BY o.ticker
+            HAVING days_old > {_ph}
+            ORDER BY days_old DESC
+        """
+
+    stale = con.execute(_stale_sql, (STALE_DAYS_CRITICAL,)).fetchall()
 
     if stale:
         # Separate delisted (very old) from temporarily stale
@@ -114,16 +132,26 @@ def check_stale_data(con: sqlite3.Connection) -> list[HealthIssue]:
     # Global reference tickers stale
     global_refs = ["^GSPC", "^IXIC", "^DJI", "^HSI", "^N225", "^FTSE", "^GDAXI",
                    "^TNX", "^VIX", "GC=F", "CL=F", "^JKSE"]
-    stale_global = con.execute(
+    if settings.db_backend == "postgresql":
+        _global_sql = f"""
+            SELECT ticker, MAX(timestamp::date)::text last_date,
+                   EXTRACT(EPOCH FROM (NOW() - MAX(timestamp)))/86400 days_old
+            FROM ohlcv
+            WHERE ticker IN ({','.join(f"'{t}'" for t in global_refs)})
+            GROUP BY ticker
+            HAVING EXTRACT(EPOCH FROM (NOW() - MAX(timestamp)))/86400 > {_ph}
         """
-        SELECT ticker, MAX(date(timestamp)) last_date,
-               julianday('now') - julianday(MAX(date(timestamp))) days_old
-        FROM ohlcv
-        WHERE ticker IN ({})
-        GROUP BY ticker
-        HAVING days_old > ?
-        """.format(",".join(f"'{t}'" for t in global_refs)),
-        (STALE_DAYS_WARNING,),
+    else:
+        _global_sql = f"""
+            SELECT ticker, MAX(date(timestamp)) last_date,
+                   julianday('now') - julianday(MAX(date(timestamp))) days_old
+            FROM ohlcv
+            WHERE ticker IN ({','.join(f"'{t}'" for t in global_refs)})
+            GROUP BY ticker
+            HAVING days_old > ?
+        """
+    stale_global = con.execute(
+        _global_sql, (STALE_DAYS_WARNING,),
     ).fetchall()
 
     if stale_global:
@@ -171,8 +199,15 @@ def check_disk_space(parquet_path: Path) -> list[HealthIssue]:
 
 
 def check_db_health(db_path: Path) -> list[HealthIssue]:
-    """Check DB integrity, WAL size, and foreign keys."""
+    """Check DB integrity, WAL size, and foreign keys (SQLite-only checks)."""
+    from market.config import settings
     issues: list[HealthIssue] = []
+
+    if settings.db_backend == "postgresql":
+        # PostgreSQL has its own health tools; skip SQLite-specific PRAGMA checks
+        return issues
+
+    import sqlite3
 
     # WAL size
     wal_path = Path(str(db_path) + "-wal")
@@ -220,7 +255,7 @@ def check_db_health(db_path: Path) -> list[HealthIssue]:
     return issues
 
 
-def check_source_health(con: sqlite3.Connection) -> list[HealthIssue]:
+def check_source_health(con: object) -> list[HealthIssue]:
     """Check data source health status."""
     issues: list[HealthIssue] = []
 
@@ -250,12 +285,14 @@ def check_all(db_path: Path | str, parquet_path: Path | str) -> HealthReport:
     """Run all health checks and return a report.
 
     Args:
-        db_path: Path to SQLite database.
+        db_path: Path to database (SQLite or PostgreSQL config path).
         parquet_path: Path to parquet archive directory.
 
     Returns:
         HealthReport with all issues found.
     """
+    from market.config import settings
+
     db_path = Path(db_path)
     parquet_path = Path(parquet_path)
     report = HealthReport(
@@ -264,16 +301,14 @@ def check_all(db_path: Path | str, parquet_path: Path | str) -> HealthReport:
         parquet_path=str(parquet_path),
     )
 
-    # DB checks (don't need a persistent connection)
+    # DB checks (SQLite-only PRAGMA checks, no-op for PostgreSQL)
     report.issues.extend(check_db_health(db_path))
 
-    # Open DB for data checks
-    con = sqlite3.connect(str(db_path))
-    try:
+    # Open DB for data checks via unified connection helper
+    from market.db.raw import get_raw_connection
+    with get_raw_connection() as con:
         report.issues.extend(check_stale_data(con))
         report.issues.extend(check_source_health(con))
-    finally:
-        con.close()
 
     # Disk checks
     report.issues.extend(check_disk_space(parquet_path))
@@ -283,15 +318,25 @@ def check_all(db_path: Path | str, parquet_path: Path | str) -> HealthReport:
 
 
 def wal_checkpoint(db_path: Path | str, mode: str = "TRUNCATE") -> bool:
-    """Run WAL checkpoint to compact the database.
+    """Run WAL checkpoint to compact the database (SQLite-only).
+
+    No-op for PostgreSQL — PG manages its own WAL.
 
     Args:
         db_path: Path to SQLite database.
         mode: Checkpoint mode (PASSIVE, FULL, RESTART, TRUNCATE).
 
     Returns:
-        True if checkpoint succeeded.
+        True if checkpoint succeeded (always True for PostgreSQL).
     """
+    from market.config import settings
+
+    if settings.db_backend == "postgresql":
+        logger.info("WAL checkpoint: skipped (PostgreSQL manages WAL internally)")
+        return True
+
+    import sqlite3
+
     con = sqlite3.connect(str(db_path))
     try:
         result = con.execute(f"PRAGMA wal_checkpoint({mode})").fetchone()

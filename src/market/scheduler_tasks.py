@@ -172,9 +172,9 @@ def _task_startup_catchup() -> None:
             stale = True
         else:
             # Check if latest daily OHLCV is older than 1 day.
-            # Use naive datetime comparison (DB stores UTC naive).
+            # DB stores TIMESTAMPTZ; compare with timezone-aware UTC.
             from datetime import UTC, datetime
-            now = datetime.now(UTC).replace(tzinfo=None)
+            now = datetime.now(UTC)
             age_hours = (now - latest).total_seconds() / 3600
             stale = age_hours > 26  # >26h = missed at least 1 trading day
             logger.info(
@@ -214,7 +214,7 @@ def _task_fetch_fundamental() -> None:
     weekly builds historical fundamental data gradually over time.
     """
     from market.db.engine import get_sessionmaker
-    from market.db.models import FundamentalData, InstrumentMaster
+    from market.db.models import FundamentalData, Instrument, InstrumentMaster
     from market.data.rate_limit import RateLimiter
     from market.data.ticker_util import to_yf_ticker
     from decimal import Decimal
@@ -237,19 +237,29 @@ def _task_fetch_fundamental() -> None:
         "totalRevenue": "revenue",
         "netIncomeToCommon": "net_income",
         "totalAssets": "total_assets",
-        "totalDebt": "total_liabilities",
-        "totalCash": "cash_flow",
+        "totalDebt": "total_debt",
         "marketCap": "market_cap",
     }
 
     try:
-        rows = session.execute(
-            select(InstrumentMaster.ticker).where(
-                InstrumentMaster.market_mic == "XIDX",
-                InstrumentMaster.asset_class == "equity",
-                InstrumentMaster.is_active == True,
-            ).order_by(InstrumentMaster.ticker)
-        ).fetchall()
+        # Try PG instruments table first
+        try:
+            rows = session.execute(
+                select(Instrument.ticker).where(
+                    Instrument.exchange_mic == "XIDX",
+                    Instrument.asset_class == "EQUITY",
+                    Instrument.is_active == True,
+                ).order_by(Instrument.ticker)
+            ).fetchall()
+        except Exception:
+            session.rollback()
+            rows = session.execute(
+                select(InstrumentMaster.ticker).where(
+                    InstrumentMaster.market_mic == "XIDX",
+                    InstrumentMaster.asset_class == "equity",
+                    InstrumentMaster.is_active == True,
+                ).order_by(InstrumentMaster.ticker)
+            ).fetchall()
         tickers = [to_yf_ticker(r[0], "XIDX", session) for r in rows]
         logger.info("Fundamental fetch: %d tickers", len(tickers))
 
@@ -296,8 +306,7 @@ def _task_fetch_fundamental() -> None:
                 revenue=Decimal(str(data["revenue"])) if "revenue" in data else None,
                 net_income=Decimal(str(data["net_income"])) if "net_income" in data else None,
                 total_assets=Decimal(str(data["total_assets"])) if "total_assets" in data else None,
-                total_liabilities=Decimal(str(data["total_liabilities"])) if "total_liabilities" in data else None,
-                cash_flow=Decimal(str(data["cash_flow"])) if "cash_flow" in data else None,
+                total_debt=Decimal(str(data["total_debt"])) if "total_debt" in data else None,
                 market_cap=Decimal(str(data["market_cap"])) if "market_cap" in data else None,
                 source="yahoo_finance",
             ))
@@ -310,6 +319,179 @@ def _task_fetch_fundamental() -> None:
         logger.info("Fundamental fetch complete: %d new snapshots", inserted)
     finally:
         session.close()
+
+
+def _task_scrape_news() -> None:
+    """Scrape RSS news feeds and compute sentiment (daily).
+
+    Runs the RSS scraper as a subprocess to avoid importing requests/psycopg2
+    in the main process. Stores results in news_sentiment table.
+    """
+    import subprocess
+    import sys
+
+    logger.info("News sentiment scrape: starting...")
+
+    try:
+        result = subprocess.run(
+            [sys.executable, "scripts/scrape_rss_news.py", "--days", "7"],
+            capture_output=True,
+            text=True,
+            timeout=300,
+        )
+        if result.returncode == 0:
+            logger.info("News sentiment scrape: completed successfully")
+        else:
+            logger.warning("News sentiment scrape: exited with code %d", result.returncode)
+            if result.stderr:
+                logger.debug("stderr: %s", result.stderr[:500])
+    except subprocess.TimeoutExpired:
+        logger.warning("News sentiment scrape: timed out after 300s")
+    except Exception as e:
+        logger.error("News sentiment scrape: failed — %s", e)
+
+
+def _task_strategy_assignment() -> None:
+    """Re-evaluate strategy assignments for all active tickers (weekly).
+
+    Uses StrategySelector to pick the best strategy class per ticker
+    based on personality profile and in-sample backtesting. Persists
+    results to strategy_assignment table.
+    """
+    import pandas as pd
+    from sqlalchemy import select, text
+
+    from market.analysis.profiling import InstrumentProfiler
+    from market.analysis.strategy_selector import StrategySelector
+    from market.db.engine import get_sessionmaker
+    from market.db.models import InstrumentMaster, OHLCV
+
+    session = get_sessionmaker()()
+    try:
+        rows = session.execute(
+            select(InstrumentMaster.ticker).where(
+                InstrumentMaster.asset_class == "equity",
+                InstrumentMaster.trading_status == "active",
+            ).order_by(InstrumentMaster.ticker)
+        ).fetchall()
+        tickers = [r[0] for r in rows]
+        logger.info("Strategy assignment: %d tickers to evaluate", len(tickers))
+
+        profiler = InstrumentProfiler()
+        selector = StrategySelector()
+
+        # Load IHSG for beta calculation
+        ihsg_df = pd.read_sql(
+            "SELECT timestamp, close FROM ohlcv WHERE ticker='^JKSE' "
+            "AND timeframe='1d' ORDER BY timestamp",
+            session.connection(),
+            parse_dates=["timestamp"],
+        )
+        if not ihsg_df.empty:
+            ihsg_df = ihsg_df.set_index("timestamp")
+
+        assigned = 0
+        for ticker in tickers:
+            try:
+                df = pd.read_sql(
+                    text("SELECT timestamp, open, high, low, close, volume "
+                         "FROM ohlcv WHERE ticker=:t AND timeframe='1d' "
+                         "ORDER BY timestamp"),
+                    session.connection(),
+                    params={"t": ticker},
+                    parse_dates=["timestamp"],
+                )
+                if df.empty or len(df) < 100:
+                    continue
+                df = df.set_index("timestamp")
+
+                profile = profiler.profile(ticker, df, ihsg_df)
+                result = selector.select(ticker, df["close"].astype(float), profile)
+                selector.persist_assignment(result, get_sessionmaker)
+                assigned += 1
+            except Exception as e:
+                logger.debug("Strategy assignment failed for %s: %s", ticker, e)
+
+        session.commit()
+        logger.info("Strategy assignment complete: %d/%d tickers assigned", assigned, len(tickers))
+    finally:
+        session.close()
+
+
+def _task_fetch_fundamental_quarterly() -> None:
+    """Fetch quarterly fundamental history from yfinance (monthly).
+
+    yfinance provides ~8 quarters of historical data. Running monthly
+    ensures we capture new quarters as they're reported. Fetches ALL
+    active IDX tickers (100+) including banking-specific metrics
+    (NPL, CAR, LDR, NIM).
+    """
+    import subprocess
+    import sys
+
+    logger.info("Quarterly fundamental fetch: starting...")
+
+    try:
+        result = subprocess.run(
+            [sys.executable, "scripts/backfill_fundamental_quarterly.py"],
+            capture_output=True,
+            text=True,
+            timeout=3600,
+        )
+        if result.returncode == 0:
+            logger.info("Quarterly fundamental fetch: completed successfully")
+            if result.stdout:
+                for line in result.stdout.strip().split("\n")[-5:]:
+                    logger.info("  %s", line)
+        else:
+            logger.warning("Quarterly fundamental fetch: exited with code %d", result.returncode)
+            if result.stderr:
+                logger.debug("stderr: %s", result.stderr[:500])
+    except subprocess.TimeoutExpired:
+        logger.warning("Quarterly fundamental fetch: timed out after 3600s")
+    except Exception as e:
+        logger.error("Quarterly fundamental fetch: failed — %s", e)
+
+
+def _task_fetch_macro_fred() -> None:
+    """Fetch Indonesia macro data from FRED (monthly).
+
+    FRED provides:
+    - INTDSBIDM193N: Indonesia Interest Rate (BI Rate) — monthly
+    - IDNCPIALLMINMEI: Indonesia CPI All Items — monthly
+    - NGDPRXDCID: Indonesia Real GDP — annual
+
+    Also fetches global macro from yfinance (US10Y, VIX, Gold, Oil,
+    USD/IDR, DXY) with full historical backfill instead of just
+    the last 5 days.
+
+    Runs the fetch_macro_all.py script as a subprocess.
+    """
+    import subprocess
+    import sys
+
+    logger.info("FRED macro fetch: starting...")
+
+    try:
+        result = subprocess.run(
+            [sys.executable, "scripts/fetch_macro_all.py"],
+            capture_output=True,
+            text=True,
+            timeout=600,
+        )
+        if result.returncode == 0:
+            logger.info("FRED macro fetch: completed successfully")
+            if result.stdout:
+                for line in result.stdout.strip().split("\n")[-5:]:
+                    logger.info("  %s", line)
+        else:
+            logger.warning("FRED macro fetch: exited with code %d", result.returncode)
+            if result.stderr:
+                logger.debug("stderr: %s", result.stderr[:500])
+    except subprocess.TimeoutExpired:
+        logger.warning("FRED macro fetch: timed out after 600s")
+    except Exception as e:
+        logger.error("FRED macro fetch: failed — %s", e)
 
 
 def register_default_tasks(scheduler: DailyScheduler) -> None:
@@ -332,6 +514,10 @@ def register_default_tasks(scheduler: DailyScheduler) -> None:
         19:00  generate_reports  — daily reports
         19:30  export_parquet    — backup DB to parquet + WAL checkpoint (ONCE)
         Sat 10:00 fetch_fundamental — weekly fundamental snapshot from yfinance
+        Sat 11:00 strategy_assignment — weekly strategy re-evaluation per ticker
+        Sat 12:00 fetch_fundamental_quarterly — monthly quarterly fundamentals (100+ tickers)
+        Sat 12:30 fetch_macro_fred    — monthly FRED macro (BI Rate, CPI, GDP + global backfill)
+        20:00  scrape_news       — RSS news sentiment scrape (daily)
 
     Decoupled event flow (fetch does NOT auto-trigger recompute/export):
         PHASE 1: fetch_eod/global/macro → data.fetch.stored (no auto-recompute)
@@ -369,6 +555,27 @@ def register_default_tasks(scheduler: DailyScheduler) -> None:
         func=_task_fetch_fundamental,
         schedule="weekly",
         time_of_day="10:00",
+    )
+    scheduler.register_task(
+        task_id="strategy_assignment",
+        name="Weekly strategy assignment re-evaluation",
+        func=_task_strategy_assignment,
+        schedule="weekly",
+        time_of_day="11:00",
+    )
+    scheduler.register_task(
+        task_id="fetch_fundamental_quarterly",
+        name="Monthly quarterly fundamental history (yfinance, 100+ tickers)",
+        func=_task_fetch_fundamental_quarterly,
+        schedule="monthly",
+        time_of_day="12:00",
+    )
+    scheduler.register_task(
+        task_id="fetch_macro_fred",
+        name="Monthly FRED macro data (BI Rate, CPI, GDP + global macro backfill)",
+        func=_task_fetch_macro_fred,
+        schedule="monthly",
+        time_of_day="12:30",
     )
     scheduler.register_task(
         task_id="health_check",
@@ -439,4 +646,11 @@ def register_default_tasks(scheduler: DailyScheduler) -> None:
         func=_task_export_parquet,
         schedule="daily",
         time_of_day="19:30",
+    )
+    scheduler.register_task(
+        task_id="scrape_news",
+        name="RSS news sentiment scrape (daily)",
+        func=_task_scrape_news,
+        schedule="daily",
+        time_of_day="20:00",
     )

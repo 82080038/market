@@ -966,60 +966,52 @@ class PredictionEngine:
         # based on sector sensitivity
         exog_rationale = ""
         try:
-            import sqlite3
             from market.config import settings as _settings
-            _db = _settings.db_path
-            if _db:
-                _conn = sqlite3.connect(_db)
-                
+            from market.db.raw import get_raw_connection
+
+            _as_of_dt = pd.Timestamp(as_of)
+            _param_style = "%s" if _settings.db_backend == "postgresql" else "?"
+
+            with get_raw_connection() as _conn:
                 # USD/IDR 5-day return as of prediction date (no look-ahead)
-                _as_of_dt = pd.Timestamp(as_of)
-                _fx = pd.read_sql(
-                    "SELECT timestamp as date, close FROM ohlcv WHERE ticker='IDR=X' AND timestamp <= ? ORDER BY timestamp",
-                    _conn,
-                    params=(_as_of_dt.strftime("%Y-%m-%d"),),
+                _fx_sql = (
+                    "SELECT timestamp as date, close FROM ohlcv "
+                    "WHERE ticker='IDR=X' AND timestamp <= " + _param_style + " ORDER BY timestamp"
                 )
+                _fx = pd.read_sql(_fx_sql, _conn, params=(_as_of_dt.strftime("%Y-%m-%d"),))
                 if not _fx.empty and len(_fx) > 5:
                     _fx["date"] = pd.to_datetime(_fx["date"])
                     _fx = _fx.set_index("date")
                     _fx_ret5 = _fx["close"].pct_change(5).iloc[-1]
-                    # IDR weakening (positive return) → bullish for exporters (Basic Materials)
-                    # IDR strengthening (negative return) → bullish for importers (Consumer)
                     exog_adjust = 0.0
                     if ticker in ("ANTM.JK", "MDKA.JK", "INCO.JK", "KRAS.JK", "APLI.JK", "UNTR.JK"):
-                        # Exporters: IDR weak → revenue up (reduced multiplier)
                         exog_adjust = _fx_ret5 * 1.5
                     elif ticker in ("BBCA.JK", "BBRI.JK", "BCIC.JK"):
-                        # Banks: IDR weak → foreign outflow risk
                         exog_adjust = -_fx_ret5 * 1.0
                     elif ticker == "UNVR.JK":
-                        # Importer: IDR strong → cost down
                         exog_adjust = -_fx_ret5 * 1.0
                     if abs(exog_adjust) > 0.01:
                         predicted_price *= (1.0 + exog_adjust / 100.0)
                         ret_pct = (predicted_price - price) / price * 100
                         direction = "up" if ret_pct > direction_threshold else "down" if ret_pct < -direction_threshold else "flat"
                         exog_rationale = f" FX5d={_fx_ret5:.2%}→adj={exog_adjust:+.2f}%"
-                
+
                 # Shanghai Composite 5-day return as of prediction date — China demand proxy
-                _sh = pd.read_sql(
-                    "SELECT timestamp as date, close FROM ohlcv WHERE ticker='000001.SS' AND timestamp <= ? ORDER BY timestamp",
-                    _conn,
-                    params=(_as_of_dt.strftime("%Y-%m-%d"),),
+                _sh_sql = (
+                    "SELECT timestamp as date, close FROM ohlcv "
+                    "WHERE ticker='000001.SS' AND timestamp <= " + _param_style + " ORDER BY timestamp"
                 )
+                _sh = pd.read_sql(_sh_sql, _conn, params=(_as_of_dt.strftime("%Y-%m-%d"),))
                 if not _sh.empty and len(_sh) > 5 and ticker in ("ANTM.JK", "MDKA.JK", "INCO.JK", "KRAS.JK", "APLI.JK"):
                     _sh["date"] = pd.to_datetime(_sh["date"])
                     _sh = _sh.set_index("date")
                     _sh_ret5 = _sh["close"].pct_change(5).iloc[-1]
-                    # Shanghai up → China demand strong → bullish for commodities
-                    sh_adjust = _sh_ret5 * 1.5  # scale: 1% Shanghai move → 1.5% price adj
+                    sh_adjust = _sh_ret5 * 1.5
                     if abs(sh_adjust) > 0.01:
                         predicted_price *= (1.0 + sh_adjust / 100.0)
                         ret_pct = (predicted_price - price) / price * 100
                         direction = "up" if ret_pct > direction_threshold else "down" if ret_pct < -direction_threshold else "flat"
                         exog_rationale += f" SH5d={_sh_ret5:.2%}→adj={sh_adjust:+.2f}%"
-                
-                _conn.close()
         except Exception:
             pass
 

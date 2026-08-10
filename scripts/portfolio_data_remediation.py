@@ -63,7 +63,6 @@ import argparse
 import json
 import logging
 import os
-import sqlite3
 import sys
 import time
 import warnings
@@ -229,25 +228,30 @@ class RemediationReport:
 # ═══════════════════════════════════════════════════════════════════════════
 
 
-def open_db(db_path: str) -> sqlite3.Connection:
-    """Buka koneksi SQLite read-only dengan pragma performa memori-efisien.
+def open_db(db_path: str) -> object:
+    """Buka koneksi DB dengan pragma performa memori-efisien (SQLite-only).
 
-    Menggunakan URI read-only mencegah penulisan tak sengaja ke DB 9.23 GB.
-    mmap_size memetakan bagian DB ke memory-mapped I/O (mengurangi pressure
-    page cache OS); cache_size negatif = kilobyte.
+    Untuk SQLite: URI read-only dengan PRAGMA mmap/cache.
+    Untuk PostgreSQL: delegasi ke ``get_raw_connection()``.
     """
+    from market.config import settings as _settings
+
+    if _settings.db_backend == "postgresql":
+        from market.db.raw import get_raw_connection
+        return get_raw_connection().__enter__()
+
+    import sqlite3
     path = Path(db_path).resolve()
     if not path.exists():
         raise FileNotFoundError(f"Database tidak ditemukan: {path}")
-    # URI read-only
     conn = sqlite3.connect(f"file:{path.as_posix()}?mode=ro", uri=True)
     try:
         conn.execute("PRAGMA journal_mode=WAL")
     except sqlite3.OperationalError:
-        pass  # read-only DB tidak bisa set WAL
+        pass
     conn.execute("PRAGMA synchronous=NORMAL")
-    conn.execute("PRAGMA cache_size=-262144")  # ~256 MB page cache
-    conn.execute("PRAGMA mmap_size=268435456")  # 256 MB mmap
+    conn.execute("PRAGMA cache_size=-262144")
+    conn.execute("PRAGMA mmap_size=268435456")
     conn.execute("PRAGMA temp_store=MEMORY")
     conn.execute("PRAGMA busy_timeout=5000")
     return conn
@@ -283,17 +287,19 @@ def json_safe(obj: Any) -> Any:
 # ═══════════════════════════════════════════════════════════════════════════
 
 
-def load_ohlcv_sqlite(conn: sqlite3.Connection, ticker: str,
+def load_ohlcv_sqlite(conn: object, ticker: str,
                       timeframe: str = "1d") -> pd.DataFrame:
     """Muat OHLCV satu ticker dari DB (ringan, ~6.5k baris).
 
     Index = DatetimeIndex (timestamp). Hanya kolom yang dibutuhkan untuk
     menghemat memori.
     """
+    from market.config import settings as _settings
+    _ph = "%s" if _settings.db_backend == "postgresql" else "?"
     sql = (
-        "SELECT timestamp, open, high, low, close, volume "
-        "FROM ohlcv WHERE ticker = ? AND timeframe = ? "
-        "ORDER BY timestamp"
+        f"SELECT timestamp, open, high, low, close, volume "
+        f"FROM ohlcv WHERE ticker = {_ph} AND timeframe = {_ph} "
+        f"ORDER BY timestamp"
     )
     df = pd.read_sql_query(
         sql, conn, params=(ticker, timeframe),
@@ -309,7 +315,7 @@ def load_ohlcv_sqlite(conn: sqlite3.Connection, ticker: str,
     return df
 
 
-def load_benchmark_sqlite(conn: sqlite3.Connection,
+def load_benchmark_sqlite(conn: object,
                           ticker: str = "^JKSE") -> pd.Series:
     """Muat return benchmark (IHSG) dari ohlcv."""
     df = load_ohlcv_sqlite(conn, ticker)
@@ -319,7 +325,7 @@ def load_benchmark_sqlite(conn: sqlite3.Connection,
 
 
 def load_technical_features_sqlite(
-    conn: sqlite3.Connection, ticker: str,
+    conn: object, ticker: str,
     indicators: list[str] | None = None,
 ) -> pd.DataFrame:
     """Pivot technical_indicators (long-format) → wide DataFrame per ticker.
@@ -335,10 +341,13 @@ def load_technical_features_sqlite(
     if indicators is None:
         indicators = REGIME_INVARIANT_INDICATORS
 
-    placeholders = ",".join("?" for _ in indicators)
+    from market.config import settings as _settings
+    _ph = "%s" if _settings.db_backend == "postgresql" else "?"
+
+    placeholders = ",".join(_ph for _ in indicators)
     sql = (
         f"SELECT date, indicator, value FROM technical_indicators "
-        f"WHERE ticker = ? AND indicator IN ({placeholders}) "
+        f"WHERE ticker = {_ph} AND indicator IN ({placeholders}) "
         f"ORDER BY date"
     )
     params: tuple[Any, ...] = (ticker, *indicators)
@@ -354,14 +363,16 @@ def load_technical_features_sqlite(
     return wide
 
 
-def get_instrument_master_row(conn: sqlite3.Connection,
+def get_instrument_master_row(conn: object,
                               ticker: str) -> dict[str, Any]:
     """Ambil baris instrument_master untuk satu ticker."""
+    from market.config import settings as _settings
+    _ph = "%s" if _settings.db_backend == "postgresql" else "?"
     cur = conn.cursor()
     cur.execute(
-        "SELECT ticker, sector, subsector, market_cap, listed_shares, "
-        "tradeable_shares, free_float, name "
-        "FROM instrument_master WHERE ticker = ?",
+        f"SELECT ticker, sector, subsector, market_cap, listed_shares, "
+        f"tradeable_shares, free_float, name "
+        f"FROM instrument_master WHERE ticker = {_ph}",
         (ticker,),
     )
     row = cur.fetchone()
@@ -372,7 +383,7 @@ def get_instrument_master_row(conn: sqlite3.Connection,
     return dict(zip(cols, row))
 
 
-def get_latest_listed_shares(conn: sqlite3.Connection,
+def get_latest_listed_shares(conn: object,
                              ticker: str) -> tuple[float | None, str]:
     """Ambil listed_shares terbaru untuk ticker.
 
@@ -382,11 +393,13 @@ def get_latest_listed_shares(conn: sqlite3.Connection,
     Returns:
         (listed_shares, source)
     """
+    from market.config import settings as _settings
+    _ph = "%s" if _settings.db_backend == "postgresql" else "?"
     cur = conn.cursor()
     cur.execute(
-        "SELECT listed_shares FROM daily_trading_stats "
-        "WHERE ticker = ? AND listed_shares IS NOT NULL "
-        "ORDER BY date DESC LIMIT 1",
+        f"SELECT listed_shares FROM daily_trading_stats "
+        f"WHERE ticker = {_ph} AND listed_shares IS NOT NULL "
+        f"ORDER BY date DESC LIMIT 1",
         (ticker,),
     )
     row = cur.fetchone()
@@ -394,8 +407,8 @@ def get_latest_listed_shares(conn: sqlite3.Connection,
         return float(row[0]), "daily_trading_stats"
 
     cur.execute(
-        "SELECT listed_shares FROM instrument_master "
-        "WHERE ticker = ? AND listed_shares IS NOT NULL",
+        f"SELECT listed_shares FROM instrument_master "
+        f"WHERE ticker = {_ph} AND listed_shares IS NOT NULL",
         (ticker,),
     )
     row = cur.fetchone()
@@ -410,7 +423,7 @@ def get_latest_listed_shares(conn: sqlite3.Connection,
 
 
 def compute_calculated_market_cap(
-    conn: sqlite3.Connection, ticker: str, ohlcv: pd.DataFrame,
+    conn: object, ticker: str, ohlcv: pd.DataFrame,
 ) -> tuple[float, float, str]:
     """Hitung proksi calculated_market_cap = close × listed_shares.
 
@@ -507,7 +520,7 @@ def compute_stock_personality_metrics(
 
 
 def remediate_ticker(
-    conn: sqlite3.Connection, ticker: str, benchmark: pd.Series | None,
+    conn: object, ticker: str, benchmark: pd.Series | None,
 ) -> tuple[TickerRemediation, pd.DataFrame, pd.DataFrame]:
     """Jalankan Module A untuk satu ticker.
 

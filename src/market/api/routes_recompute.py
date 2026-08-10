@@ -15,14 +15,15 @@ Provides real-time BE→FE visibility for recompute_internal pipeline.
 from __future__ import annotations
 
 import asyncio
-import sqlite3
 from datetime import UTC, datetime
 from typing import Any
 
 from fastapi import APIRouter, WebSocket, WebSocketDisconnect
 from fastapi.responses import HTMLResponse, JSONResponse
+from sqlalchemy import inspect, text
 
-from market.db.engine import get_sessionmaker
+from market.api._shared import to_jakarta
+from market.db.engine import get_engine, get_sessionmaker
 from market.data.recompute_internal import run_all_recompute
 
 router = APIRouter(tags=["recompute"])
@@ -37,20 +38,17 @@ async def recompute_dashboard() -> str:
 @router.get("/api/recompute/stats")
 async def recompute_stats() -> JSONResponse:
     """Get current DB table row counts for before/after comparison."""
-    conn = sqlite3.connect("data/market_research.db")
-    c = conn.cursor()
-    c.execute(
-        "SELECT name FROM sqlite_master "
-        "WHERE type='table' AND name NOT LIKE 'sqlite_%' AND name NOT LIKE 'alembic%' "
-        "ORDER BY name"
+    engine = get_engine()
+    inspector = inspect(engine)
+    tables = sorted(
+        t for t in inspector.get_table_names()
+        if not t.startswith("sqlite_") and not t.startswith("alembic")
     )
-    tables = [r[0] for r in c.fetchall()]
     stats: dict[str, int] = {}
-    for t in tables:
-        c.execute(f"SELECT COUNT(*) FROM [{t}]")
-        stats[t] = c.fetchone()[0]
-    conn.close()
-    return JSONResponse({"tables": stats, "timestamp": datetime.now(UTC).isoformat()})
+    with engine.connect() as conn:
+        for t in tables:
+            stats[t] = conn.execute(text(f"SELECT COUNT(*) FROM \"{t}\"")).scalar() or 0
+    return JSONResponse({"tables": stats, "timestamp": to_jakarta(datetime.now(UTC))})
 
 
 @router.websocket("/ws/recompute")
@@ -70,7 +68,7 @@ async def ws_recompute(websocket: WebSocket) -> None:
         "type": "status",
         "status": "starting",
         "mode": mode,
-        "timestamp": datetime.now(UTC).isoformat(),
+        "timestamp": to_jakarta(datetime.now(UTC)),
     })
 
     async def progress_cb(step: str, current: int, total: int, message: str) -> None:
@@ -81,7 +79,7 @@ async def ws_recompute(websocket: WebSocket) -> None:
             "total": total,
             "message": message,
             "mode": mode,
-            "timestamp": datetime.now(UTC).isoformat(),
+            "timestamp": to_jakarta(datetime.now(UTC)),
         }
         try:
             await websocket.send_json(msg)
@@ -111,7 +109,7 @@ async def ws_recompute(websocket: WebSocket) -> None:
             "type": "status",
             "status": "running",
             "mode": mode,
-            "timestamp": datetime.now(UTC).isoformat(),
+            "timestamp": to_jakarta(datetime.now(UTC)),
         })
 
         results = await loop.run_in_executor(None, _run_recompute)
@@ -119,7 +117,7 @@ async def ws_recompute(websocket: WebSocket) -> None:
         await websocket.send_json({
             "type": "complete",
             "results": results,
-            "timestamp": datetime.now(UTC).isoformat(),
+            "timestamp": to_jakarta(datetime.now(UTC)),
         })
     except WebSocketDisconnect:
         pass
@@ -127,7 +125,7 @@ async def ws_recompute(websocket: WebSocket) -> None:
         await websocket.send_json({
             "type": "error",
             "message": str(exc),
-            "timestamp": datetime.now(UTC).isoformat(),
+            "timestamp": to_jakarta(datetime.now(UTC)),
         })
     finally:
         try:

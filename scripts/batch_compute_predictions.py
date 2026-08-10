@@ -17,7 +17,6 @@ from __future__ import annotations
 import argparse
 import json
 import logging
-import sqlite3
 import sys
 import time
 from pathlib import Path
@@ -35,11 +34,13 @@ logging.basicConfig(
 logger = logging.getLogger(__name__)
 
 
-def load_ohlcv_from_db(conn: sqlite3.Connection, ticker: str) -> pd.DataFrame:
+def load_ohlcv_from_db(conn: object, ticker: str) -> pd.DataFrame:
     """Load OHLCV data for a ticker from DB."""
+    from market.config import settings as _settings
+    _ph = "%s" if _settings.db_backend == "postgresql" else "?"
     df = pd.read_sql_query(
-        "SELECT timestamp, open, high, low, close, volume, adjusted_close "
-        "FROM ohlcv WHERE ticker=? AND timeframe='1d' ORDER BY timestamp",
+        f"SELECT timestamp, open, high, low, close, volume, adjusted_close "
+        f"FROM ohlcv WHERE ticker={_ph} AND timeframe='1d' ORDER BY timestamp",
         conn, params=(ticker,), parse_dates=["timestamp"],
     )
     if df.empty:
@@ -165,23 +166,45 @@ def compute_prediction(
 
 
 def save_to_db(
-    conn: sqlite3.Connection,
+    conn: object,
     ticker: str,
     ml: dict,
     pred: dict,
 ) -> None:
     """Save ML signals + prediction to stock_prediction + stock_personality."""
     from datetime import datetime
+    from market.config import settings as _settings
+    _ph = "%s" if _settings.db_backend == "postgresql" else "?"
+    _pg = _settings.db_backend == "postgresql"
     now = datetime.now().isoformat()
 
-    # Write to stock_prediction (new split table)
-    conn.execute("""
-        INSERT OR REPLACE INTO stock_prediction
-            (ticker, predicted_direction, predicted_price, predicted_return_pct,
-             prediction_confidence, ml_signal, multifactor_signal,
-             composite_signal, factors_summary, prediction_updated_at)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-    """, (
+    if _pg:
+        _upsert = (
+            "INSERT INTO stock_prediction "
+            "(ticker, predicted_direction, predicted_price, predicted_return_pct, "
+            " prediction_confidence, ml_signal, multifactor_signal, "
+            " composite_signal, factors_summary, prediction_updated_at) "
+            f"VALUES ({_ph}, {_ph}, {_ph}, {_ph}, {_ph}, {_ph}, {_ph}, {_ph}, {_ph}, {_ph}) "
+            "ON CONFLICT (ticker) DO UPDATE SET "
+            " predicted_direction=EXCLUDED.predicted_direction, "
+            " predicted_price=EXCLUDED.predicted_price, "
+            " predicted_return_pct=EXCLUDED.predicted_return_pct, "
+            " prediction_confidence=EXCLUDED.prediction_confidence, "
+            " ml_signal=EXCLUDED.ml_signal, "
+            " multifactor_signal=EXCLUDED.multifactor_signal, "
+            " composite_signal=EXCLUDED.composite_signal, "
+            " factors_summary=EXCLUDED.factors_summary, "
+            " prediction_updated_at=EXCLUDED.prediction_updated_at"
+        )
+    else:
+        _upsert = (
+            "INSERT OR REPLACE INTO stock_prediction "
+            "(ticker, predicted_direction, predicted_price, predicted_return_pct, "
+            " prediction_confidence, ml_signal, multifactor_signal, "
+            " composite_signal, factors_summary, prediction_updated_at) "
+            f"VALUES ({_ph}, {_ph}, {_ph}, {_ph}, {_ph}, {_ph}, {_ph}, {_ph}, {_ph}, {_ph})"
+        )
+    conn.execute(_upsert, (
         ticker,
         pred["predicted_direction"],
         pred["predicted_price"],
@@ -195,30 +218,31 @@ def save_to_db(
     ))
 
     # Also update stock_personality for backward compat
-    conn.execute("""
-        UPDATE stock_personality SET
-            ml_signal = ?,
-            multifactor_signal = ?,
-            composite_signal = ?,
-            factors_summary = COALESCE(?, factors_summary),
-            predicted_direction = ?,
-            predicted_price = ?,
-            predicted_return_pct = ?,
-            prediction_confidence = ?,
-            prediction_updated_at = ?
-        WHERE ticker = ?
-    """, (
-        ml["ml_signal"],
-        ml["multifactor_signal"],
-        ml["composite_signal"],
-        ml["top_factors"],
-        pred["predicted_direction"],
-        pred["predicted_price"],
-        pred["predicted_return_pct"],
-        pred["prediction_confidence"],
-        now,
-        ticker,
-    ))
+    conn.execute(
+        f"UPDATE stock_personality SET "
+        f" ml_signal = {_ph}, "
+        f" multifactor_signal = {_ph}, "
+        f" composite_signal = {_ph}, "
+        f" factors_summary = COALESCE({_ph}, factors_summary), "
+        f" predicted_direction = {_ph}, "
+        f" predicted_price = {_ph}, "
+        f" predicted_return_pct = {_ph}, "
+        f" prediction_confidence = {_ph}, "
+        f" prediction_updated_at = {_ph} "
+        f"WHERE ticker = {_ph}",
+        (
+            ml["ml_signal"],
+            ml["multifactor_signal"],
+            ml["composite_signal"],
+            ml["top_factors"],
+            pred["predicted_direction"],
+            pred["predicted_price"],
+            pred["predicted_return_pct"],
+            pred["prediction_confidence"],
+            now,
+            ticker,
+        ),
+    )
     conn.commit()
 
 
@@ -233,7 +257,13 @@ def main() -> None:
     args = parser.parse_args()
 
     db_path = args.db
-    conn_ro = sqlite3.connect(f"file:{db_path}?mode=ro", uri=True)
+    from market.config import settings as _settings
+    if _settings.db_backend == "postgresql":
+        from market.db.raw import get_raw_connection
+        conn_ro = get_raw_connection().__enter__()
+    else:
+        import sqlite3
+        conn_ro = sqlite3.connect(f"file:{db_path}?mode=ro", uri=True)
 
     # Get tickers
     if args.tickers:
@@ -272,7 +302,11 @@ def main() -> None:
     logger.info("")
 
     # Writable connection
-    conn_rw = sqlite3.connect(db_path)
+    if _settings.db_backend == "postgresql":
+        conn_rw = get_raw_connection().__enter__()
+    else:
+        import sqlite3
+        conn_rw = sqlite3.connect(db_path)
 
     # ModelRegistry: track model versions for each ticker
     try:

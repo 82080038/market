@@ -1,4 +1,8 @@
-"""SQLAlchemy database engine and session management."""
+"""SQLAlchemy database engine and session management.
+
+Supports both SQLite (default) and PostgreSQL (when DATABASE_URL is set).
+Backend is determined by settings.db_backend.
+"""
 
 from __future__ import annotations
 
@@ -18,7 +22,7 @@ _engine: Engine | None = None
 _sessionmaker: sessionmaker[Session] | None = None
 
 
-def _make_engine(db_path: str) -> Engine:
+def _make_sqlite_engine(db_path: str) -> Engine:
     """Create a SQLite WAL engine with pragmas for performance."""
     url = f"sqlite:///{db_path}"
     engine = create_engine(
@@ -40,11 +44,30 @@ def _make_engine(db_path: str) -> Engine:
     return engine
 
 
+def _make_postgresql_engine(url: str) -> Engine:
+    """Create a PostgreSQL engine via psycopg2."""
+    engine = create_engine(
+        url,
+        echo=False,
+        future=True,
+        pool_pre_ping=True,
+        pool_size=10,
+        max_overflow=20,
+    )
+    return engine
+
+
 def get_engine() -> Engine:
-    """Return the singleton SQLAlchemy engine for the active environment."""
+    """Return the singleton SQLAlchemy engine for the active environment.
+
+    Uses PostgreSQL if settings.database_url is set, otherwise SQLite.
+    """
     global _engine
     if _engine is None:
-        _engine = _make_engine(str(settings.resolved_db_path))
+        if settings.db_backend == "postgresql":
+            _engine = _make_postgresql_engine(settings.resolved_database_url)
+        else:
+            _engine = _make_sqlite_engine(str(settings.resolved_db_path))
     return _engine
 
 

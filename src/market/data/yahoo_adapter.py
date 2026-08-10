@@ -68,6 +68,18 @@ class YahooFinanceAdapter:
         if end is None:
             end = date.today() - timedelta(days=1)
 
+        # For daily bars, skip if the ticker's market is still open
+        # (prevents storing intraday prices as daily close)
+        if interval == "1d":
+            from market.data.timestamp_validation import TICKER_MIC, is_market_open
+            mic = TICKER_MIC.get(ticker, market_mic)
+            if mic and is_market_open(mic):
+                logger.warning(
+                    "Skipping %s (market %s still open) — daily close not yet final",
+                    ticker, mic,
+                )
+                return []
+
         try:
             df = yf.download(
                 ticker,

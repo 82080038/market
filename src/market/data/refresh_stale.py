@@ -13,7 +13,6 @@ Usage:
 from __future__ import annotations
 
 import logging
-import sqlite3
 from dataclasses import dataclass, field
 from datetime import datetime, timedelta
 from pathlib import Path
@@ -52,29 +51,31 @@ class RefreshReport:
         return self.total_stale == 0
 
 
-def get_excluded_tickers(conn: sqlite3.Connection) -> list[str]:
+def get_excluded_tickers(conn: object) -> list[str]:
     """Get tickers that should NOT be refreshed (suspended/delisted/inactive)."""
-    rows = conn.execute("""
-        SELECT ticker FROM instrument_master
-        WHERE is_active = 0
-           OR delisting_date IS NOT NULL
-           OR suspension_date IS NOT NULL
-    """).fetchall()
+    from market.config import settings
+    _ph = "%s" if settings.db_backend == "postgresql" else "?"
+    _now = datetime.now().strftime("%Y-%m-%d")
+
+    rows = conn.execute(
+        "SELECT ticker FROM instrument_master "
+        "WHERE is_active = 0 OR delisting_date IS NOT NULL OR suspension_date IS NOT NULL"
+    ).fetchall()
     excluded = [r[0] for r in rows]
-    # Also check trading_suspensions table for currently suspended
     try:
-        susp_rows = conn.execute("""
-            SELECT ticker FROM trading_suspensions
-            WHERE resume_date IS NULL OR resume_date > date('now')
-        """).fetchall()
+        susp_rows = conn.execute(
+            f"SELECT ticker FROM trading_suspensions "
+            f"WHERE resume_date IS NULL OR resume_date > {_ph}",
+            (_now,),
+        ).fetchall()
         excluded.extend(r[0] for r in susp_rows)
-    except sqlite3.OperationalError:
+    except Exception:
         pass
     return list(set(excluded))
 
 
 def detect_stale_tables(
-    conn: sqlite3.Connection,
+    conn: object,
     threshold_hours: int = STALE_THRESHOLD_HOURS,
 ) -> list[StaleTableReport]:
     """Detect tables with stale data (not updated in >threshold_hours).
@@ -98,11 +99,13 @@ def detect_stale_tables(
         ("data_watermark", "last_updated"),
     ]
 
+    from market.config import settings
+    _ph = "%s" if settings.db_backend == "postgresql" else "?"
+
     for table, ts_col in table_configs:
         try:
-            # Check table exists
             conn.execute(f"SELECT 1 FROM {table} LIMIT 1")
-        except sqlite3.OperationalError:
+        except Exception:
             continue
 
         try:
@@ -119,7 +122,7 @@ def detect_stale_tables(
             ).fetchone()[0]
 
             stale_count = conn.execute(
-                f"SELECT COUNT(*) FROM {table} WHERE {ts_col} IS NULL OR {ts_col} < ?",
+                f"SELECT COUNT(*) FROM {table} WHERE {ts_col} IS NULL OR {ts_col} < {_ph}",
                 (cutoff,),
             ).fetchone()[0]
 
@@ -133,7 +136,7 @@ def detect_stale_tables(
                 latest_update=str(latest) if latest else None,
                 is_stale=is_stale,
             ))
-        except sqlite3.OperationalError as e:
+        except Exception as e:
             reports.append(StaleTableReport(
                 table_name=table, timestamp_column=ts_col,
                 total_rows=0, stale_rows=0, latest_update=None,
@@ -144,23 +147,27 @@ def detect_stale_tables(
 
 
 def _refresh_stock_personality(
-    conn: sqlite3.Connection,
+    conn: object,
     excluded_tickers: list[str],
 ) -> tuple[int, str]:
     """Refresh stale rows in stock_personality by recomputing from OHLCV."""
     from market.data.recompute_internal import recompute_technical_indicators
 
-    excluded_placeholder = ",".join("?" * len(excluded_tickers)) if excluded_tickers else "''"
+    from market.config import settings
+    _ph = "%s" if settings.db_backend == "postgresql" else "?"
+    _yesterday = (datetime.now() - timedelta(days=1)).strftime("%Y-%m-%d %H:%M:%S")
+
+    excluded_placeholder = ",".join(_ph * len(excluded_tickers)) if excluded_tickers else "''"
     stale_tickers = conn.execute(f"""
         SELECT sp.ticker
         FROM stock_personality sp
         JOIN instrument_master im ON sp.ticker = im.ticker
-        WHERE (sp.updated_at IS NULL OR sp.updated_at < datetime('now', '-1 day'))
+        WHERE (sp.updated_at IS NULL OR sp.updated_at < {_ph})
         AND im.is_active = 1
         AND im.delisting_date IS NULL
         AND sp.ticker NOT IN ({excluded_placeholder})
         LIMIT 50
-    """, excluded_tickers if excluded_tickers else [""]).fetchall()
+    """, [_yesterday] + (excluded_tickers if excluded_tickers else [""])).fetchall()
 
     if not stale_tickers:
         return 0, "no stale tickers found"
@@ -177,20 +184,24 @@ def _refresh_stock_personality(
 
 
 def _refresh_stock_prediction(
-    conn: sqlite3.Connection,
+    conn: object,
     excluded_tickers: list[str],
 ) -> tuple[int, str]:
     """Refresh stale predictions by running batch compute on stale tickers."""
+    from market.config import settings
+    _ph = "%s" if settings.db_backend == "postgresql" else "?"
+    _yesterday = (datetime.now() - timedelta(days=1)).strftime("%Y-%m-%d %H:%M:%S")
+
     if excluded_tickers:
-        excluded_placeholder = ",".join("?" * len(excluded_tickers))
-        params: list[str] = list(excluded_tickers)
+        excluded_placeholder = ",".join(_ph * len(excluded_tickers))
+        params: list[str] = [_yesterday] + list(excluded_tickers)
     else:
         excluded_placeholder = "''"
-        params = []
+        params = [_yesterday]
     stale = conn.execute(f"""
         SELECT ticker FROM stock_prediction
         WHERE (prediction_updated_at IS NULL
-           OR prediction_updated_at < datetime('now', '-1 day'))
+           OR prediction_updated_at < {_ph})
         AND ticker NOT IN ({excluded_placeholder})
         LIMIT 50
     """, params).fetchall()
@@ -203,7 +214,7 @@ def _refresh_stock_prediction(
     now = datetime.now().isoformat()
     for (ticker,) in stale:
         conn.execute(
-            "UPDATE stock_prediction SET prediction_updated_at = ? WHERE ticker = ?",
+            f"UPDATE stock_prediction SET prediction_updated_at = {_ph} WHERE ticker = {_ph}",
             (now, ticker),
         )
     conn.commit()
@@ -211,7 +222,7 @@ def _refresh_stock_prediction(
 
 
 def _refresh_technical_indicators(
-    conn: sqlite3.Connection,
+    conn: object,
     excluded_tickers: list[str],
 ) -> tuple[int, str]:
     """Refresh stale technical indicators by recomputing from OHLCV."""
@@ -224,8 +235,11 @@ def _refresh_technical_indicators(
     if not latest_ohlcv:
         return 0, "no OHLCV data"
 
+    from market.config import settings
+    _ph = "%s" if settings.db_backend == "postgresql" else "?"
+
     if excluded_tickers:
-        excluded_placeholder = ",".join("?" * len(excluded_tickers))
+        excluded_placeholder = ",".join(_ph * len(excluded_tickers))
         params = [latest_ohlcv, latest_ohlcv] + list(excluded_tickers)
     else:
         excluded_placeholder = "''"
@@ -234,12 +248,12 @@ def _refresh_technical_indicators(
         SELECT DISTINCT tiw.ticker
         FROM technical_indicators_wide tiw
         JOIN instrument_master im ON tiw.ticker = im.ticker
-        WHERE tiw.date < ?
+        WHERE tiw.date < {_ph}
         AND im.is_active = 1
         AND im.delisting_date IS NULL
         AND tiw.ticker NOT IN ({excluded_placeholder})
         GROUP BY tiw.ticker
-        HAVING MAX(tiw.date) < ?
+        HAVING MAX(tiw.date) < {_ph}
         LIMIT 20
     """, params).fetchall()
 
@@ -272,14 +286,29 @@ def refresh_stale_data(
     Returns:
         RefreshReport with details.
     """
-    report = RefreshReport()
-    path = Path(db_path).resolve()
-    if not path.exists():
-        raise FileNotFoundError(f"Database not found: {path}")
+    from market.config import settings
 
-    conn = sqlite3.connect(str(path))
-    conn.execute("PRAGMA journal_mode=WAL")
-    conn.execute("PRAGMA synchronous=NORMAL")
+    report = RefreshReport()
+
+    if db_path and db_path != str(settings.resolved_db_path):
+        import sqlite3
+        path = Path(db_path).resolve()
+        if not path.exists():
+            raise FileNotFoundError(f"Database not found: {path}")
+        conn = sqlite3.connect(str(path))
+        _owns_conn = True
+    else:
+        from market.db.raw import get_raw_connection
+        conn_ctx = get_raw_connection()
+        conn = conn_ctx.__enter__()
+        _owns_conn = True
+
+    if settings.db_backend == "sqlite":
+        try:
+            conn.execute("PRAGMA journal_mode=WAL")
+            conn.execute("PRAGMA synchronous=NORMAL")
+        except Exception:
+            pass
 
     try:
         # Get excluded tickers (suspended/delisted)

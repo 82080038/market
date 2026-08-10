@@ -13,6 +13,7 @@ from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
+from market.api._shared import to_jakarta
 from market.db.engine import get_session
 from market.db.models import AppNotification
 
@@ -41,7 +42,7 @@ async def list_notifications(
     for r in rows:
         entry: dict[str, Any] = {
             "id": r.id,
-            "timestamp": r.timestamp.isoformat() if r.timestamp else None,
+            "timestamp": to_jakarta(r.timestamp),
             "title": r.title,
             "status": r.status,
         }
@@ -74,7 +75,7 @@ async def get_notification(
 
     result: dict[str, Any] = {
         "id": row.id,
-        "timestamp": row.timestamp.isoformat() if row.timestamp else None,
+        "timestamp": to_jakarta(row.timestamp),
         "title": row.title,
         "status": row.status,
     }
@@ -135,7 +136,7 @@ async def latest_signals(
         "found": True,
         "notification": {
             "id": row.id,
-            "timestamp": row.timestamp.isoformat() if row.timestamp else None,
+            "timestamp": to_jakarta(row.timestamp),
             "title": row.title,
             "status": row.status,
             "body": body,

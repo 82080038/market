@@ -710,25 +710,25 @@ def migrate_fear_greed(session: Session, dry_run: bool = False) -> int:
 
     count = 0
     for _, row in df.iterrows():
-        tanggal = _d(row, "tanggal")
-        if tanggal is None:
+        fg_date = _d(row, "tanggal") or _d(row, "date")
+        if fg_date is None:
             continue
 
-        nilai = float(row.get("nilai", 0))
+        fg_value = float(row.get("nilai", 0) or row.get("value", 0))
         label = _s(row, "label")
 
         existing = session.execute(
-            select(FearGreed).where(FearGreed.tanggal == tanggal)
+            select(FearGreed).where(FearGreed.date == fg_date)
         ).scalar_one_or_none()
 
         if existing is not None:
-            existing.nilai = nilai
+            existing.value = fg_value
             existing.label = label
         else:
             session.add(
                 FearGreed(
-                    tanggal=tanggal,
-                    nilai=nilai,
+                    date=fg_date,
+                    value=fg_value,
                     label=label,
                 )
             )

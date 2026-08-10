@@ -72,7 +72,6 @@ import argparse
 import json
 import logging
 import os
-import sqlite3
 import sys
 import time
 from dataclasses import dataclass, field
@@ -119,7 +118,7 @@ DEFAULT_LOOKBACK_DAYS = 300
 
 
 def load_ticker_strategies_from_db(
-    conn: sqlite3.Connection,
+    conn: object,
     limit: int = 0,
 ) -> dict[str, str]:
     """Load best strategy per ticker from stock_personality table.
@@ -138,7 +137,7 @@ def load_ticker_strategies_from_db(
     return {r[0]: r[1] for r in rows}
 
 
-def check_stale_ticker_references(conn: sqlite3.Connection) -> list[str]:
+def check_stale_ticker_references(conn: object) -> list[str]:
     """Check for tickers that have been renamed but still have data under old code.
 
     Returns list of stale old tickers found in ohlcv but not in instrument_master.
@@ -154,8 +153,10 @@ def check_stale_ticker_references(conn: sqlite3.Connection) -> list[str]:
         if not former:
             continue
         # Check if old ticker still has OHLCV data
+        from market.config import settings as _settings
+        _ph = "%s" if _settings.db_backend == "postgresql" else "?"
         count = conn.execute(
-            "SELECT COUNT(*) FROM ohlcv WHERE ticker = ?", (former,)
+            f"SELECT COUNT(*) FROM ohlcv WHERE ticker = {_ph}", (former,)
         ).fetchone()[0]
         if count > 0:
             stale.append(former)
@@ -173,7 +174,7 @@ def check_stale_ticker_references(conn: sqlite3.Connection) -> list[str]:
 
 
 def load_tickers_from_db(
-    conn: sqlite3.Connection,
+    conn: object,
     limit: int = 0,
 ) -> list[str]:
     """Load ticker list from stock_personality, filtered by relational hierarchy.
@@ -214,7 +215,7 @@ def load_tickers_from_db(
         if tickers:
             return tickers
         logger.info("  Relational hierarchy empty — falling back to asset_class filter")
-    except sqlite3.OperationalError:
+    except Exception:
         logger.info("  Relational tables not found — falling back to asset_class filter")
 
     # Fallback: instrument_master.asset_class filter (pre-migration 0013)
@@ -488,7 +489,7 @@ def ensure_ticker_params_coverage(
 
 
 def get_latest_trading_date(
-    conn: sqlite3.Connection, ticker: str | None = None,
+    conn: object, ticker: str | None = None,
 ) -> pd.Timestamp | None:
     """Ambil tanggal bursa terakhir dari DB (time-bias safe).
 
@@ -499,10 +500,13 @@ def get_latest_trading_date(
     Returns:
         Timestamp tanggal terakhir, atau None jika DB kosong.
     """
+    from market.config import settings as _settings
+    _ph = "%s" if _settings.db_backend == "postgresql" else "?"
+
     if ticker:
         sql = (
-            "SELECT MAX(timestamp) FROM ohlcv "
-            "WHERE ticker = ? AND timeframe = '1d'"
+            f"SELECT MAX(timestamp) FROM ohlcv "
+            f"WHERE ticker = {_ph} AND timeframe = '1d'"
         )
         row = conn.execute(sql, (ticker,)).fetchone()
     else:
@@ -515,7 +519,7 @@ def get_latest_trading_date(
 
 
 def load_recent_ohlcv(
-    conn: sqlite3.Connection,
+    conn: object,
     ticker: str,
     lookback_days: int = DEFAULT_LOOKBACK_DAYS,
 ) -> pd.DataFrame:
@@ -527,10 +531,13 @@ def load_recent_ohlcv(
     Returns:
         DataFrame index=DatetimeIndex, kolom=open/high/low/close/volume.
     """
+    from market.config import settings as _settings
+    _ph = "%s" if _settings.db_backend == "postgresql" else "?"
+
     sql = (
-        "SELECT timestamp, open, high, low, close, volume "
-        "FROM ohlcv WHERE ticker = ? AND timeframe = '1d' "
-        "ORDER BY timestamp DESC LIMIT ?"
+        f"SELECT timestamp, open, high, low, close, volume "
+        f"FROM ohlcv WHERE ticker = {_ph} AND timeframe = '1d' "
+        f"ORDER BY timestamp DESC LIMIT {_ph}"
     )
     df = pd.read_sql_query(
         sql, conn, params=(ticker, lookback_days),
@@ -547,7 +554,7 @@ def load_recent_ohlcv(
 
 
 def load_recent_tech(
-    conn: sqlite3.Connection,
+    conn: object,
     ticker: str,
     lookback_days: int = DEFAULT_LOOKBACK_DAYS,
     indicators: list[str] | None = None,
@@ -579,8 +586,11 @@ def load_recent_tech(
     wide_cols = [wide_col_map.get(ind, ind.lower()) for ind in indicators]
     col_select = ", ".join(wide_cols)
 
+    from market.config import settings as _settings
+    _ph = "%s" if _settings.db_backend == "postgresql" else "?"
+
     row = conn.execute(
-        "SELECT MAX(date) FROM technical_indicators_wide WHERE ticker = ?",
+        f"SELECT MAX(date) FROM technical_indicators_wide WHERE ticker = {_ph}",
         (ticker,),
     ).fetchone()
     if row and row[0]:
@@ -588,7 +598,7 @@ def load_recent_tech(
         cutoff_date = (max_date - pd.Timedelta(days=lookback_days)).strftime("%Y-%m-%d")
         sql = (
             f"SELECT date, {col_select} FROM technical_indicators_wide "
-            f"WHERE ticker = ? AND date >= ? "
+            f"WHERE ticker = {_ph} AND date >= {_ph} "
             f"ORDER BY date"
         )
         df = pd.read_sql_query(sql, conn, params=(ticker, cutoff_date), parse_dates=["date"])
@@ -602,7 +612,7 @@ def load_recent_tech(
 
     # Fallback: EAV table
     row = conn.execute(
-        "SELECT MAX(date) FROM technical_indicators WHERE ticker = ?",
+        f"SELECT MAX(date) FROM technical_indicators WHERE ticker = {_ph}",
         (ticker,),
     ).fetchone()
     if not row or not row[0]:
@@ -611,11 +621,11 @@ def load_recent_tech(
     max_date = pd.Timestamp(row[0])
     cutoff_date = (max_date - pd.Timedelta(days=lookback_days)).strftime("%Y-%m-%d")
 
-    placeholders = ",".join("?" for _ in indicators)
+    placeholders = ",".join(_ph for _ in indicators)
     sql = (
         f"SELECT date, indicator, value FROM technical_indicators "
-        f"WHERE ticker = ? AND indicator IN ({placeholders}) "
-        f"AND date >= ? "
+        f"WHERE ticker = {_ph} AND indicator IN ({placeholders}) "
+        f"AND date >= {_ph} "
         f"ORDER BY date"
     )
     params: tuple[Any, ...] = (ticker, *indicators, cutoff_date)
@@ -655,6 +665,8 @@ def compute_prediction_for_ticker(
     ticker: str,
     ohlcv: pd.DataFrame,
     as_of: str,
+    db_path: str = "",
+    conn: object | None = None,
 ) -> dict[str, Any]:
     """Run PredictionEngine + MarketContextProvider for a ticker.
 
@@ -687,7 +699,10 @@ def compute_prediction_for_ticker(
         from market.analysis.multi_factor import MultiFactorModel
 
         # Build providers (lightweight — no GPU needed for daily prediction)
-        ml_provider = MLSignalProvider(horizon=5, min_train_samples=200)
+        ml_provider = MLSignalProvider(
+            horizon=5, min_train_samples=200,
+            use_precomputed_labels=True, db_path=db_path,
+        )
         mf_model = MultiFactorModel(horizon=5, min_train_samples=200)
         ctx_provider = MarketContextProvider(
             ml_provider=ml_provider,
@@ -734,7 +749,47 @@ def compute_prediction_for_ticker(
         # SignalEnhancer: enhance base prediction with 5 non-trend signals
         try:
             from market.analysis.signal_enhancer import SignalEnhancer
-            enhancer = SignalEnhancer()
+            from market.analysis.policy_event_scorer import PolicyEventScorer
+            from market.analysis.meta_labeling import MetaLabeler
+            from market.analysis.sector_rotation import SectorRotationEngine
+            from market.analysis.pairs_trading import PairsTradingEngine
+
+            policy_scorer = PolicyEventScorer(db_path=db_path or None)
+            policy_scorer.load()
+
+            meta_labeler = MetaLabeler(min_train_samples=200)
+            sector_engine = SectorRotationEngine()
+            pairs_engine = PairsTradingEngine()
+
+            # Check trading suspensions — skip suspended tickers
+            from datetime import datetime as _dt
+            from market.config import settings as _settings
+            _ph = "%s" if _settings.db_backend == "postgresql" else "?"
+            _now_date = _dt.now().strftime("%Y-%m-%d")
+            suspended_tickers = set()
+            try:
+                sus_rows = conn.execute(
+                    f"SELECT ticker FROM trading_suspensions "
+                    f"WHERE (resume_date IS NULL OR resume_date > {_ph}) "
+                    f"AND suspend_date <= {_ph}",
+                    (_now_date, _now_date),
+                ).fetchall()
+                suspended_tickers = {r[0] for r in sus_rows}
+            except Exception:
+                pass
+            if ticker in suspended_tickers:
+                logger.info("Skipping %s — trading suspended", ticker)
+                result["predicted_direction"] = "flat"
+                result["prediction_confidence"] = 0.0
+                result["suspended"] = True
+                return result
+
+            enhancer = SignalEnhancer(
+                policy_scorer=policy_scorer,
+                meta_labeler=meta_labeler,
+                sector_engine=sector_engine,
+                pairs_engine=pairs_engine,
+            )
             enhancement = enhancer.enhance(pred, ohlcv, ticker, as_of)
             if enhancement.bet_size < 0.1:
                 logger.debug("SignalEnhancer: meta-labeler vetoed %s (bet_size=%.2f)",
@@ -760,23 +815,44 @@ def compute_prediction_for_ticker(
 
 
 def save_prediction_to_db(
-    conn: sqlite3.Connection,
+    conn: object,
     ticker: str,
     pred: dict[str, Any],
 ) -> None:
     """Save prediction results to stock_prediction table (with stock_personality fallback)."""
     from datetime import datetime
+    from market.config import settings as _settings
+    _ph = "%s" if _settings.db_backend == "postgresql" else "?"
     now = datetime.now().isoformat()
     factors_json = json.dumps(pred.get("factors_summary", {})) if pred.get("factors_summary") else None
 
-    # Write to stock_prediction (new split table)
-    conn.execute("""
-        INSERT OR REPLACE INTO stock_prediction
-            (ticker, predicted_direction, predicted_price, predicted_return_pct,
-             prediction_confidence, ml_signal, multifactor_signal,
-             composite_signal, factors_summary, prediction_updated_at)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-    """, (
+    if _settings.db_backend == "postgresql":
+        _upsert_pred = (
+            "INSERT INTO stock_prediction "
+            "(ticker, predicted_direction, predicted_price, predicted_return_pct, "
+            " prediction_confidence, ml_signal, multifactor_signal, "
+            " composite_signal, factors_summary, prediction_updated_at) "
+            f"VALUES ({_ph}, {_ph}, {_ph}, {_ph}, {_ph}, {_ph}, {_ph}, {_ph}, {_ph}, {_ph}) "
+            "ON CONFLICT (ticker) DO UPDATE SET "
+            " predicted_direction=EXCLUDED.predicted_direction, "
+            " predicted_price=EXCLUDED.predicted_price, "
+            " predicted_return_pct=EXCLUDED.predicted_return_pct, "
+            " prediction_confidence=EXCLUDED.prediction_confidence, "
+            " ml_signal=EXCLUDED.ml_signal, "
+            " multifactor_signal=EXCLUDED.multifactor_signal, "
+            " composite_signal=EXCLUDED.composite_signal, "
+            " factors_summary=EXCLUDED.factors_summary, "
+            " prediction_updated_at=EXCLUDED.prediction_updated_at"
+        )
+    else:
+        _upsert_pred = (
+            "INSERT OR REPLACE INTO stock_prediction "
+            "(ticker, predicted_direction, predicted_price, predicted_return_pct, "
+            " prediction_confidence, ml_signal, multifactor_signal, "
+            " composite_signal, factors_summary, prediction_updated_at) "
+            f"VALUES ({_ph}, {_ph}, {_ph}, {_ph}, {_ph}, {_ph}, {_ph}, {_ph}, {_ph}, {_ph})"
+        )
+    conn.execute(_upsert_pred, (
         ticker,
         pred.get("predicted_direction", ""),
         pred.get("predicted_price", 0.0),
@@ -790,26 +866,27 @@ def save_prediction_to_db(
     ))
 
     # Also update stock_personality for backward compat
-    conn.execute("""
-        UPDATE stock_personality SET
-            predicted_direction = ?,
-            predicted_price = ?,
-            predicted_return_pct = ?,
-            prediction_confidence = ?,
-            composite_signal = ?,
-            factors_summary = ?,
-            prediction_updated_at = ?
-        WHERE ticker = ?
-    """, (
-        pred.get("predicted_direction", ""),
-        pred.get("predicted_price", 0.0),
-        pred.get("predicted_return_pct", 0.0),
-        pred.get("prediction_confidence", 0.0),
-        pred.get("composite_signal", 0.0),
-        factors_json,
-        now,
-        ticker,
-    ))
+    conn.execute(
+        f"UPDATE stock_personality SET "
+        f" predicted_direction = {_ph}, "
+        f" predicted_price = {_ph}, "
+        f" predicted_return_pct = {_ph}, "
+        f" prediction_confidence = {_ph}, "
+        f" composite_signal = {_ph}, "
+        f" factors_summary = {_ph}, "
+        f" prediction_updated_at = {_ph} "
+        f"WHERE ticker = {_ph}",
+        (
+            pred.get("predicted_direction", ""),
+            pred.get("predicted_price", 0.0),
+            pred.get("predicted_return_pct", 0.0),
+            pred.get("prediction_confidence", 0.0),
+            pred.get("composite_signal", 0.0),
+            factors_json,
+            now,
+            ticker,
+        ),
+    )
     conn.commit()
 
 
@@ -1137,6 +1214,7 @@ def run_daily_signal(
                 try:
                     pred = compute_prediction_for_ticker(
                         ticker, ohlcv, report.signal_date,
+                        db_path=db_path, conn=conn,
                     )
                     sig.predicted_direction = pred["predicted_direction"]
                     sig.predicted_price = pred["predicted_price"]
@@ -1146,11 +1224,9 @@ def run_daily_signal(
                     sig.factors_summary = pred["factors_summary"]
 
                     # Save prediction to DB (need writable connection)
-                    write_conn = sqlite3.connect(db_path)
-                    try:
+                    from market.db.raw import get_raw_connection as _get_raw
+                    with _get_raw() as write_conn:
                         save_prediction_to_db(write_conn, ticker, pred)
-                    finally:
-                        write_conn.close()
                 except Exception as e:
                     logger.debug("Prediction failed for %s: %s", ticker, e)
 
@@ -1197,7 +1273,7 @@ def run_daily_signal(
 # ═══════════════════════════════════════════════════════════════════════════
 
 
-def ensure_app_notifications_table(conn: sqlite3.Connection) -> None:
+def ensure_app_notifications_table(conn: object) -> None:
     """Buat tabel app_notifications jika belum ada (CREATE TABLE IF NOT EXISTS).
 
     Schema:
@@ -1207,15 +1283,28 @@ def ensure_app_notifications_table(conn: sqlite3.Connection) -> None:
         body_json   — Payload detail sinyal berformat JSON (BUY/SELL/HOLD + sizing)
         status      — Status baca: 'UNREAD' (default), 'READ'
     """
-    conn.execute("""
-        CREATE TABLE IF NOT EXISTS app_notifications (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            timestamp DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
-            title TEXT NOT NULL,
-            body_json TEXT NOT NULL,
-            status TEXT NOT NULL DEFAULT 'UNREAD'
-        )
-    """)
+    from market.config import settings as _settings
+
+    if _settings.db_backend == "postgresql":
+        conn.execute("""
+            CREATE TABLE IF NOT EXISTS app_notifications (
+                id SERIAL PRIMARY KEY,
+                timestamp TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+                title TEXT NOT NULL,
+                body_json TEXT NOT NULL,
+                status TEXT NOT NULL DEFAULT 'UNREAD'
+            )
+        """)
+    else:
+        conn.execute("""
+            CREATE TABLE IF NOT EXISTS app_notifications (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                timestamp DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                title TEXT NOT NULL,
+                body_json TEXT NOT NULL,
+                status TEXT NOT NULL DEFAULT 'UNREAD'
+            )
+        """)
     conn.execute("""
         CREATE INDEX IF NOT EXISTS ix_app_notif_status
         ON app_notifications(status, timestamp DESC)
@@ -1223,7 +1312,7 @@ def ensure_app_notifications_table(conn: sqlite3.Connection) -> None:
     conn.commit()
 
 
-def build_notification_payload(report: DailySignalReport, conn: sqlite3.Connection | None = None) -> dict:
+def build_notification_payload(report: DailySignalReport, conn: object | None = None) -> dict:
     """Bangun payload JSON lengkap untuk notifikasi aplikasi.
 
     Struktur payload:
@@ -1270,13 +1359,15 @@ def build_notification_payload(report: DailySignalReport, conn: sqlite3.Connecti
         Dict siap di-serialisasi ke JSON dan di-insert ke app_notifications.
     """
     from datetime import datetime, timezone
+    from market.config import settings as _settings
+    _ph = "%s" if _settings.db_backend == "postgresql" else "?"
 
     # Pre-fetch relational hierarchy data for all signal tickers
     relational_map: dict[str, dict] = {}
     if conn is not None:
         tickers = [sig.ticker for sig in report.signals]
         if tickers:
-            placeholders = ",".join("?" * len(tickers))
+            placeholders = ",".join(_ph * len(tickers))
             try:
                 rows = conn.execute(
                     f"SELECT e.kode_ticker, b.nama_bursa, s.nama_sektor, e.subsektor, "
@@ -1296,7 +1387,7 @@ def build_notification_payload(report: DailySignalReport, conn: sqlite3.Connecti
                         "regulator": regulator,
                         "negara": negara,
                     }
-            except sqlite3.OperationalError:
+            except Exception:
                 logger.info("  Relational tables not found — skipping hierarchy enrichment")
 
         # Pre-fetch broker_flow data for Smart Money / retail absorption analysis
@@ -1364,7 +1455,7 @@ def build_notification_payload(report: DailySignalReport, conn: sqlite3.Connecti
                                 "retail_sell_ratio": result.retail_sell_ratio,
                                 "accumulation_grid": accumulation_grid,
                             }
-            except sqlite3.OperationalError:
+            except Exception:
                 logger.info("  broker_flow table not found — skipping Smart Money enrichment")
             except Exception as e:
                 logger.debug("  Smart Money enrichment skipped: %s", e)
@@ -1462,7 +1553,7 @@ def build_notification_payload(report: DailySignalReport, conn: sqlite3.Connecti
 
 
 def insert_app_notification(
-    conn: sqlite3.Connection,
+    conn: object,
     report: DailySignalReport,
 ) -> int:
     """Insert notifikasi sinyal harian ke tabel app_notifications.
@@ -1487,9 +1578,12 @@ def insert_app_notification(
         f"{report.n_buy} BUY, {report.n_sell} SELL, {report.n_hold} HOLD"
     )
 
+    from market.config import settings as _settings
+    _ph = "%s" if _settings.db_backend == "postgresql" else "?"
+
     cursor = conn.execute(
-        "INSERT INTO app_notifications (timestamp, title, body_json, status) "
-        "VALUES (?, ?, ?, 'UNREAD')",
+        f"INSERT INTO app_notifications (timestamp, title, body_json, status) "
+        f"VALUES ({_ph}, {_ph}, {_ph}, 'UNREAD')",
         (now, title, body_json),
     )
     conn.commit()
@@ -1608,7 +1702,8 @@ def main() -> None:
         tickers = [t.strip() for t in args.tickers.split(",") if t.strip()]
     else:
         # Load tickers from stock_personality (DB-driven, updated by weekly HRP cron)
-        conn = sqlite3.connect(db_path)
+        from market.db.raw import get_raw_connection as _get_raw
+        conn = _get_raw().__enter__()
         try:
             tickers = load_tickers_from_db(conn)
             # Check for stale ticker references (incomplete migrations)
@@ -1672,7 +1767,8 @@ def main() -> None:
         logger.info("")
         logger.info("DRY RUN — App notification insertion dilewati.")
     else:
-        conn = sqlite3.connect(db_path)
+        from market.db.raw import get_raw_connection as _get_raw
+        conn = _get_raw().__enter__()
         try:
             notif_id = insert_app_notification(conn, report)
             if notif_id > 0:

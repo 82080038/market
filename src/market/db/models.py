@@ -51,8 +51,8 @@ class MarketRegistry(Base):
     currency: Mapped[str] = mapped_column(String(3), nullable=False)
     data_suffix: Mapped[str | None] = mapped_column(String(10), nullable=True)
     trading_status: Mapped[str] = mapped_column(String(20), default="active")
-    created_at: Mapped[datetime] = mapped_column(DateTime, default=_utcnow)
-    updated_at: Mapped[datetime] = mapped_column(DateTime, default=_utcnow, onupdate=_utcnow)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_utcnow)
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_utcnow, onupdate=_utcnow)
 
 
 class InstrumentMaster(Base):
@@ -90,8 +90,8 @@ class InstrumentMaster(Base):
     former_name: Mapped[str | None] = mapped_column(String(200), nullable=True)
     index_category: Mapped[str | None] = mapped_column(String(30), nullable=True)
     region: Mapped[str | None] = mapped_column(String(10), nullable=True)
-    created_at: Mapped[datetime] = mapped_column(DateTime, default=_utcnow)
-    updated_at: Mapped[datetime] = mapped_column(DateTime, default=_utcnow, onupdate=_utcnow)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_utcnow)
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_utcnow, onupdate=_utcnow)
 
     market: Mapped[MarketRegistry] = relationship(foreign_keys=[market_mic])
 
@@ -110,7 +110,7 @@ class OHLCV(Base):
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
     ticker: Mapped[str] = mapped_column(String(30), nullable=False, index=True)
-    timestamp: Mapped[datetime] = mapped_column(DateTime, nullable=False, index=True)
+    timestamp: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, index=True)
     timeframe: Mapped[str] = mapped_column(String(10), nullable=False, default="1d")
     open: Mapped[Decimal] = mapped_column(Numeric(20, 4), nullable=False)
     high: Mapped[Decimal] = mapped_column(Numeric(20, 4), nullable=False)
@@ -120,30 +120,25 @@ class OHLCV(Base):
     adjusted_close: Mapped[Decimal | None] = mapped_column(Numeric(20, 4), nullable=True)
     data_quality_score: Mapped[float | None] = mapped_column(Numeric(5, 2), nullable=True)
     source: Mapped[str] = mapped_column(String(50), default="yahoo_finance")
-    created_at: Mapped[datetime] = mapped_column(DateTime, default=_utcnow)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_utcnow)
 
 
 class CorporateAction(Base):
     """Corporate actions (pustaka/18 §13 #6)."""
 
     __tablename__ = "corporate_actions"
-    __table_args__ = (
-        UniqueConstraint("ticker", "action_type", "ex_date", name="uq_ca_pk"),
-    )
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
     ticker: Mapped[str] = mapped_column(String(30), nullable=False, index=True)
     action_type: Mapped[str] = mapped_column(String(30), nullable=False)
-    announce_date: Mapped[date | None] = mapped_column(Date, nullable=True)
     ex_date: Mapped[date | None] = mapped_column(Date, nullable=True)
     record_date: Mapped[date | None] = mapped_column(Date, nullable=True)
     payment_date: Mapped[date | None] = mapped_column(Date, nullable=True)
-    value: Mapped[float | None] = mapped_column(Numeric(20, 6), nullable=True)
-    currency: Mapped[str] = mapped_column(String(3), default="IDR")
-    unit: Mapped[str | None] = mapped_column(String(20), nullable=True)
-    description: Mapped[str | None] = mapped_column(Text, nullable=True)
-    source: Mapped[str] = mapped_column(String(50), default="yahoo_finance")
-    created_at: Mapped[datetime] = mapped_column(DateTime, default=_utcnow)
+    announced_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_utcnow)
+    effective_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    details_json: Mapped[str | None] = mapped_column(Text, nullable=True)
+    impact_direction: Mapped[str] = mapped_column(String(20), default="NEUTRAL")
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_utcnow)
 
 
 class Dividend(Base):
@@ -163,7 +158,7 @@ class Dividend(Base):
     currency: Mapped[str] = mapped_column(String(3), default="IDR")
     frequency: Mapped[str | None] = mapped_column(String(20), nullable=True)
     source: Mapped[str] = mapped_column(String(50), default="yahoo_finance")
-    created_at: Mapped[datetime] = mapped_column(DateTime, default=_utcnow)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_utcnow)
 
 
 # ── Calendar & FX ────────────────────────────────────────────────────────
@@ -183,7 +178,7 @@ class MarketCalendar(Base):
     is_trading_day: Mapped[bool] = mapped_column(Boolean, default=True)
     holiday_name: Mapped[str | None] = mapped_column(String(200), nullable=True)
     half_day: Mapped[bool] = mapped_column(Boolean, default=False)
-    created_at: Mapped[datetime] = mapped_column(DateTime, default=_utcnow)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_utcnow)
 
 
 class FXRate(Base):
@@ -200,7 +195,7 @@ class FXRate(Base):
     date: Mapped[date] = mapped_column(Date, nullable=False, index=True)
     rate: Mapped[Decimal] = mapped_column(Numeric(20, 8), nullable=False)
     source: Mapped[str] = mapped_column(String(50), default="yahoo_finance")
-    created_at: Mapped[datetime] = mapped_column(DateTime, default=_utcnow)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_utcnow)
 
 
 # ── Analysis & scores ────────────────────────────────────────────────────
@@ -219,8 +214,8 @@ class Score(Base):
     engine: Mapped[str] = mapped_column(String(50), nullable=False)
     score: Mapped[float] = mapped_column(Numeric(5, 2), nullable=False)
     breakdown: Mapped[str | None] = mapped_column(Text, nullable=True)
-    as_of: Mapped[datetime] = mapped_column(DateTime, default=_utcnow)
-    created_at: Mapped[datetime] = mapped_column(DateTime, default=_utcnow)
+    as_of: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_utcnow)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_utcnow)
 
 
 class RelationshipMatrix(Base):
@@ -237,7 +232,7 @@ class RelationshipMatrix(Base):
     window: Mapped[int] = mapped_column(Integer, nullable=False)
     correlation: Mapped[float | None] = mapped_column(Numeric(10, 6), nullable=True)
     lag: Mapped[int | None] = mapped_column(Integer, nullable=True)
-    as_of: Mapped[datetime] = mapped_column(DateTime, default=_utcnow)
+    as_of: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_utcnow)
 
 
 # ── Infrastructure tables ────────────────────────────────────────────────
@@ -249,13 +244,13 @@ class SourceHealth(Base):
     __tablename__ = "source_health"
 
     source: Mapped[str] = mapped_column(String(50), primary_key=True)
-    last_success: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
-    last_error: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+    last_success: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    last_error: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     last_error_msg: Mapped[str | None] = mapped_column(Text, nullable=True)
     status: Mapped[str] = mapped_column(String(20), default="ok")
     total_fetches: Mapped[int] = mapped_column(Integer, default=0)
     total_failures: Mapped[int] = mapped_column(Integer, default=0)
-    updated_at: Mapped[datetime] = mapped_column(DateTime, default=_utcnow, onupdate=_utcnow)
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_utcnow, onupdate=_utcnow)
 
 
 class AuditLog(Base):
@@ -267,7 +262,7 @@ class AuditLog(Base):
     event_type: Mapped[str] = mapped_column(String(50), nullable=False, index=True)
     event_payload: Mapped[str | None] = mapped_column(Text, nullable=True)
     actor: Mapped[str] = mapped_column(String(50), default="system")
-    created_at: Mapped[datetime] = mapped_column(DateTime, default=_utcnow, index=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_utcnow, index=True)
 
 
 class DataWatermark(Base):
@@ -281,7 +276,7 @@ class DataWatermark(Base):
     id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
     ticker: Mapped[str] = mapped_column(String(30), nullable=False, index=True)
     table_name: Mapped[str] = mapped_column(String(50), nullable=False)
-    last_updated: Mapped[datetime] = mapped_column(DateTime, default=_utcnow)
+    last_updated: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_utcnow)
     row_count: Mapped[int | None] = mapped_column(Integer, nullable=True)
     source: Mapped[str] = mapped_column(String(50), default="yahoo_finance")
 
@@ -302,21 +297,80 @@ class FundamentalData(Base):
     date: Mapped[date] = mapped_column(Date, nullable=False, index=True)
     pe: Mapped[float | None] = mapped_column(Numeric(20, 4), nullable=True)
     pb: Mapped[float | None] = mapped_column(Numeric(20, 4), nullable=True)
-    roe: Mapped[float | None] = mapped_column(Numeric(10, 4), nullable=True)
+    roe: Mapped[float | None] = mapped_column(Numeric(20, 4), nullable=True)
     der: Mapped[float | None] = mapped_column(Numeric(20, 4), nullable=True)
-    dividend_yield: Mapped[float | None] = mapped_column(Numeric(10, 6), nullable=True)
+    dividend_yield: Mapped[float | None] = mapped_column(Numeric(20, 8), nullable=True)
     eps: Mapped[float | None] = mapped_column(Numeric(20, 4), nullable=True)
-    book_value_per_share: Mapped[float | None] = mapped_column(Numeric(20, 4), nullable=True)
     revenue: Mapped[float | None] = mapped_column(Numeric(20, 2), nullable=True)
     net_income: Mapped[float | None] = mapped_column(Numeric(20, 2), nullable=True)
     total_assets: Mapped[float | None] = mapped_column(Numeric(20, 2), nullable=True)
-    total_liabilities: Mapped[float | None] = mapped_column(Numeric(20, 2), nullable=True)
-    cash_flow: Mapped[float | None] = mapped_column(Numeric(20, 2), nullable=True)
+    total_debt: Mapped[float | None] = mapped_column(Numeric(20, 2), nullable=True)
     market_cap: Mapped[float | None] = mapped_column(Numeric(20, 2), nullable=True)
-    fiscal_year: Mapped[int | None] = mapped_column(Integer, nullable=True)
-    quarter: Mapped[str | None] = mapped_column(String(10), nullable=True)
-    source: Mapped[str] = mapped_column(String(50), default="yahoo_finance")
-    created_at: Mapped[datetime] = mapped_column(DateTime, default=_utcnow)
+    shares_outstanding: Mapped[float | None] = mapped_column(Numeric(20, 2), nullable=True)
+    free_float: Mapped[float | None] = mapped_column(Numeric(20, 4), nullable=True)
+    beta: Mapped[float | None] = mapped_column(Numeric(20, 6), nullable=True)
+    profit_margin: Mapped[float | None] = mapped_column(Numeric(20, 6), nullable=True)
+    operating_margin: Mapped[float | None] = mapped_column(Numeric(20, 6), nullable=True)
+    current_ratio: Mapped[float | None] = mapped_column(Numeric(20, 6), nullable=True)
+    quick_ratio: Mapped[float | None] = mapped_column(Numeric(20, 6), nullable=True)
+    book_value_per_share: Mapped[float | None] = mapped_column(Numeric(20, 4), nullable=True)
+    cash_per_share: Mapped[float | None] = mapped_column(Numeric(20, 4), nullable=True)
+    debt_to_equity: Mapped[float | None] = mapped_column(Numeric(20, 6), nullable=True)
+    return_on_assets: Mapped[float | None] = mapped_column(Numeric(20, 6), nullable=True)
+    return_on_equity: Mapped[float | None] = mapped_column(Numeric(20, 6), nullable=True)
+    revenue_growth: Mapped[float | None] = mapped_column(Numeric(20, 6), nullable=True)
+    earnings_growth: Mapped[float | None] = mapped_column(Numeric(20, 6), nullable=True)
+    npl_ratio: Mapped[float | None] = mapped_column(Numeric(10, 4), nullable=True)
+    car: Mapped[float | None] = mapped_column(Numeric(10, 4), nullable=True)
+    loan_to_deposit: Mapped[float | None] = mapped_column(Numeric(10, 4), nullable=True)
+    nim: Mapped[float | None] = mapped_column(Numeric(10, 4), nullable=True)
+    sector: Mapped[str | None] = mapped_column(String(100), nullable=True)
+    industry: Mapped[str | None] = mapped_column(String(100), nullable=True)
+    source: Mapped[str] = mapped_column(String(50), default="yfinance")
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_utcnow)
+
+
+class ModelPerformanceHistory(Base):
+    """Persisted model performance records per ticker per evaluation."""
+
+    __tablename__ = "model_performance_history"
+    __table_args__ = (
+        UniqueConstraint("ticker", "model_id", "evaluated_at",
+                         name="uq_model_perf_pk"),
+    )
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    ticker: Mapped[str] = mapped_column(String(30), nullable=False, index=True)
+    model_id: Mapped[str] = mapped_column(String(100), nullable=False)
+    model_type: Mapped[str] = mapped_column(String(50), nullable=False)
+    sharpe_ratio: Mapped[float] = mapped_column(Numeric(10, 4), nullable=False)
+    mae: Mapped[float] = mapped_column(Numeric(20, 6), nullable=False)
+    directional_accuracy: Mapped[float] = mapped_column(Numeric(5, 2), nullable=False)
+    is_degraded: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
+    degradation_reasons: Mapped[str | None] = mapped_column(Text, nullable=True)
+    auto_adjustment: Mapped[str | None] = mapped_column(String(50), nullable=True)
+    evaluated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_utcnow)
+
+
+class StrategyAssignment(Base):
+    """Best strategy assignment per ticker — richer than stock_personality.best_pattern."""
+
+    __tablename__ = "strategy_assignment"
+
+    ticker: Mapped[str] = mapped_column(String(30), primary_key=True)
+    best_strategy: Mapped[str] = mapped_column(String(50), nullable=False)
+    strategy_class: Mapped[str] = mapped_column(String(50), nullable=False)
+    strategy_rationale: Mapped[str | None] = mapped_column(Text, nullable=True)
+    in_sample_sharpe: Mapped[float | None] = mapped_column(Numeric(10, 4), nullable=True)
+    in_sample_max_dd: Mapped[float | None] = mapped_column(Numeric(10, 4), nullable=True)
+    in_sample_winrate: Mapped[float | None] = mapped_column(Numeric(5, 2), nullable=True)
+    oos_sharpe: Mapped[float | None] = mapped_column(Numeric(10, 4), nullable=True)
+    oos_max_dd: Mapped[float | None] = mapped_column(Numeric(10, 4), nullable=True)
+    oos_winrate: Mapped[float | None] = mapped_column(Numeric(5, 2), nullable=True)
+    is_active: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)
+    assigned_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_utcnow)
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_utcnow)
 
 
 class MacroData(Base):
@@ -334,7 +388,7 @@ class MacroData(Base):
     unit: Mapped[str | None] = mapped_column(String(20), nullable=True)
     source: Mapped[str] = mapped_column(String(50), default="yahoo_finance")
     frequency: Mapped[str | None] = mapped_column(String(20), nullable=True)
-    created_at: Mapped[datetime] = mapped_column(DateTime, default=_utcnow)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_utcnow)
 
 
 class ForeignFlow(Base):
@@ -351,11 +405,15 @@ class ForeignFlow(Base):
     foreign_buy: Mapped[float | None] = mapped_column(Numeric(20, 2), nullable=True)
     foreign_sell: Mapped[float | None] = mapped_column(Numeric(20, 2), nullable=True)
     foreign_net: Mapped[float | None] = mapped_column(Numeric(20, 2), nullable=True)
+    foreign_volume_buy: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    foreign_volume_sell: Mapped[int | None] = mapped_column(Integer, nullable=True)
     domestic_buy: Mapped[float | None] = mapped_column(Numeric(20, 2), nullable=True)
     domestic_sell: Mapped[float | None] = mapped_column(Numeric(20, 2), nullable=True)
     domestic_net: Mapped[float | None] = mapped_column(Numeric(20, 2), nullable=True)
+    domestic_volume_buy: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    domestic_volume_sell: Mapped[int | None] = mapped_column(Integer, nullable=True)
     source: Mapped[str] = mapped_column(String(50), default="idx_scraper")
-    created_at: Mapped[datetime] = mapped_column(DateTime, default=_utcnow)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_utcnow)
 
 
 class DailyTradingStats(Base):
@@ -392,7 +450,7 @@ class DailyTradingStats(Base):
     non_regular_value: Mapped[float | None] = mapped_column(Numeric(20, 2), nullable=True)
     non_regular_frequency: Mapped[int | None] = mapped_column(Integer, nullable=True)
     source: Mapped[str] = mapped_column(String(50), default="github_dataset")
-    created_at: Mapped[datetime] = mapped_column(DateTime, default=_utcnow)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_utcnow)
 
 
 class TechnicalIndicator(Base):
@@ -413,7 +471,7 @@ class TechnicalIndicator(Base):
     value: Mapped[float] = mapped_column(Numeric(20, 6), nullable=False)
     timeframe: Mapped[str] = mapped_column(String(10), default="1d")
     source: Mapped[str] = mapped_column(String(50), default="computed")
-    created_at: Mapped[datetime] = mapped_column(DateTime, default=_utcnow)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_utcnow)
 
 
 class StockPersonality(Base):
@@ -427,23 +485,7 @@ class StockPersonality(Base):
     beta_vs_ihsg: Mapped[float | None] = mapped_column(Numeric(10, 4), nullable=True)
     liquidity_score: Mapped[float | None] = mapped_column(Numeric(5, 2), nullable=True)
     personality_label: Mapped[str | None] = mapped_column(String(50), nullable=True)
-    avg_volume: Mapped[float | None] = mapped_column(Numeric(20, 2), nullable=True)
-    avg_daily_volatility: Mapped[float | None] = mapped_column(Numeric(10, 4), nullable=True)
-    volume_consistency: Mapped[float | None] = mapped_column(Numeric(5, 2), nullable=True)
-    trend_strength: Mapped[float | None] = mapped_column(Numeric(5, 2), nullable=True)
-    correlation_ihsg: Mapped[float | None] = mapped_column(Numeric(10, 4), nullable=True)
-    net_distribution_score: Mapped[float | None] = mapped_column(Numeric(5, 2), nullable=True)
-    best_pattern: Mapped[str | None] = mapped_column(String(50), nullable=True)
-    best_pattern_winrate: Mapped[float | None] = mapped_column(Numeric(5, 2), nullable=True)
-    worst_pattern: Mapped[str | None] = mapped_column(String(50), nullable=True)
-    worst_pattern_winrate: Mapped[float | None] = mapped_column(Numeric(5, 2), nullable=True)
-    total_patterns_detected: Mapped[int | None] = mapped_column(Integer, nullable=True)
-    total_patterns_success: Mapped[int | None] = mapped_column(Integer, nullable=True)
-    overall_pattern_winrate: Mapped[float | None] = mapped_column(Numeric(5, 2), nullable=True)
-    avg_uptrend_streak: Mapped[float | None] = mapped_column(Numeric(5, 2), nullable=True)
-    avg_downtrend_streak: Mapped[float | None] = mapped_column(Numeric(5, 2), nullable=True)
-    profile_date: Mapped[date | None] = mapped_column(Date, nullable=True)
-    updated_at: Mapped[datetime] = mapped_column(DateTime, default=_utcnow, onupdate=_utcnow)
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_utcnow, onupdate=_utcnow)
 
 
 class TechnicalIndicatorWide(Base):
@@ -478,7 +520,7 @@ class TechnicalIndicatorWide(Base):
     donchian_upper: Mapped[float | None] = mapped_column(Numeric(20, 6), nullable=True)
     donchian_lower: Mapped[float | None] = mapped_column(Numeric(20, 6), nullable=True)
     donchian_mid: Mapped[float | None] = mapped_column(Numeric(20, 6), nullable=True)
-    created_at: Mapped[datetime] = mapped_column(DateTime, default=_utcnow)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_utcnow)
 
 
 class StockPrediction(Base):
@@ -499,7 +541,7 @@ class StockPrediction(Base):
     multifactor_signal: Mapped[float | None] = mapped_column(Numeric(6, 4), nullable=True)
     composite_signal: Mapped[float | None] = mapped_column(Numeric(6, 4), nullable=True)
     factors_summary: Mapped[str | None] = mapped_column(Text, nullable=True)
-    prediction_updated_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+    prediction_updated_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
 
 
 class SectorMaster(Base):
@@ -518,9 +560,11 @@ class FearGreed(Base):
     __tablename__ = "fear_greed"
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
-    tanggal: Mapped[date] = mapped_column(Date, nullable=False, index=True)
-    nilai: Mapped[float] = mapped_column(Numeric(5, 2), nullable=False)
+    date: Mapped[date] = mapped_column(Date, nullable=False, index=True)
+    value: Mapped[float] = mapped_column(Numeric(5, 2), nullable=False)
     label: Mapped[str | None] = mapped_column(String(30), nullable=True)
+    source: Mapped[str | None] = mapped_column(String(50), default="cnn")
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_utcnow)
 
 
 class ESGScore(Base):
@@ -537,7 +581,7 @@ class ESGScore(Base):
     rating_agency: Mapped[str] = mapped_column(String(50), nullable=False)
     rating: Mapped[str | None] = mapped_column(String(30), nullable=True)
     score: Mapped[float | None] = mapped_column(Numeric(10, 4), nullable=True)
-    created_at: Mapped[datetime] = mapped_column(DateTime, default=_utcnow)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_utcnow)
 
 
 class CorporateGovernance(Base):
@@ -559,7 +603,7 @@ class CorporateGovernance(Base):
     acgs_score: Mapped[str | None] = mapped_column(String(50), nullable=True)
     has_whistleblowing: Mapped[bool | None] = mapped_column(Boolean, nullable=True)
     has_risk_committee: Mapped[bool | None] = mapped_column(Boolean, nullable=True)
-    created_at: Mapped[datetime] = mapped_column(DateTime, default=_utcnow)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_utcnow)
 
 
 class Watchlist(Base):
@@ -571,7 +615,7 @@ class Watchlist(Base):
     ticker: Mapped[str] = mapped_column(String(30), nullable=False, index=True)
     is_favorite: Mapped[bool] = mapped_column(Boolean, default=False)
     notes: Mapped[str | None] = mapped_column(Text, nullable=True)
-    created_at: Mapped[datetime] = mapped_column(DateTime, default=_utcnow)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_utcnow)
 
 
 # ── Market intelligence tables (pustaka/18 §13 #7, D22, D27, D32, D35) ───
@@ -595,7 +639,75 @@ class News(Base):
     topic: Mapped[str | None] = mapped_column(String(100), nullable=True)
     sentiment: Mapped[float | None] = mapped_column(Numeric(5, 2), nullable=True)
     impact: Mapped[str | None] = mapped_column(String(20), nullable=True)
-    created_at: Mapped[datetime] = mapped_column(DateTime, default=_utcnow)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_utcnow)
+
+
+class NewsSentiment(Base):
+    """NLP-processed news sentiment (PostgreSQL news_sentiment table)."""
+
+    __tablename__ = "news_sentiment"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    ticker: Mapped[str | None] = mapped_column(String(30), nullable=True, index=True)
+    date: Mapped[date] = mapped_column(Date, nullable=False, index=True)
+    headline: Mapped[str | None] = mapped_column(Text, nullable=True)
+    sentiment_score: Mapped[float | None] = mapped_column(Numeric(5, 2), nullable=True)
+    sentiment_label: Mapped[str | None] = mapped_column(String(20), nullable=True)
+    relevance_score: Mapped[float | None] = mapped_column(Numeric(5, 2), nullable=True)
+    source: Mapped[str | None] = mapped_column(String(100), nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_utcnow)
+
+
+class Instrument(Base):
+    """Instrument master matching PG instruments table."""
+
+    __tablename__ = "instruments"
+
+    ticker: Mapped[str] = mapped_column(String(30), primary_key=True)
+    exchange_mic: Mapped[str] = mapped_column(String(10), nullable=False)
+    name: Mapped[str | None] = mapped_column(String(200), nullable=True)
+    asset_class: Mapped[str] = mapped_column(String(30), nullable=False, default="EQUITY")
+    sector: Mapped[str | None] = mapped_column(String(100), nullable=True)
+    currency: Mapped[str] = mapped_column(String(3), nullable=False, default="IDR")
+    is_active: Mapped[bool] = mapped_column(Boolean, default=True)
+    listed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_utcnow)
+
+
+class StockPrice(Base):
+    """Stock price data matching PG stock_prices partitioned table."""
+
+    __tablename__ = "stock_prices"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    ticker: Mapped[str] = mapped_column(String(30), nullable=False, index=True)
+    exchange_mic: Mapped[str] = mapped_column(String(10), nullable=False)
+    timestamp: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, index=True)
+    timeframe: Mapped[str] = mapped_column(String(10), nullable=False, default="1d")
+    open: Mapped[float | None] = mapped_column(Numeric(20, 6), nullable=True)
+    high: Mapped[float | None] = mapped_column(Numeric(20, 6), nullable=True)
+    low: Mapped[float | None] = mapped_column(Numeric(20, 6), nullable=True)
+    close: Mapped[float] = mapped_column(Numeric(20, 6), nullable=False)
+    volume: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    vwap: Mapped[float | None] = mapped_column(Numeric(20, 6), nullable=True)
+    source: Mapped[str] = mapped_column(String(50), default="yahoo_finance")
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_utcnow)
+
+
+class Exchange(Base):
+    """Exchange registry matching PG exchanges table."""
+
+    __tablename__ = "exchanges"
+
+    mic_code: Mapped[str] = mapped_column(String(10), primary_key=True)
+    name: Mapped[str] = mapped_column(String(200), nullable=False)
+    country_code: Mapped[str] = mapped_column(String(3), nullable=False)
+    timezone: Mapped[str] = mapped_column(String(50), nullable=False)
+    currency: Mapped[str] = mapped_column(String(3), nullable=False, default="USD")
+    lot_size: Mapped[int] = mapped_column(Integer, nullable=False, default=100)
+    tick_size: Mapped[float] = mapped_column(Numeric(10, 6), nullable=False, default=0.01)
+    is_active: Mapped[bool] = mapped_column(Boolean, default=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_utcnow)
 
 
 class BrokerFlow(Base):
@@ -617,7 +729,7 @@ class BrokerFlow(Base):
     net_volume: Mapped[float | None] = mapped_column(Numeric(20, 2), nullable=True)
     net_value: Mapped[float | None] = mapped_column(Numeric(20, 2), nullable=True)
     source: Mapped[str] = mapped_column(String(50), default="idx_scraper")
-    created_at: Mapped[datetime] = mapped_column(DateTime, default=_utcnow)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_utcnow)
 
 
 class PolicyEvent(Base):
@@ -633,7 +745,7 @@ class PolicyEvent(Base):
     dampak: Mapped[str | None] = mapped_column(String(30), nullable=True)
     sektor: Mapped[str | None] = mapped_column(String(200), nullable=True)
     deskripsi: Mapped[str | None] = mapped_column(Text, nullable=True)
-    created_at: Mapped[datetime] = mapped_column(DateTime, default=_utcnow)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_utcnow)
 
 
 class ExternalEvent(Base):
@@ -649,7 +761,7 @@ class ExternalEvent(Base):
     dampak_market: Mapped[str | None] = mapped_column(String(30), nullable=True)
     sektor: Mapped[str | None] = mapped_column(String(200), nullable=True)
     deskripsi: Mapped[str | None] = mapped_column(Text, nullable=True)
-    created_at: Mapped[datetime] = mapped_column(DateTime, default=_utcnow)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_utcnow)
 
 
 class PatternAnalysis(Base):
@@ -668,7 +780,7 @@ class PatternAnalysis(Base):
     direction: Mapped[str | None] = mapped_column(String(20), nullable=True)
     details: Mapped[str | None] = mapped_column(Text, nullable=True)
     source: Mapped[str] = mapped_column(String(50), default="technical_compute")
-    created_at: Mapped[datetime] = mapped_column(DateTime, default=_utcnow)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_utcnow)
 
 
 class TradingSuspension(Base):
@@ -683,7 +795,7 @@ class TradingSuspension(Base):
     reason: Mapped[str | None] = mapped_column(Text, nullable=True)
     suspension_type: Mapped[str | None] = mapped_column(String(50), nullable=True)
     source: Mapped[str] = mapped_column(String(50), default="manual")
-    created_at: Mapped[datetime] = mapped_column(DateTime, default=_utcnow)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_utcnow)
 
 
 class RenderLog(Base):
@@ -697,10 +809,10 @@ class RenderLog(Base):
     id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
     ticker: Mapped[str] = mapped_column(String(30), nullable=False)
     table_name: Mapped[str] = mapped_column(String(50), nullable=False)
-    last_rendered: Mapped[datetime] = mapped_column(DateTime, default=_utcnow)
+    last_rendered: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_utcnow)
     rows_rendered: Mapped[int | None] = mapped_column(Integer, nullable=True)
     status: Mapped[str | None] = mapped_column(String(20), nullable=True)
-    created_at: Mapped[datetime] = mapped_column(DateTime, default=_utcnow)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_utcnow)
 
 
 class ValuationCache(Base):
@@ -720,7 +832,7 @@ class ValuationCache(Base):
     upside_pct: Mapped[float | None] = mapped_column(Numeric(10, 2), nullable=True)
     assumptions: Mapped[str | None] = mapped_column(Text, nullable=True)
     source: Mapped[str] = mapped_column(String(50), default="computed")
-    created_at: Mapped[datetime] = mapped_column(DateTime, default=_utcnow)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_utcnow)
 
 
 # ── Trading & execution tables (pustaka/18 §13 #8, #9, #11, #13, #14, D31) ─
@@ -744,9 +856,9 @@ class Position(Base):
     realized_pnl: Mapped[float | None] = mapped_column(Numeric(20, 2), nullable=True)
     unrealized_pnl: Mapped[float | None] = mapped_column(Numeric(20, 2), nullable=True)
     return_pct: Mapped[float | None] = mapped_column(Numeric(10, 4), nullable=True)
-    opened_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
-    closed_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
-    created_at: Mapped[datetime] = mapped_column(DateTime, default=_utcnow)
+    opened_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    closed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_utcnow)
 
 
 class Order(Base):
@@ -766,7 +878,7 @@ class Order(Base):
     realized_pnl: Mapped[float | None] = mapped_column(Numeric(20, 2), nullable=True)
     status: Mapped[str] = mapped_column(String(20), default="PENDING")
     trigger: Mapped[str | None] = mapped_column(String(50), nullable=True)
-    created_at: Mapped[datetime] = mapped_column(DateTime, default=_utcnow)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_utcnow)
 
 
 class EquitySnapshot(Base):
@@ -782,7 +894,7 @@ class EquitySnapshot(Base):
     realized_pnl: Mapped[float | None] = mapped_column(Numeric(20, 2), nullable=True)
     unrealized_pnl: Mapped[float | None] = mapped_column(Numeric(20, 2), nullable=True)
     total_return_pct: Mapped[float | None] = mapped_column(Numeric(10, 4), nullable=True)
-    created_at: Mapped[datetime] = mapped_column(DateTime, default=_utcnow)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_utcnow)
 
 
 class DailyRiskMetric(Base):
@@ -800,7 +912,7 @@ class DailyRiskMetric(Base):
     max_drawdown: Mapped[float | None] = mapped_column(Numeric(10, 4), nullable=True)
     annualized_volatility: Mapped[float | None] = mapped_column(Numeric(10, 4), nullable=True)
     portfolio_value: Mapped[float | None] = mapped_column(Numeric(20, 2), nullable=True)
-    created_at: Mapped[datetime] = mapped_column(DateTime, default=_utcnow)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_utcnow)
 
 
 class TradeJournal(Base):
@@ -821,7 +933,7 @@ class TradeJournal(Base):
     strategy: Mapped[str | None] = mapped_column(String(100), nullable=True)
     notes: Mapped[str | None] = mapped_column(Text, nullable=True)
     tags: Mapped[str | None] = mapped_column(String(200), nullable=True)
-    created_at: Mapped[datetime] = mapped_column(DateTime, default=_utcnow)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_utcnow)
 
 
 class AIWeight(Base):
@@ -834,7 +946,7 @@ class AIWeight(Base):
     weights_json: Mapped[str] = mapped_column(Text, nullable=False)
     r2_score: Mapped[float | None] = mapped_column(Numeric(10, 4), nullable=True)
     n_samples: Mapped[int | None] = mapped_column(Integer, nullable=True)
-    created_at: Mapped[datetime] = mapped_column(DateTime, default=_utcnow)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_utcnow)
 
 
 class MLLabel(Base):
@@ -862,7 +974,7 @@ class MLLabel(Base):
     barrier_hit: Mapped[str | None] = mapped_column(String(20), nullable=True)
     return_pct: Mapped[float | None] = mapped_column(Numeric(10, 4), nullable=True)
     vol_adjusted_return: Mapped[float | None] = mapped_column(Numeric(10, 4), nullable=True)
-    created_at: Mapped[datetime] = mapped_column(DateTime, default=_utcnow)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_utcnow)
 
 
 class MarketRegime(Base):
@@ -880,11 +992,11 @@ class MarketRegime(Base):
     id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
     date: Mapped[date] = mapped_column(Date, nullable=False, index=True)
     regime: Mapped[str | None] = mapped_column(String(30), nullable=True)
-    vix_level: Mapped[str | None] = mapped_column(String(20), nullable=True)
-    fear_greed_label: Mapped[str | None] = mapped_column(String(30), nullable=True)
-    foreign_flow_trend: Mapped[str | None] = mapped_column(String(20), nullable=True)
-    source: Mapped[str] = mapped_column(String(50), default="computed")
-    created_at: Mapped[datetime] = mapped_column(DateTime, default=_utcnow)
+    ihsg_trend: Mapped[str | None] = mapped_column(String(20), nullable=True)
+    volatility_level: Mapped[str | None] = mapped_column(String(20), nullable=True)
+    breadth_score: Mapped[float | None] = mapped_column(Numeric(5, 2), nullable=True)
+    description: Mapped[str | None] = mapped_column(Text, nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_utcnow)
 
 
 class SystemState(Base):
@@ -894,7 +1006,7 @@ class SystemState(Base):
 
     key: Mapped[str] = mapped_column(String(100), primary_key=True)
     value: Mapped[str | None] = mapped_column(Text, nullable=True)
-    updated_at: Mapped[datetime] = mapped_column(DateTime, default=_utcnow, onupdate=_utcnow)
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_utcnow, onupdate=_utcnow)
 
 
 class SchedulerState(Base):
@@ -907,11 +1019,11 @@ class SchedulerState(Base):
     __tablename__ = "scheduler_state"
 
     task_id: Mapped[str] = mapped_column(String(50), primary_key=True)
-    last_run: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+    last_run: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     last_status: Mapped[str] = mapped_column(String(20), default="pending")
     last_error: Mapped[str | None] = mapped_column(Text, nullable=True)
     run_count: Mapped[int] = mapped_column(Integer, default=0)
-    updated_at: Mapped[datetime] = mapped_column(DateTime, default=_utcnow, onupdate=_utcnow)
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_utcnow, onupdate=_utcnow)
 
 
 class RecomputeWatermark(Base):
@@ -929,7 +1041,7 @@ class RecomputeWatermark(Base):
     last_processed_date: Mapped[date | None] = mapped_column(Date, nullable=True)
     last_ohlcv_date: Mapped[date | None] = mapped_column(Date, nullable=True)
     rows_processed: Mapped[int | None] = mapped_column(Integer, nullable=True)
-    updated_at: Mapped[datetime] = mapped_column(DateTime, default=_utcnow, onupdate=_utcnow)
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_utcnow, onupdate=_utcnow)
 
 
 class ParquetSyncState(Base):
@@ -951,10 +1063,10 @@ class ParquetSyncState(Base):
     sync_mode: Mapped[str] = mapped_column(String(20), nullable=False)
     partition_col: Mapped[str | None] = mapped_column(String(50), nullable=True)
     last_synced_date: Mapped[date | None] = mapped_column(Date, nullable=True)
-    last_synced_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+    last_synced_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     last_row_count: Mapped[int | None] = mapped_column(Integer, nullable=True)
     total_partitions_written: Mapped[int | None] = mapped_column(Integer, nullable=True)
-    updated_at: Mapped[datetime] = mapped_column(DateTime, default=_utcnow, onupdate=_utcnow)
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_utcnow, onupdate=_utcnow)
 
 
 # ── Relational hierarchy tables (migration 0013) ─────────────────────────
@@ -1010,7 +1122,7 @@ class Emiten(Base):
     )
     subsektor: Mapped[str | None] = mapped_column(String(100), nullable=True)
     is_active: Mapped[bool] = mapped_column(Boolean, default=True)
-    created_at: Mapped[datetime] = mapped_column(DateTime, default=_utcnow)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_utcnow)
 
 
 class Instrumen(Base):
@@ -1026,7 +1138,7 @@ class Instrumen(Base):
     asset_class: Mapped[str] = mapped_column(String(30), nullable=False, default="EQUITY_INDIVIDUAL")
     base_currency: Mapped[str] = mapped_column(String(3), nullable=False, default="IDR")
     is_active: Mapped[bool] = mapped_column(Boolean, default=True)
-    created_at: Mapped[datetime] = mapped_column(DateTime, default=_utcnow)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_utcnow)
 
 
 class IndeksPasar(Base):
@@ -1043,7 +1155,7 @@ class IndeksPasar(Base):
     jenis_indeks: Mapped[str | None] = mapped_column(String(30), nullable=True)
     asset_class: Mapped[str] = mapped_column(String(30), nullable=False, default="INDEX_COMPOSITE")
     is_active: Mapped[bool] = mapped_column(Boolean, default=True)
-    created_at: Mapped[datetime] = mapped_column(DateTime, default=_utcnow)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_utcnow)
 
 
 class Broker(Base):
@@ -1053,7 +1165,7 @@ class Broker(Base):
 
     id_broker: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
     nama_broker: Mapped[str] = mapped_column(String(200), nullable=False, unique=True)
-    created_at: Mapped[datetime] = mapped_column(DateTime, default=_utcnow)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_utcnow)
 
 
 class BrokerBursa(Base):
@@ -1088,7 +1200,7 @@ class TransaksiInvestor(Base):
     biaya_broker: Mapped[Decimal | None] = mapped_column(Numeric(20, 4), nullable=True, default=0)
     pajak_pph_final: Mapped[Decimal | None] = mapped_column(Numeric(20, 4), nullable=True, default=0)
     status_eksekusi: Mapped[str] = mapped_column(String(20), nullable=False, default="PENDING")
-    created_at: Mapped[datetime] = mapped_column(DateTime, default=_utcnow)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_utcnow)
 
 
 class AppNotification(Base):
@@ -1097,7 +1209,7 @@ class AppNotification(Base):
     __tablename__ = "app_notifications"
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
-    timestamp: Mapped[datetime] = mapped_column(DateTime, nullable=False, default=_utcnow)
+    timestamp: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, default=_utcnow)
     title: Mapped[str] = mapped_column(Text, nullable=False)
     body_json: Mapped[str] = mapped_column(Text, nullable=False)
     status: Mapped[str] = mapped_column(String(20), nullable=False, default="UNREAD")

@@ -14,11 +14,10 @@ Usage:
 import argparse
 import json
 import logging
-import sqlite3
 import sys
 import time
 import warnings
-from datetime import datetime
+from datetime import datetime, timedelta
 from pathlib import Path
 
 import numpy as np
@@ -48,11 +47,13 @@ MAX_WEIGHT = 0.15
 KEEP_SCORE_TARGET = 3.5
 
 
-def load_ohlcv_from_db(conn: sqlite3.Connection, ticker: str) -> pd.DataFrame:
+def load_ohlcv_from_db(conn: object, ticker: str) -> pd.DataFrame:
     """Load daily OHLCV for a ticker, sorted by date."""
+    from market.config import settings as _settings
+    _ph = "%s" if _settings.db_backend == "postgresql" else "?"
     df = pd.read_sql_query(
-        "SELECT ticker, timestamp as date, open, high, low, close, volume, adjusted_close "
-        "FROM ohlcv WHERE ticker = ? AND timeframe = '1d' ORDER BY timestamp",
+        f"SELECT ticker, timestamp as date, open, high, low, close, volume, adjusted_close "
+        f"FROM ohlcv WHERE ticker = {_ph} AND timeframe = '1d' ORDER BY timestamp",
         conn, params=(ticker,),
     )
     if df.empty:
@@ -70,7 +71,7 @@ def load_ohlcv_from_db(conn: sqlite3.Connection, ticker: str) -> pd.DataFrame:
 MIN_AVG_VOLUME = 100_000
 
 
-def get_all_tickers(conn: sqlite3.Connection, limit: int = 0) -> list[str]:
+def get_all_tickers(conn: object, limit: int = 0) -> list[str]:
     """Get tickers with sufficient data (>MIN_BARS bars, active in 2026).
 
     Segment-aware: only EQUITY_INDIVIDUAL tickers (excludes indices ^JKSE,
@@ -79,19 +80,30 @@ def get_all_tickers(conn: sqlite3.Connection, limit: int = 0) -> list[str]:
     - Excludes delisted, suspended (BEI), illiquid, and index tickers
     - trading_status is persisted in DB (updated from BEI announcements + yfinance verification)
     """
+    from market.config import settings as _settings
+    _ph = "%s" if _settings.db_backend == "postgresql" else "?"
+    _now_60d = (datetime.now() - timedelta(days=60)).strftime("%Y-%m-%d")
+
+    if _settings.db_backend == "postgresql":
+        _avg_vol_expr = f"AVG(CASE WHEN o.timestamp >= {_ph} THEN o.volume END)"
+        _params = (_now_60d, MIN_BARS, MIN_AVG_VOLUME)
+    else:
+        _avg_vol_expr = "AVG(CASE WHEN o.timestamp >= date('now', '-60 days') THEN o.volume END)"
+        _params = (MIN_BARS, MIN_AVG_VOLUME)
+
     df = pd.read_sql_query(
-        "SELECT o.ticker, COUNT(*) as n_bars, MAX(o.timestamp) as last_date, "
-        "  AVG(CASE WHEN o.timestamp >= date('now', '-60 days') THEN o.volume END) as avg_vol_60d "
-        "FROM ohlcv o "
-        "JOIN instrument_master im ON o.ticker = im.ticker "
-        "WHERE o.timeframe = '1d' "
-        "AND im.asset_class = 'EQUITY_INDIVIDUAL' "
-        "AND im.trading_status = 'active' "
-        "GROUP BY o.ticker "
-        "HAVING n_bars > ? AND last_date >= '2026-01-01' "
-        "AND avg_vol_60d >= ? "
-        "ORDER BY n_bars DESC",
-        conn, params=(MIN_BARS, MIN_AVG_VOLUME),
+        f"SELECT o.ticker, COUNT(*) as n_bars, MAX(o.timestamp) as last_date, "
+        f"  {_avg_vol_expr} as avg_vol_60d "
+        f"FROM ohlcv o "
+        f"JOIN instrument_master im ON o.ticker = im.ticker "
+        f"WHERE o.timeframe = '1d' "
+        f"AND im.asset_class = 'EQUITY_INDIVIDUAL' "
+        f"AND im.trading_status = 'active' "
+        f"GROUP BY o.ticker "
+        f"HAVING n_bars > {_ph} AND last_date >= '2026-01-01' "
+        f"AND avg_vol_60d >= {_ph} "
+        f"ORDER BY n_bars DESC",
+        conn, params=_params,
     )
     tickers = df["ticker"].tolist()
     if limit > 0:
@@ -359,7 +371,7 @@ def compute_ml_signals_for_ticker(
 
 
 def save_ticker_profiles_to_db(
-    conn: sqlite3.Connection,
+    conn: object,
     per_ticker_metrics: list[dict],
     avg_weights: dict[str, float],
     prices: pd.DataFrame,
@@ -372,6 +384,9 @@ def save_ticker_profiles_to_db(
     avg_volume, avg_daily_volatility, trend_strength,
     avg_uptrend_streak, avg_downtrend_streak.
     """
+    from market.config import settings as _settings
+    _ph = "%s" if _settings.db_backend == "postgresql" else "?"
+    _pg = _settings.db_backend == "postgresql"
     c = conn.cursor()
     now = datetime.now().isoformat()
     n_updated = 0
@@ -419,23 +434,23 @@ def save_ticker_profiles_to_db(
         top_factors = ml_info.get("top_factors", {})
         factors_json = json.dumps(top_factors) if top_factors else None
 
-        c.execute("""
-            UPDATE stock_personality SET
-                best_pattern = ?,
-                best_pattern_winrate = ?,
-                overall_pattern_winrate = ?,
-                avg_volume = ?,
-                avg_daily_volatility = ?,
-                trend_strength = ?,
-                avg_uptrend_streak = ?,
-                avg_downtrend_streak = ?,
-                ml_signal = ?,
-                multifactor_signal = ?,
-                composite_signal = ?,
-                factors_summary = ?,
-                updated_at = ?
-            WHERE ticker = ?
-        """, (
+        c.execute(
+            f"UPDATE stock_personality SET "
+            f" best_pattern = {_ph}, "
+            f" best_pattern_winrate = {_ph}, "
+            f" overall_pattern_winrate = {_ph}, "
+            f" avg_volume = {_ph}, "
+            f" avg_daily_volatility = {_ph}, "
+            f" trend_strength = {_ph}, "
+            f" avg_uptrend_streak = {_ph}, "
+            f" avg_downtrend_streak = {_ph}, "
+            f" ml_signal = {_ph}, "
+            f" multifactor_signal = {_ph}, "
+            f" composite_signal = {_ph}, "
+            f" factors_summary = {_ph}, "
+            f" updated_at = {_ph} "
+            f"WHERE ticker = {_ph}",
+            (
             strategy,
             round(winrate, 2),
             round(winrate, 2),
@@ -455,15 +470,15 @@ def save_ticker_profiles_to_db(
             n_updated += 1
         else:
             # Ticker not in stock_personality, insert new
-            c.execute("""
-                INSERT INTO stock_personality (
-                    ticker, best_pattern, best_pattern_winrate,
-                    overall_pattern_winrate, avg_daily_volatility,
-                    trend_strength, avg_uptrend_streak, avg_downtrend_streak,
-                    ml_signal, multifactor_signal, composite_signal,
-                    factors_summary, updated_at, profile_date
-                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-            """, (
+            c.execute(
+                f"INSERT INTO stock_personality ("
+                f" ticker, best_pattern, best_pattern_winrate, "
+                f" overall_pattern_winrate, avg_daily_volatility, "
+                f" trend_strength, avg_uptrend_streak, avg_downtrend_streak, "
+                f" ml_signal, multifactor_signal, composite_signal, "
+                f" factors_summary, updated_at, profile_date"
+                f") VALUES ({_ph}, {_ph}, {_ph}, {_ph}, {_ph}, {_ph}, {_ph}, {_ph}, {_ph}, {_ph}, {_ph}, {_ph}, {_ph}, {_ph})",
+                (
                 ticker, strategy, round(winrate, 2), round(winrate, 2),
                 round(avg_daily_vol, 6) if avg_daily_vol is not None else None,
                 round(trend_strength, 2) if trend_strength is not None else None,
@@ -475,12 +490,28 @@ def save_ticker_profiles_to_db(
             n_updated += 1
 
         # Also write to stock_prediction (split table)
-        c.execute("""
-            INSERT OR REPLACE INTO stock_prediction
-                (ticker, ml_signal, multifactor_signal, composite_signal,
-                 factors_summary, prediction_updated_at)
-            VALUES (?, ?, ?, ?, ?, ?)
-        """, (ticker, ml_sig, mf_sig, comp_sig, factors_json, now))
+        if _pg:
+            c.execute(
+                f"INSERT INTO stock_prediction "
+                f" (ticker, ml_signal, multifactor_signal, composite_signal, "
+                f"  factors_summary, prediction_updated_at) "
+                f"VALUES ({_ph}, {_ph}, {_ph}, {_ph}, {_ph}, {_ph}) "
+                f"ON CONFLICT (ticker) DO UPDATE SET "
+                f" ml_signal=EXCLUDED.ml_signal, "
+                f" multifactor_signal=EXCLUDED.multifactor_signal, "
+                f" composite_signal=EXCLUDED.composite_signal, "
+                f" factors_summary=EXCLUDED.factors_summary, "
+                f" prediction_updated_at=EXCLUDED.prediction_updated_at",
+                (ticker, ml_sig, mf_sig, comp_sig, factors_json, now),
+            )
+        else:
+            c.execute(
+                f"INSERT OR REPLACE INTO stock_prediction "
+                f" (ticker, ml_signal, multifactor_signal, composite_signal, "
+                f"  factors_summary, prediction_updated_at) "
+                f"VALUES ({_ph}, {_ph}, {_ph}, {_ph}, {_ph}, {_ph})",
+                (ticker, ml_sig, mf_sig, comp_sig, factors_json, now),
+            )
 
     conn.commit()
     return n_updated
@@ -547,7 +578,8 @@ def main():
         logger.error("Database not found: %s", db)
         sys.exit(1)
 
-    conn = sqlite3.connect(str(db))
+    from market.db.raw import get_raw_connection
+    conn = get_raw_connection().__enter__()
 
     # Get tickers
     if args.tickers:

@@ -109,6 +109,28 @@ def fetch_quarterly_for_ticker(ticker: str) -> list[dict]:
             col = qdate_str
             row["cash_flow"] = _safe_float(q_cf.loc["Total Cash From Operating Activities", col]) if "Total Cash From Operating Activities" in q_cf.index else None
 
+        # Banking-specific quarterly metrics
+        if q_inc is not None and not q_inc.empty and qdate_str in [str(c.date()) for c in q_inc.columns]:
+            col = qdate_str
+            if "Net Interest Income" in q_inc.index:
+                ni_income = _safe_float(q_inc.loc["Net Interest Income", col])
+                if ni_income and row.get("total_assets"):
+                    row["nim"] = (ni_income / row["total_assets"]) * 100 * 4  # annualized
+
+        if q_bs is not None and not q_bs.empty and qdate_str in [str(c.date()) for c in q_bs.columns]:
+            col = qdate_str
+            if "Total Deposits" in q_bs.index and "Total Loans" in q_bs.index:
+                deposits = _safe_float(q_bs.loc["Total Deposits", col])
+                loans = _safe_float(q_bs.loc["Total Loans", col])
+                if deposits and deposits > 0 and loans:
+                    row["loan_to_deposit"] = (loans / deposits) * 100
+                # NPL: try "Non Performing Loans" or "Allowance For Doubtful Accounts"
+                npl = _safe_float(q_bs.loc["Non Performing Loans", col]) if "Non Performing Loans" in q_bs.index else None
+                if npl is None and "Allowance For Doubtful Accounts" in q_bs.index:
+                    npl = _safe_float(q_bs.loc["Allowance For Doubtful Accounts", col])
+                if npl and loans and loans > 0:
+                    row["npl_ratio"] = (npl / loans) * 100
+
         row["market_cap"] = market_cap
         row["fiscal_year"] = qdate.year
         row["quarter"] = _quarter_from_date(qdate)
@@ -149,6 +171,9 @@ def store_quarterly(session, ticker: str, quarters: list[dict]) -> int:
             total_liabilities=Decimal(str(q["total_liabilities"])) if q.get("total_liabilities") else None,
             cash_flow=Decimal(str(q["cash_flow"])) if q.get("cash_flow") else None,
             market_cap=Decimal(str(q["market_cap"])) if q.get("market_cap") else None,
+            npl_ratio=Decimal(str(q["npl_ratio"])) if q.get("npl_ratio") else None,
+            nim=Decimal(str(q["nim"])) if q.get("nim") else None,
+            loan_to_deposit=Decimal(str(q["loan_to_deposit"])) if q.get("loan_to_deposit") else None,
             fiscal_year=q.get("fiscal_year"),
             quarter=q.get("quarter"),
             source="yahoo_quarterly",

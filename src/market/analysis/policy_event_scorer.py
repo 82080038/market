@@ -20,9 +20,13 @@ References:
 
 from __future__ import annotations
 
+import logging
 from dataclasses import dataclass, field
-from datetime import datetime, timedelta
+from datetime import date, datetime, timedelta
 from enum import Enum
+from pathlib import Path
+
+logger = logging.getLogger(__name__)
 
 
 class EventType(Enum):
@@ -310,3 +314,177 @@ def pre_event_confidence_reduction(
             total_reduction += (7 - event.days_until) * reduction_per_day
     multiplier = 1.0 - total_reduction
     return max(0.8, min(1.0, multiplier))
+
+
+# ── Category mapping helpers ──────────────────────────────────────────────
+
+_KATEGORI_TO_EVENT_TYPE: dict[str, EventType] = {
+    "Moneter": EventType.BI_RATE_CUT,
+    "Fiskal": EventType.OTHER,
+    "Regulasi OJK": EventType.OTHER,
+    "Regulasi BEI": EventType.OTHER,
+    "Politik": EventType.ELECTION,
+}
+
+_DAMPAK_TO_DIRECTION: dict[str, EventDirection] = {
+    "Positif": EventDirection.BULLISH,
+    "Negatif": EventDirection.BEARISH,
+    "Netral": EventDirection.NEUTRAL,
+}
+
+_DAMPAK_TO_BASE_IMPACT: dict[str, float] = {
+    "Positif": 25.0,
+    "Negatif": -30.0,
+    "Netral": 0.0,
+}
+
+_EXT_KATEGORI_TO_EVENT_TYPE: dict[str, EventType] = {
+    "Konflik Geopolitik": EventType.GEOPOLITICAL,
+    "Perang": EventType.GEOPOLITICAL,
+    "Bencana Alam": EventType.OTHER,
+    "Pandemi": EventType.PANDEMIC,
+    "Perubahan Iklim": EventType.OTHER,
+    "ESG": EventType.OTHER,
+}
+
+_EXT_DAMPAK_TO_IMPACT: dict[str, float] = {
+    "Tinggi": -35.0,
+    "Sedang": -20.0,
+    "Rendah": -10.0,
+}
+
+
+def _parse_date(val: str | date | datetime) -> datetime:
+    """Parse a date value (str, date, or datetime) into a datetime."""
+    if isinstance(val, datetime):
+        return val
+    if isinstance(val, date):
+        return datetime(val.year, val.month, val.day)
+    return datetime.strptime(str(val)[:10], "%Y-%m-%d")
+
+
+class PolicyEventScorer:
+    """Loads policy_events + external_events from DB and scores them.
+
+    Bridges the ``policy_events`` and ``external_events`` tables to the
+    :func:`compute_event_signal` function. Maps Indonesian-language categories
+    to :class:`EventType` / :class:`EventDirection` / base impact.
+
+    Usage::
+
+        scorer = PolicyEventScorer(db_path="data/market_research.db")
+        scorer.load()
+        signal = scorer.compute_event_signal(ticker="BBCA.JK", as_of_date=...)
+    """
+
+    def __init__(self, db_path: str | Path | None = None) -> None:
+        self.db_path = str(db_path) if db_path else None
+        self._events: list[EventImpact] = []
+
+    def load(self, db_path: str | Path | None = None) -> int:
+        """Load events from ``policy_events`` + ``external_events`` tables.
+
+        Returns:
+            Number of events loaded.
+        """
+        path = str(db_path or self.db_path or "")
+
+        if path:
+            import sqlite3
+            conn = sqlite3.connect(path)
+            try:
+                return self._load_events(conn)
+            finally:
+                conn.close()
+        else:
+            from market.db.raw import get_raw_connection
+            with get_raw_connection() as conn:
+                return self._load_events(conn)
+
+    def _load_events(self, conn: object) -> int:
+        """Load events from an open DBAPI connection."""
+        events: list[EventImpact] = []
+
+        rows = conn.execute(
+            "SELECT tanggal, kategori, judul, instansi, dampak, sektor, deskripsi "
+            "FROM policy_events ORDER BY tanggal"
+        ).fetchall()
+        for row in rows:
+            tanggal, kategori, judul, instansi, dampak, sektor, deskripsi = row
+            etype = _KATEGORI_TO_EVENT_TYPE.get(kategori or "", EventType.OTHER)
+            direction = _DAMPAK_TO_DIRECTION.get(dampak or "", EventDirection.NEUTRAL)
+            base_impact = _DAMPAK_TO_BASE_IMPACT.get(dampak or "", 0.0)
+
+            if "suku bunga" in (judul or "").lower() and "naik" in (judul or "").lower():
+                etype = EventType.BI_RATE_HIKE
+                direction = EventDirection.BEARISH
+                base_impact = -40.0
+            elif "suku bunga" in (judul or "").lower() and ("turun" in (judul or "").lower() or "potong" in (judul or "").lower()):
+                etype = EventType.BI_RATE_CUT
+                direction = EventDirection.BULLISH
+                base_impact = 30.0
+            elif "fed" in (judul or "").lower() and "hike" in (judul or "").lower():
+                etype = EventType.FED_RATE_HIKE
+                base_impact = -25.0
+            elif "fed" in (judul or "").lower() and "cut" in (judul or "").lower():
+                etype = EventType.FED_RATE_CUT
+                base_impact = 20.0
+
+            events.append(EventImpact(
+                event_type=etype,
+                direction=direction,
+                scope=EventScope.MARKET_WIDE,
+                base_impact=base_impact,
+                event_date=_parse_date(tanggal),
+                ticker=None,
+                description=f"{judul or ''} ({instansi or ''})",
+            ))
+
+        ext_rows = conn.execute(
+            "SELECT tanggal, kategori, judul, lokasi, dampak_market, sektor, deskripsi "
+            "FROM external_events ORDER BY tanggal"
+        ).fetchall()
+        for row in ext_rows:
+            tanggal, kategori, judul, lokasi, dampak_market, sektor, deskripsi = row
+            etype = _EXT_KATEGORI_TO_EVENT_TYPE.get(kategori or "", EventType.OTHER)
+            base_impact = _EXT_DAMPAK_TO_IMPACT.get(dampak_market or "", -15.0)
+
+            events.append(EventImpact(
+                event_type=etype,
+                direction=EventDirection.BEARISH if base_impact < 0 else EventDirection.NEUTRAL,
+                scope=EventScope.MARKET_WIDE,
+                base_impact=base_impact,
+                event_date=_parse_date(tanggal),
+                ticker=None,
+                description=f"{judul or ''} ({lokasi or ''})",
+            ))
+
+        self._events = events
+        logger.info("PolicyEventScorer: loaded %d events (%d policy, %d external)",
+                    len(events), len(rows), len(ext_rows))
+        return len(events)
+
+    def compute_event_signal(
+        self,
+        ticker: str,
+        as_of_date: datetime,
+    ) -> EventSignal | None:
+        """Compute composite event signal for ``ticker`` as of ``as_of_date``.
+
+        Returns ``None`` if no events loaded.
+        """
+        if not self._events:
+            return None
+        return compute_event_signal(
+            ticker=ticker,
+            events=self._events,
+            as_of_date=as_of_date,
+        )
+
+    def get_upcoming(
+        self,
+        as_of_date: datetime,
+        lookahead_days: int = 14,
+    ) -> list[UpcomingEvent]:
+        """Get upcoming events within lookahead window."""
+        return get_upcoming_events(self._events, as_of_date, lookahead_days)

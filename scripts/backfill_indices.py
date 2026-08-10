@@ -170,6 +170,16 @@ def fetch_index_ohlcv(
 
     end_date = date.today() - timedelta(days=1)
 
+    # Skip if the ticker's market is still open (prevents intraday data as daily close)
+    from market.data.timestamp_validation import TICKER_MIC, is_market_open
+    mic = TICKER_MIC.get(ticker, market_mic)
+    if mic and is_market_open(mic):
+        logger.warning(
+            "  Skipping %s (market %s still open) — daily close not yet final",
+            ticker, mic,
+        )
+        return []
+
     logger.info("  Fetching %s (start=%s, end=%s)...", ticker, start_date or "max", end_date)
 
     try:

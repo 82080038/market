@@ -88,8 +88,8 @@ def fetch_commodity_ohlcv(ticker: str, start: str, end: str | None = None) -> pd
     cols = ["timestamp", "open", "high", "low", "close", "volume"]
     df = df[[c for c in cols if c in df.columns]]
 
-    # Ensure timestamp is string
-    df["timestamp"] = pd.to_datetime(df["timestamp"]).dt.strftime("%Y-%m-%d %H:%M:%S")
+    # Ensure timestamp is timezone-aware UTC (ISO 8601 with offset)
+    df["timestamp"] = pd.to_datetime(df["timestamp"], utc=True)
 
     return df
 
@@ -110,13 +110,18 @@ def upsert_ohlcv(conn: sqlite3.Connection, ticker: str, df: pd.DataFrame) -> int
 
     count = 0
     for _, row in df.iterrows():
+        ts = row["timestamp"]
+        if hasattr(ts, "isoformat"):
+            ts_str = ts.isoformat()
+        else:
+            ts_str = str(ts)
         conn.execute("""
             INSERT OR REPLACE INTO ohlcv
                 (ticker, timestamp, timeframe, open, high, low, close, volume, source)
             VALUES (?, ?, '1d', ?, ?, ?, ?, ?, 'yfinance')
         """, (
             ticker,
-            row["timestamp"],
+            ts_str,
             float(row.get("open", 0)),
             float(row.get("high", 0)),
             float(row.get("low", 0)),
