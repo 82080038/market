@@ -1,6 +1,6 @@
 # MEGAPLAN — Aplikasi Pasar Modal Single-User (Pustaka 00–93)
 
-**Ringkasan 1 kalimat:** Membangun aplikasi pasar modal personal yang lengkap di `/opt/lampp/htdocs/market/` dari nol, mengikuti 94 dokumen `pustaka/` dan mengadopsi pola dari `trading-system` v0.1.11 sebagai referensi, dengan fase-fase dari MVP saham Indonesia menuju multi-pasar/multi-aset dan AI self-evolution, serta environment lifecycle Research → Paper → Live yang ketat.
+**Ringkasan 1 kalimat:** Membangun aplikasi pasar modal personal yang lengkap (Linux: `/opt/lampp/htdocs/market/`, Windows: `C:\xampp\htdocs\market\`) dari nol, mengikuti 98 dokumen `pustaka/` (00-97) dan mengadopsi pola dari `trading-system` v0.1.11 sebagai referensi, dengan fase-fase dari MVP saham Indonesia menuju multi-pasar/multi-aset dan AI self-evolution, serta environment lifecycle Research → Paper → Live yang ketat.
 
 ---
 
@@ -10,7 +10,7 @@ Membuat satu aplikasi desktop/web single-user untuk analisis, rekomendasi, simul
 
 ## 2. Acceptance Criteria Utama
 
-1. **Data Pipeline:** Setiap hari aplikasi mengambil data EOD Yahoo Finance/IDX, membersihkannya, mendeteksi corporate actions, dan menyimpannya ke SQLite dalam <30 menit untuk 928 saham.
+1. **Data Pipeline:** Setiap hari aplikasi mengambil data EOD Yahoo Finance/IDX, membersihkannya, mendeteksi corporate actions, dan menyimpannya ke SQLite dalam <30 menit untuk ~923 saham aktif.
 2. **Decision Engine:** Endpoint `/api/recommend/{ticker}` mengembalikan skor 0-100, sinyal, VaR 95%, position size, dan narasi XAI Bahasa Indonesia.
 3. **Backtest Valid:** Event-driven, next-bar-open, realistic cost/slippage, walk-forward, tidak ada look-ahead bias.
 4. **Paper Trading:** Simulasi order memperhitungkan lot IDX (100), biaya broker, PPh final 0.1%, dividen 10%.
@@ -23,10 +23,10 @@ Membuat satu aplikasi desktop/web single-user untuk analisis, rekomendasi, simul
 ## 3. Scope
 
 ### In Scope
-- Seluruh topik yang dibahas di 94 dokumen `pustaka/` (00-93), dikelompokkan ke dalam 12 fase berikut.
+- Seluruh topik yang dibahas di 98 dokumen `pustaka/` (00-97), dikelompokkan ke dalam 12 fase berikut.
 - Tech stack: Python 3.11+ (FastAPI, uv, Alembic, SQLite WAL, pandas, PyTorch cu121), Next.js 14+ (TypeScript, Tailwind).
 - Single-user deployment lokal (Linux/WSL) dan Docker.
-- Migrasi data dari `/media/petrick/Parquet/trading_data/` (read-only) ke SQLite lokal.
+- Migrasi data dari Parquet archive (read-only) ke SQLite lokal. Lihat `src/market/paths.py` untuk path OS-aware.
 - Bahasa Indonesia UI + tooltip untuk istilah teknis.
 - GPU `cuda:1` untuk LSTM, walk-forward, Monte Carlo, NLP/IndoBERT.
 
@@ -303,9 +303,9 @@ Membuat satu aplikasi desktop/web single-user untuk analisis, rekomendasi, simul
 
 AI (Devin/Cascade) memperlakukan MEGAPLAN.md sebagai **source of truth** proyek. Setiap sesi dimulai dengan:
 
-1. Baca `@/opt/lampp/htdocs/market/MEGAPLAN.md`.
-2. Baca `@/opt/lampp/htdocs/market/AGENTS.md`.
-3. Baca `@/opt/lampp/htdocs/market/.devin/SESSION_MEMORY.md`.
+1. Baca `@MEGAPLAN.md` (relative to project root).
+2. Baca `@AGENTS.md`.
+3. Baca `@.devin/SESSION_MEMORY.md`.
 4. Identifikasi fase dengan marker `[ ]` atau `[~]` paling awal.
 5. Baca dokumen `pustaka/` yang tercantum dalam fase tersebut.
 6. Jalankan prompting-cycle di bawah ini.
@@ -351,7 +351,7 @@ Setiap iterasi (biasanya 1-3 hari kerja) mengikuti loop berikut:
 
 **6. CHECKPOINT — Context preservation**
 - Jika context window mendekati ~70% ATAU sebelum topik besar berganti, jalankan `/context-checkpoint`.
-- Simpan ringkasan ke `@/opt/lampp/htdocs/market/.devin/SESSION_MEMORY.md` dan memory system.
+- Simpan ringkasan ke `@.devin/SESSION_MEMORY.md` dan memory system.
 - Jika sesi berakhir, tulis status fase aktif, file yang diubah, pending tasks, dan dependensi.
 
 ### 6.3 Aturan Autonomous yang Wajib
@@ -368,13 +368,13 @@ Setiap iterasi (biasanya 1-3 hari kerja) mengikuti loop berikut:
 
 AI wajib berhenti dan minta approval jika:
 
-- [x] Menjalankan migrasi skema DB `market_live.db`. *(approved 2026-08-05)*
+- [x] Menjalankan migrasi skema DB `market_live.db`. *(approved 2026-08-05, head 0012)*
 - [ ] Mengaktifkan broker adapter real / live trading. *(form disiapkan di FE settings, perlu approval token)*
 - [x] Menghapus file/data penting (termasuk DB lama). *(tidak ada penghapusan — standing rule)*
 - [x] Menginstal dependency sistem atau mengubah konfigurasi OS. *(approved 2026-08-05)*
 - [ ] Deploy ke cloud/VPS/public endpoint. *(local-only untuk sekarang, sebelum dinyatakan layak live)*
 - [x] Memodifikasi konfigurasi keamanan (firewall, secrets, TLS). *(single-user local — minimal setup, .env + .gitignore sudah ada)*
-- [ ] Mengganti model champion di Live environment. *(CLI: `market model promote/rollback` — perlu eval-gate pass)*
+- [ ] Mengganti model champion di Live environment. *(CLI: `market model promote/rollback` — perlu eval-gate pass + paper trading 30 hari)*
 
 ### 6.5 Subagent Prompts (Opsional)
 
@@ -425,20 +425,34 @@ AI wajib berhenti dan minta approval jika:
 
 **Total estimasi:** 32 minggu (8 bulan). Dapat dikompresi menjadi 24-28 minggu dengan parallel work, tetapi **tidak disarankan memangkas fase Paper Trading atau eval-gate**.
 
-## 9. Next Steps Segera (Status Pasca-Data Enrichment)
+> **Status per 10 Agustus 2026:** Semua 12 fase (0-11) selesai dari sisi kode dan test (1274 tests, coverage 76%+). Aplikasi siap untuk paper trading 30 hari sebelum live gate.
 
-Semua fase 0–11 sudah selesai dari sisi kode dan test (760+ passed, coverage 76%+). Data enrichment passca-audit juga selesai: delisting/merger/name change logic, DTS backfill, free_float backfill, dan ticker_util standardisasi. Langkah nyata berikutnya adalah menjadikan aplikasi berjalan end-to-end dan memulai paper trading:
+## 9. Next Steps Segera (Status per 10 Agustus 2026)
 
-1. **Persiapan Environment**: buat `.env` dari `.env.example`, pilih `ENV=paper` untuk validasi live-market tanpa uang nyata.
-2. **Database**: migrate & seed `market_research.db` dan `market_paper.db`; isi dari parquet archive (`/media/petrick/Parquet/trading_data/archive/tables/`).
-3. **Scheduler**: daftarkan task harian — EOD fetch, intraday poll (15-min), quality check, feature store refresh, drift detection, report generation, fundamental fetch (weekly).
-4. **Frontend Security**: atasi 3 high severity vulnerabilities (postcss/sharp via next). ✅ Selesai (Next.js 16.3.0).
-5. **Wire-up API**: sambungkan `/api/portfolio`, `/api/watchlist`, dan `/api/backtest/run` ke database, bukan mock/synthetic. ✅ Selesai.
-6. **Intraday Polling**: aktifkan `fetch_intraday` task untuk polling yfinance setiap 15 menit selama jam trading (09:00-15:50 WIB). Endpoint `/api/prices/latest` menyediakan snapshot harga real-time untuk FE dashboard.
-7. **Prediction vs Actual Comparison**: gunakan endpoint `/api/prices/compare/{ticker}` untuk membandingkan hasil prediksi aplikasi dengan harga aktual dari yfinance. Berguna untuk evaluasi akurasi model selama paper trading.
-8. **Paper Trading 30 Hari**: jalankan minimal 30 hari simulasi sebelum membuka human-gate broker real / model champion live.
-9. **Model Champion Pertama**: latih baseline LSTM/LightGBM di Paper environment, daftarkan ke model registry, dan promosikan setelah eval-gate pass.
-10. **Live Gate**: setelah paper period memadai, ajukan approval untuk broker real dan/atau deploy local-only production.
+Semua fase 0–11 sudah selesai dari sisi kode dan test (1274 tests, 64 files, coverage 76%+). Data enrichment, batch AI/ML backfill, DB normalization, fast portfolio pipeline, dan 7 modul strategi alternatif juga selesai. Langkah nyata berikutnya adalah validasi strategi dan memulai paper trading sungguhan:
+
+1. **Persiapan Environment**: ✅ Selesai — `.env` dengan `ENV=paper`, `BROKER_ADAPTER=paper`.
+2. **Database**: ✅ Selesai — `market_research.db` (~10 GB) & `market_paper.db` (~8.3 GB) ter-seed penuh, alembic head 0012.
+3. **Scheduler**: ✅ Selesai — 11+ tasks terdaftar + crontab aktif (daily signal, weekly HRP recompute, weekly drift check).
+4. **Frontend Security**: ✅ Selesai (Next.js 16.3.0, 0 vulnerabilities, 10 pages).
+5. **Wire-up API**: ✅ Selesai — `/api/portfolio`, `/api/watchlist`, `/api/backtest/run` terhubung ke DB.
+6. **Intraday Polling**: ✅ Selesai — `fetch_intraday` task + `/api/prices/latest` + `/api/prices/compare/{ticker}`.
+7. **Production Pipeline**: ✅ Selesai — fast portfolio pipeline (4-65 detik) menggantikan pipeline 14-jam. HRP + walk-forward + EvalGate + SignalEnhancer.
+8. **DB Normalization & AI/ML Modularisasi**: ✅ Selesai — wide tables (0012), stock_prediction split, MLOps integrations (ModelRegistry, DriftDetector, EvalGate), hyperparameter tuning anti-overfit.
+9. **Strategi Alternatif**: ✅ Selesai — 7 modul baru (meta-labeling, pairs trading, volume features, policy event scorer, macro data fetcher, sector rotation, compute device). Lihat `pustaka/97-strategi-alternatif-ekspansi-data-2026.md`.
+10. **Stale Data Engine**: ✅ Selesai — `refresh_stale.py` deteksi & auto-refresh >24h.
+11. **AI/ML Audit**: ✅ Selesai — framework 4-pilar (Delta Alpha, significance, drift, latency). Baseline teknikal Sharpe -0.50, AI belum berikan Alpha positif (perlu retraining dengan fitur remediasi). Lihat `pustaka/96-ai-ml-audit-framework.md`.
+12. **Paper Trading 30 Hari**: ⏳ Pending — jalankan minimal 30 hari simulasi sebelum membuka human-gate broker real. Paper DB siap (8.3 GB, 980 tickers, ML labels 9.85M rows).
+13. **Model Champion Pertama**: ⏳ Pending — 50 tickers sudah trained (avg val_acc 0.502), perlu retraining dengan fitur remediasi + promosi setelah eval-gate pass.
+14. **Live Gate**: ⏳ Pending — setelah paper period memadai, ajukan approval untuk broker real dan/atau deploy local-only production.
+
+### Prioritas Riset Berikutnya (dari pustaka/97)
+
+1. **Meta-labeling retraining** — fix accuracy 40-43% → target 55%+ via Lopez de Prado secondary ML model (prioritas TERTINGGI).
+2. **Pairs trading backtest** — strategi market-neutral yang tahan bear market choppy (statarb cointegration).
+3. **Regime-switching portfolio** — HMM + dynamic allocation untuk bear/bull/sideways.
+4. **Foreign flow momentum** — foreign net buy 5-day sebagai entry signal (1.25M rows foreign_flow tersedia).
+5. **Macro data expansion** — BPS API + BI SEKI + NOAA ONI + World Bank + commodity futures (rate-limited, gratis).
 
 ### Data Enrichment Completed (6 Agustus 2026)
 
@@ -521,7 +535,7 @@ Eksekusi batch 5 task untuk meningkatkan kesiapan data AI/ML:
 
 #### Total dampak database:
 - **~39M rows baru** across technical_indicators + daily_risk_metrics + fundamental_data + ai_weights.
-- Database size sekarang: ~6 GB → estimate ~8-9 GB setelah batch ini.
+- Database size: ~6 GB sebelum batch → ~10 GB setelah batch ini (research DB, per 10 Agustus 2026).
 
 ### Paper DB Sync (7 Agustus 2026)
 
