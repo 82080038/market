@@ -438,7 +438,30 @@ SELECT
     NULL::VARCHAR(50)  AS session_type,
     'broker_transactions' AS source
 FROM broker_transactions bt
-WHERE bt.status = 'FILLED';
+WHERE bt.status = 'FILLED'
+
+UNION ALL
+
+SELECT
+    ac.start_at           AS utc_timestamp,
+    'ASTRONACCI_CYCLE'    AS event_type,
+    ac.cycle_type         AS category,
+    ac.title              AS title,
+    ac.description        AS description,
+    ac.target_asset_class AS region,
+    ac.potential_impact   AS impact_level,
+    ac.expected_reversal  AS impact_direction,
+    NULL::TEXT[]          AS affected_tickers,
+    NULL::TEXT[]          AS affected_sectors,
+    NULL::VARCHAR(30)     AS ticker,
+    NULL::VARCHAR(10)     AS exchange_mic,
+    NULL::NUMERIC         AS price,
+    NULL::BIGINT          AS volume,
+    NULL::VARCHAR(10)     AS side,
+    NULL::VARCHAR(20)     AS action_type,
+    NULL::VARCHAR(50)     AS session_type,
+    'astronacci_cycles'   AS source
+FROM astronacci_cycles ac;
 
 -- ── 8. Domino Effect Timeline Query ──────────────────────────────────────────
 --
@@ -643,3 +666,108 @@ $$;
 
 -- Example usage:
 -- SELECT create_stock_price_partition(2027, 1);
+
+-- ════════════════════════════════════════════════════════════════════════════
+-- SATELLITE DATA TABLES (pustaka/99-matriks-relevansi-satelit-pasar-modal.md)
+-- ════════════════════════════════════════════════════════════════════════════
+-- Stores satellite observations proven significant in correlation analysis:
+--   NDVI (Sentinel-2 via Microsoft Planetary Computer)
+--   T2M, PRECTOTCORR, RH2M, ALLSKY_SFC_SW_DWN (NASA POWER API)
+-- ════════════════════════════════════════════════════════════════════════════
+
+-- 16a. Satellite observations — raw daily/sparse metrics per location
+CREATE TABLE satellite_observations (
+    id              BIGSERIAL    PRIMARY KEY,
+    location_name   VARCHAR(100) NOT NULL,
+    lat             NUMERIC(10,6) NOT NULL,
+    lon             NUMERIC(10,6) NOT NULL,
+    date            DATE         NOT NULL,
+    metric          VARCHAR(30)  NOT NULL,        -- NDVI, T2M, PRECTOTCORR, RH2M, ALLSKY_SFC_SW_DWN
+    value           NUMERIC(20,6) NOT NULL,
+    source          VARCHAR(50)  NOT NULL DEFAULT 'nasa_power',  -- nasa_power, sentinel2_pc
+    cloud_cover_pct NUMERIC(5,2),
+    scene_id        VARCHAR(200),
+    created_at      TIMESTAMPTZ  NOT NULL DEFAULT NOW(),
+
+    CONSTRAINT uq_satobs_pk UNIQUE (location_name, date, metric, source)
+);
+
+CREATE INDEX ix_satobs_location_date ON satellite_observations(location_name, date);
+CREATE INDEX ix_satobs_metric        ON satellite_observations(metric);
+
+-- 16b. Satellite correlation results — persisted analysis output
+CREATE TABLE satellite_correlation_results (
+    id                      BIGSERIAL    PRIMARY KEY,
+    location_name           VARCHAR(100) NOT NULL,
+    satellite_metric        VARCHAR(30)  NOT NULL,
+    stock_ticker            VARCHAR(30)  NOT NULL,
+    frequency               VARCHAR(10)  NOT NULL,   -- daily, weekly, monthly
+    rolling_window          INTEGER      NOT NULL,
+    optimal_lag             INTEGER      NOT NULL,
+    optimal_corr            NUMERIC(10,6) NOT NULL,
+    optimal_pvalue          NUMERIC(10,6) NOT NULL,
+    granger_optimal_pvalue  NUMERIC(10,6),
+    is_significant          BOOLEAN      NOT NULL DEFAULT FALSE,
+    lag_unit                VARCHAR(10)  NOT NULL DEFAULT 'hari',
+    created_at              TIMESTAMPTZ  NOT NULL DEFAULT NOW(),
+
+    CONSTRAINT uq_satcorr_pk UNIQUE (location_name, satellite_metric, stock_ticker,
+                                     frequency, rolling_window)
+);
+
+CREATE INDEX ix_satcorr_ticker ON satellite_correlation_results(stock_ticker);
+CREATE INDEX ix_satcorr_metric ON satellite_correlation_results(satellite_metric);
+
+-- 17. Satellite ticker-location mapping — DB-driven global mapping
+CREATE TABLE satellite_ticker_locations (
+    id              BIGSERIAL    PRIMARY KEY,
+    ticker          VARCHAR(30)  NOT NULL,
+    location_name   VARCHAR(100) NOT NULL,
+    lat             NUMERIC(10,6) NOT NULL,
+    lon             NUMERIC(10,6) NOT NULL,
+    sector          VARCHAR(100),
+    metrics         TEXT         NOT NULL DEFAULT 'NDVI,T2M,PRECTOTCORR,RH2M,ALLSKY_SFC_SW_DWN',
+    description     TEXT,
+    is_active       BOOLEAN      NOT NULL DEFAULT TRUE,
+    created_at      TIMESTAMPTZ  NOT NULL DEFAULT NOW(),
+    updated_at      TIMESTAMPTZ  NOT NULL DEFAULT NOW(),
+
+    CONSTRAINT uq_sattickerloc_pk UNIQUE (ticker, location_name)
+);
+
+CREATE INDEX ix_sattickerloc_ticker ON satellite_ticker_locations(ticker);
+CREATE INDEX ix_sattickerloc_sector ON satellite_ticker_locations(sector);
+
+-- ════════════════════════════════════════════════════════════════════════════
+-- ASTRONACCI CYCLES — Financial Astrology & Time Cycle (pustaka/97-strategi)
+-- ════════════════════════════════════════════════════════════════════════════
+-- Stores time-cycle events based on Astronacci methodology:
+--   Mercury Retrograde, Moon Phases (New/Full Moon), Fibonacci Time Windows
+-- Acts as "WHEN" indicator — when price reversals are potentially expected.
+-- Integrated into v_domino_timeline via UNION ALL.
+-- ════════════════════════════════════════════════════════════════════════════
+
+CREATE TABLE astronacci_cycles (
+    id                  BIGSERIAL     PRIMARY KEY,
+    cycle_uuid          UUID          UNIQUE DEFAULT gen_random_uuid(),
+    cycle_type          VARCHAR(50)   NOT NULL,          -- MERCURY_RETROGRADE, MOON_PHASE, FIBONACCI_TIME
+    title               VARCHAR(200)  NOT NULL,          -- 'Mercury Retrograde Peak', 'New Moon Window'
+    start_at            TIMESTAMPTZ   NOT NULL,          -- cycle start (UTC anchor)
+    end_at              TIMESTAMPTZ   NOT NULL,          -- cycle end (UTC)
+    potential_impact    VARCHAR(20)   DEFAULT 'HIGH',    -- CRITICAL, HIGH, MEDIUM, LOW
+    target_asset_class  VARCHAR(50)   DEFAULT 'ALL',     -- ALL, EQUITY, COMMODITY, FX
+    expected_reversal   VARCHAR(20)   DEFAULT 'NEUTRAL', -- BULLISH_REVERSAL, BEARISH_REVERSAL, VOLATILITY, NEUTRAL
+    description         TEXT,
+    created_at          TIMESTAMPTZ   DEFAULT NOW(),
+
+    CONSTRAINT chk_astronacci_dates CHECK (start_at < end_at),
+    CONSTRAINT chk_astronacci_impact CHECK (potential_impact IN ('CRITICAL','HIGH','MEDIUM','LOW')),
+    CONSTRAINT chk_astronacci_reversal CHECK (expected_reversal IN ('BULLISH_REVERSAL','BEARISH_REVERSAL','VOLATILITY','NEUTRAL'))
+);
+
+CREATE INDEX idx_astronacci_start_at     ON astronacci_cycles(start_at);
+CREATE INDEX idx_astronacci_end_at       ON astronacci_cycles(end_at);
+CREATE INDEX idx_astronacci_cycle_type   ON astronacci_cycles(cycle_type);
+CREATE INDEX idx_astronacci_reversal     ON astronacci_cycles(expected_reversal);
+CREATE INDEX idx_astronacci_range_gist   ON astronacci_cycles
+    USING GiST (tstzrange(start_at, end_at, '[]'));

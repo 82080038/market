@@ -1,0 +1,221 @@
+================================================================================
+LAPORAN ANALISIS KORELASI SATELIT vs HARGA SAHAM
+================================================================================
+
+Test Case: Kasus A — Perkebunan CPO (Kalimantan Tengah)
+Deskripsi: Sentinel-2 NDVI & cuaca perkebunan sawit vs saham CPO
+Koordinat: lat=-2.5, lon=113.0
+Ticker: AALI.JK, LSIP.JK
+Metrik Satelit: NDVI, T2M, PRECTOTCORR, RH2M
+Periode Data: 2025-08-10 → 2026-08-10
+Total Hari Satelit: 364
+  AALI.JK: 294 hari perdagangan
+  LSIP.JK: 241 hari perdagangan
+
+SUMBER DATA:
+  - NASA POWER API (https://power.larc.nasa.gov/)
+    → T2M, PRECTOTCORR, RH2M, ALLSKY_SFC_SW_DWN (real satellite-derived)
+  - NDVI: Sentinel-2 via Microsoft Planetary Computer (6 scenes)
+    → Real NDVI from B04/B08 bands, cloud cover < 30%
+  - Stock: SQLite ohlcv table atau yfinance (untuk futures ZC=F, ZS=F, ZW=F)
+
+HASIL ANALISIS LEAD-LAG:
+--------------------------------------------------------------------------------
+
+  26 hubungan signifikan ditemukan (p < 0.05):
+
+  • [daily] NDVI mendahului AALI.JK sebesar 47 hari
+    r = -0.1306, p(CCF) = 0.0264, p(Granger) = 0.5511
+    Rolling window: 7 hari
+    Korelasi negatif: kenaikan metrik satelit berasosiasi dengan penurunan return saham
+
+  • [daily] T2M mengikuti AALI.JK sebesar 18 hari
+    r = -0.1660, p(CCF) = 0.0047, p(Granger) = 0.1738
+    Rolling window: 7 hari
+    Korelasi negatif: kenaikan metrik satelit berasosiasi dengan penurunan return saham
+
+  • [daily] T2M mendahului LSIP.JK sebesar 29 hari
+    r = +0.2231, p(CCF) = 0.0005, p(Granger) = 0.0423
+    Rolling window: 7 hari
+    Korelasi positif: kenaikan metrik satelit berasosiasi dengan kenaikan return saham
+
+  • [daily] PRECTOTCORR mendahului AALI.JK sebesar 38 hari
+    r = +0.1347, p(CCF) = 0.0220, p(Granger) = 0.0576
+    Rolling window: 7 hari
+    Korelasi positif: kenaikan metrik satelit berasosiasi dengan kenaikan return saham
+
+  • [daily] PRECTOTCORR mengikuti LSIP.JK sebesar 44 hari
+    r = +0.1996, p(CCF) = 0.0020, p(Granger) = 0.1463
+    Rolling window: 7 hari
+    Korelasi positif: kenaikan metrik satelit berasosiasi dengan kenaikan return saham
+
+  • [daily] RH2M mendahului AALI.JK sebesar 58 hari
+    r = +0.2420, p(CCF) = 0.0000, p(Granger) = 0.0208
+    Rolling window: 7 hari
+    Korelasi positif: kenaikan metrik satelit berasosiasi dengan kenaikan return saham
+
+  • [daily] RH2M mendahului LSIP.JK sebesar 47 hari
+    r = +0.2558, p(CCF) = 0.0001, p(Granger) = 0.3856
+    Rolling window: 7 hari
+    Korelasi positif: kenaikan metrik satelit berasosiasi dengan kenaikan return saham
+
+  • [daily] NDVI mendahului AALI.JK sebesar 47 hari
+    r = -0.1172, p(CCF) = 0.0465, p(Granger) = 0.9409
+    Rolling window: 30 hari
+    Korelasi negatif: kenaikan metrik satelit berasosiasi dengan penurunan return saham
+
+  • [daily] T2M mendahului AALI.JK sebesar 47 hari
+    r = +0.1742, p(CCF) = 0.0030, p(Granger) = 0.1572
+    Rolling window: 30 hari
+    Korelasi positif: kenaikan metrik satelit berasosiasi dengan kenaikan return saham
+
+  • [daily] T2M mendahului LSIP.JK sebesar 39 hari
+    r = +0.2696, p(CCF) = 0.0000, p(Granger) = 0.0099
+    Rolling window: 30 hari
+    Korelasi positif: kenaikan metrik satelit berasosiasi dengan kenaikan return saham
+
+  • [daily] PRECTOTCORR mendahului AALI.JK sebesar 58 hari
+    r = +0.1524, p(CCF) = 0.0095, p(Granger) = 0.0936
+    Rolling window: 30 hari
+    Korelasi positif: kenaikan metrik satelit berasosiasi dengan kenaikan return saham
+
+  • [daily] PRECTOTCORR mengikuti LSIP.JK sebesar 12 hari
+    r = -0.2407, p(CCF) = 0.0002, p(Granger) = 0.2032
+    Rolling window: 30 hari
+    Korelasi negatif: kenaikan metrik satelit berasosiasi dengan penurunan return saham
+
+  • [daily] RH2M mendahului AALI.JK sebesar 60 hari
+    r = +0.1972, p(CCF) = 0.0008, p(Granger) = 0.1528
+    Rolling window: 30 hari
+    Korelasi positif: kenaikan metrik satelit berasosiasi dengan kenaikan return saham
+
+  • [daily] RH2M mendahului LSIP.JK sebesar 50 hari
+    r = +0.2601, p(CCF) = 0.0001, p(Granger) = 0.0278
+    Rolling window: 30 hari
+    Korelasi positif: kenaikan metrik satelit berasosiasi dengan kenaikan return saham
+
+  • [weekly] T2M mendahului AALI.JK sebesar 8 minggu
+    r = +0.4419, p(CCF) = 0.0012, p(Granger) = 0.4428
+    Rolling window: 4 minggu
+    Korelasi positif: kenaikan metrik satelit berasosiasi dengan kenaikan return saham
+
+  • [weekly] T2M mendahului LSIP.JK sebesar 7 minggu
+    r = +0.4649, p(CCF) = 0.0006, p(Granger) = 0.2401
+    Rolling window: 4 minggu
+    Korelasi positif: kenaikan metrik satelit berasosiasi dengan kenaikan return saham
+
+  • [weekly] PRECTOTCORR mendahului AALI.JK sebesar 8 minggu
+    r = +0.3247, p(CCF) = 0.0201, p(Granger) = 0.4320
+    Rolling window: 4 minggu
+    Korelasi positif: kenaikan metrik satelit berasosiasi dengan kenaikan return saham
+
+  • [weekly] PRECTOTCORR mengikuti LSIP.JK sebesar 4 minggu
+    r = -0.3653, p(CCF) = 0.0084, p(Granger) = 0.2580
+    Rolling window: 4 minggu
+    Korelasi negatif: kenaikan metrik satelit berasosiasi dengan penurunan return saham
+
+  • [weekly] RH2M mendahului AALI.JK sebesar 8 minggu
+    r = +0.3324, p(CCF) = 0.0172, p(Granger) = 0.1827
+    Rolling window: 4 minggu
+    Korelasi positif: kenaikan metrik satelit berasosiasi dengan kenaikan return saham
+
+  • [weekly] RH2M mengikuti LSIP.JK sebesar 8 minggu
+    r = +0.3347, p(CCF) = 0.0164, p(Granger) = 0.2777
+    Rolling window: 4 minggu
+    Korelasi positif: kenaikan metrik satelit berasosiasi dengan kenaikan return saham
+
+  • [weekly] T2M mendahului AALI.JK sebesar 1 minggu
+    r = -0.2957, p(CCF) = 0.0352, p(Granger) = 0.6437
+    Rolling window: 12 minggu
+    Korelasi negatif: kenaikan metrik satelit berasosiasi dengan penurunan return saham
+
+  • [weekly] T2M mendahului LSIP.JK sebesar 8 minggu
+    r = +0.3227, p(CCF) = 0.0209, p(Granger) = 0.4292
+    Rolling window: 12 minggu
+    Korelasi positif: kenaikan metrik satelit berasosiasi dengan kenaikan return saham
+
+  • [weekly] PRECTOTCORR mendahului AALI.JK sebesar 8 minggu
+    r = +0.2826, p(CCF) = 0.0445, p(Granger) = 0.6213
+    Rolling window: 12 minggu
+    Korelasi positif: kenaikan metrik satelit berasosiasi dengan kenaikan return saham
+
+  • [weekly] PRECTOTCORR mengikuti LSIP.JK sebesar 8 minggu
+    r = +0.3446, p(CCF) = 0.0133, p(Granger) = 0.1205
+    Rolling window: 12 minggu
+    Korelasi positif: kenaikan metrik satelit berasosiasi dengan kenaikan return saham
+
+  • [weekly] RH2M mengikuti AALI.JK sebesar 5 minggu
+    r = +0.3716, p(CCF) = 0.0073, p(Granger) = 0.4779
+    Rolling window: 12 minggu
+    Korelasi positif: kenaikan metrik satelit berasosiasi dengan kenaikan return saham
+
+  • [weekly] RH2M mengikuti LSIP.JK sebesar 6 minggu
+    r = +0.4124, p(CCF) = 0.0026, p(Granger) = 0.1105
+    Rolling window: 12 minggu
+    Korelasi positif: kenaikan metrik satelit berasosiasi dengan kenaikan return saham
+
+TABEL DETAIL:
+Metrik               Ticker     Freq      Win   Lag    r        p(CCF)     p(Granger)   Sig  
+------------------------------------------------------------------------------------------
+NDVI                 AALI.JK    daily     7       +47 -0.1306  0.0264    0.5511       YA
+NDVI                 LSIP.JK    daily     7       +39 -0.0836  0.1999    0.7397       -
+T2M                  AALI.JK    daily     7       -18 -0.1660  0.0047    0.1738       YA
+T2M                  LSIP.JK    daily     7       +29 +0.2231  0.0005    0.0423       YA
+PRECTOTCORR          AALI.JK    daily     7       +38 +0.1347  0.0220    0.0576       YA
+PRECTOTCORR          LSIP.JK    daily     7       -44 +0.1996  0.0020    0.1463       YA
+RH2M                 AALI.JK    daily     7       +58 +0.2420  0.0000    0.0208       YA
+RH2M                 LSIP.JK    daily     7       +47 +0.2558  0.0001    0.3856       YA
+NDVI                 AALI.JK    daily     30      +47 -0.1172  0.0465    0.9409       YA
+NDVI                 LSIP.JK    daily     30      +60 +0.0597  0.3599    0.4969       -
+T2M                  AALI.JK    daily     30      +47 +0.1742  0.0030    0.1572       YA
+T2M                  LSIP.JK    daily     30      +39 +0.2696  0.0000    0.0099       YA
+PRECTOTCORR          AALI.JK    daily     30      +58 +0.1524  0.0095    0.0936       YA
+PRECTOTCORR          LSIP.JK    daily     30      -12 -0.2407  0.0002    0.2032       YA
+RH2M                 AALI.JK    daily     30      +60 +0.1972  0.0008    0.1528       YA
+RH2M                 LSIP.JK    daily     30      +50 +0.2601  0.0001    0.0278       YA
+T2M                  AALI.JK    weekly    4        +8 +0.4419  0.0012    0.4428       YA
+T2M                  LSIP.JK    weekly    4        +7 +0.4649  0.0006    0.2401       YA
+PRECTOTCORR          AALI.JK    weekly    4        +8 +0.3247  0.0201    0.4320       YA
+PRECTOTCORR          LSIP.JK    weekly    4        -4 -0.3653  0.0084    0.2580       YA
+RH2M                 AALI.JK    weekly    4        +8 +0.3324  0.0172    0.1827       YA
+RH2M                 LSIP.JK    weekly    4        -8 +0.3347  0.0164    0.2777       YA
+NDVI                 AALI.JK    weekly    12       +4 -0.3469  0.0705    N/A          -
+NDVI                 LSIP.JK    weekly    12       +5 -0.2945  0.1209    N/A          -
+T2M                  AALI.JK    weekly    12       +1 -0.2957  0.0352    0.6437       YA
+T2M                  LSIP.JK    weekly    12       +8 +0.3227  0.0209    0.4292       YA
+PRECTOTCORR          AALI.JK    weekly    12       +8 +0.2826  0.0445    0.6213       YA
+PRECTOTCORR          LSIP.JK    weekly    12       -8 +0.3446  0.0133    0.1205       YA
+RH2M                 AALI.JK    weekly    12       -5 +0.3716  0.0073    0.4779       YA
+RH2M                 LSIP.JK    weekly    12       -6 +0.4124  0.0026    0.1105       YA
+T2M                  AALI.JK    monthly   3        +0 +0.0000  1.0000    N/A          -
+T2M                  LSIP.JK    monthly   3        +0 +0.0000  1.0000    N/A          -
+PRECTOTCORR          AALI.JK    monthly   3        +0 +0.0000  1.0000    N/A          -
+PRECTOTCORR          LSIP.JK    monthly   3        +0 +0.0000  1.0000    N/A          -
+RH2M                 AALI.JK    monthly   3        +0 +0.0000  1.0000    N/A          -
+RH2M                 LSIP.JK    monthly   3        +0 +0.0000  1.0000    N/A          -
+
+FILE PLOT:
+  /home/petrick/projects/market/output/satellite_correlation/case_1_timeseries.png
+  /home/petrick/projects/market/output/satellite_correlation/case_1_ccf_lag.png
+
+METODOLOGI:
+  1. Resampling: daily (harian), weekly (mingguan W), monthly (bulanan ME)
+  2. Cross-Correlation Function (CCF):
+     - Daily: lag -60 h +60 hari
+     - Weekly: lag -8 h +8 minggu
+     - Monthly: lag -3 h +3 bulan
+  3. Granger Causality Test: F-test, lag order disesuaikan per frekuensi
+  4. Rolling average: 7 dan 30 (daily), 4 dan 12 (weekly), 3 (monthly)
+  5. Signifikansi: p-value < 0.05 (CCF atau Granger)
+  6. Data alignment: linear interpolation + forward-fill
+
+CATATAN & KETERBATASAN:
+  - NDVI: data real dari Sentinel-2 via Microsoft Planetary Computer (gratis, no account)
+    → Cloud cover threshold < 30%, 10m resolusi, 5-day revisit
+    → Jika tidak ada scene yang valid, fallback ke simulasi
+  - Nightlight: simulasi (VIIRS Earthdata credentials not configured)
+    → Untuk data real: set EARTHDATA_USERNAME dan EARTHDATA_PASSWORD di .env
+  - Hasil korelasi pada data simulasi TIDAK dapat diinterpretasikan sebagai
+    bukti kausalitas nyata — hanya menguji metodologi pipeline
+  - Untuk analisis produksi: integrasikan GEE dengan service account
+  - Granger causality bukan bukti kausalitas sejati, hanya prediksi statistik

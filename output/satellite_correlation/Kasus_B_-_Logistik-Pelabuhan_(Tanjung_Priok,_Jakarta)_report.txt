@@ -1,0 +1,76 @@
+================================================================================
+LAPORAN ANALISIS KORELASI SATELIT vs HARGA SAHAM
+================================================================================
+
+Test Case: Kasus B — Logistik/Pelabuhan (Tanjung Priok, Jakarta)
+Deskripsi: Nightlight intensity & cuaca pelabuhan vs saham logistik
+Koordinat: lat=-6.107, lon=106.88
+Ticker: SMDR.JK
+Metrik Satelit: NIGHTLIGHT, T2M, ALLSKY_SFC_SW_DWN
+Periode Data: 2024-08-10 → 2026-08-10
+Total Hari Satelit: 731
+  SMDR.JK: 476 hari perdagangan
+
+SUMBER DATA:
+  - NASA POWER API (https://power.larc.nasa.gov/)
+    → T2M, PRECTOTCORR, RH2M, ALLSKY_SFC_SW_DWN (real satellite-derived)
+  - NDVI: Sentinel-2 via Microsoft Planetary Computer (49 scenes)
+    → Real NDVI from B04/B08 bands, cloud cover < 30%
+  - Nightlight: Simulasi (VIIRS Earthdata credentials not configured)
+    → Trend + seasonality + cloud effect proxy
+  - Stock: SQLite ohlcv table atau yfinance (untuk futures ZC=F, ZS=F, ZW=F)
+
+HASIL ANALISIS LEAD-LAG:
+--------------------------------------------------------------------------------
+
+  1 hubungan signifikan ditemukan (p < 0.05):
+
+  • [daily] ALLSKY_SFC_SW_DWN mengikuti SMDR.JK sebesar 10 hari
+    r = -0.0730, p(CCF) = 0.1134, p(Granger) = 0.0029
+    Rolling window: 7 hari
+    Korelasi negatif: kenaikan metrik satelit berasosiasi dengan penurunan return saham
+
+TABEL DETAIL:
+Metrik               Ticker     Freq      Win   Lag    r        p(CCF)     p(Granger)   Sig  
+------------------------------------------------------------------------------------------
+NIGHTLIGHT           SMDR.JK    daily     7       +35 -0.0872  0.0583    0.0971       -
+T2M                  SMDR.JK    daily     7       +27 -0.0560  0.2247    0.2693       -
+ALLSKY_SFC_SW_DWN    SMDR.JK    daily     7       -10 -0.0730  0.1134    0.0029       YA
+NIGHTLIGHT           SMDR.JK    daily     30      +49 -0.0602  0.1920    0.1249       -
+T2M                  SMDR.JK    daily     30      +45 -0.0499  0.2790    0.2263       -
+ALLSKY_SFC_SW_DWN    SMDR.JK    daily     30      +39 -0.0580  0.2086    0.1092       -
+NIGHTLIGHT           SMDR.JK    weekly    4        +8 -0.1614  0.1052    0.0669       -
+T2M                  SMDR.JK    weekly    4        +7 -0.1242  0.2135    0.6395       -
+ALLSKY_SFC_SW_DWN    SMDR.JK    weekly    4        +8 -0.1840  0.0642    0.0544       -
+NIGHTLIGHT           SMDR.JK    weekly    12       +8 -0.0626  0.5318    0.6226       -
+T2M                  SMDR.JK    weekly    12       +8 -0.0960  0.3372    0.0899       -
+ALLSKY_SFC_SW_DWN    SMDR.JK    weekly    12       +8 -0.1655  0.0964    0.0794       -
+NIGHTLIGHT           SMDR.JK    monthly   3        +2 -0.2446  0.2493    0.4434       -
+T2M                  SMDR.JK    monthly   3        +1 -0.2201  0.3015    0.4790       -
+ALLSKY_SFC_SW_DWN    SMDR.JK    monthly   3        +2 -0.3069  0.1446    0.4993       -
+
+FILE PLOT:
+  /home/petrick/projects/market/output/satellite_correlation/case_2_timeseries.png
+  /home/petrick/projects/market/output/satellite_correlation/case_2_ccf_lag.png
+
+METODOLOGI:
+  1. Resampling: daily (harian), weekly (mingguan W), monthly (bulanan ME)
+  2. Cross-Correlation Function (CCF):
+     - Daily: lag -60 h +60 hari
+     - Weekly: lag -8 h +8 minggu
+     - Monthly: lag -3 h +3 bulan
+  3. Granger Causality Test: F-test, lag order disesuaikan per frekuensi
+  4. Rolling average: 7 dan 30 (daily), 4 dan 12 (weekly), 3 (monthly)
+  5. Signifikansi: p-value < 0.05 (CCF atau Granger)
+  6. Data alignment: linear interpolation + forward-fill
+
+CATATAN & KETERBATASAN:
+  - NDVI: data real dari Sentinel-2 via Microsoft Planetary Computer (gratis, no account)
+    → Cloud cover threshold < 30%, 10m resolusi, 5-day revisit
+    → Jika tidak ada scene yang valid, fallback ke simulasi
+  - Nightlight: simulasi (VIIRS Earthdata credentials not configured)
+    → Untuk data real: set EARTHDATA_USERNAME dan EARTHDATA_PASSWORD di .env
+  - Hasil korelasi pada data simulasi TIDAK dapat diinterpretasikan sebagai
+    bukti kausalitas nyata — hanya menguji metodologi pipeline
+  - Untuk analisis produksi: integrasikan GEE dengan service account
+  - Granger causality bukan bukti kausalitas sejati, hanya prediksi statistik

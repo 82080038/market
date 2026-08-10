@@ -1,0 +1,45 @@
+===============================================================================================
+  PERBANDINGAN KORELASI: DAILY vs WEEKLY vs MONTHLY — Kasus A — Perkebunan CPO (Kalimantan Tengah)
+===============================================================================================
+Metrik               Ticker     Win   r(daily)   r(weekly)  r(monthly)  Δ(w-d)   Δ(m-d)   Best    
+-----------------------------------------------------------------------------------------------
+NDVI                 AALI.JK    7     -0.1306    N/A        N/A                           daily   
+NDVI                 AALI.JK    12    N/A        -0.3469    N/A                           weekly  
+NDVI                 AALI.JK    30    -0.1172    N/A        N/A                           daily   
+NDVI                 LSIP.JK    7     -0.0836    N/A        N/A                           daily   
+NDVI                 LSIP.JK    12    N/A        -0.2945    N/A                           weekly  
+NDVI                 LSIP.JK    30    +0.0597    N/A        N/A                           daily   
+PRECTOTCORR          AALI.JK    3     N/A        N/A        +0.0000                       monthly 
+PRECTOTCORR          AALI.JK    4     N/A        +0.3247    N/A                           weekly  
+PRECTOTCORR          AALI.JK    7     +0.1347    N/A        N/A                           daily   
+PRECTOTCORR          AALI.JK    12    N/A        +0.2826    N/A                           weekly  
+PRECTOTCORR          AALI.JK    30    +0.1524    N/A        N/A                           daily   
+PRECTOTCORR          LSIP.JK    3     N/A        N/A        +0.0000                       monthly 
+PRECTOTCORR          LSIP.JK    4     N/A        -0.3653    N/A                           weekly  
+PRECTOTCORR          LSIP.JK    7     +0.1996    N/A        N/A                           daily   
+PRECTOTCORR          LSIP.JK    12    N/A        +0.3446    N/A                           weekly  
+PRECTOTCORR          LSIP.JK    30    -0.2407    N/A        N/A                           daily   
+RH2M                 AALI.JK    3     N/A        N/A        +0.0000                       monthly 
+RH2M                 AALI.JK    4     N/A        +0.3324    N/A                           weekly  
+RH2M                 AALI.JK    7     +0.2420    N/A        N/A                           daily   
+RH2M                 AALI.JK    12    N/A        +0.3716    N/A                           weekly  
+RH2M                 AALI.JK    30    +0.1972    N/A        N/A                           daily   
+RH2M                 LSIP.JK    3     N/A        N/A        +0.0000                       monthly 
+RH2M                 LSIP.JK    4     N/A        +0.3347    N/A                           weekly  
+RH2M                 LSIP.JK    7     +0.2558    N/A        N/A                           daily   
+RH2M                 LSIP.JK    12    N/A        +0.4124    N/A                           weekly  
+RH2M                 LSIP.JK    30    +0.2601    N/A        N/A                           daily   
+T2M                  AALI.JK    3     N/A        N/A        +0.0000                       monthly 
+T2M                  AALI.JK    4     N/A        +0.4419    N/A                           weekly  
+T2M                  AALI.JK    7     -0.1660    N/A        N/A                           daily   
+T2M                  AALI.JK    12    N/A        -0.2957    N/A                           weekly  
+T2M                  AALI.JK    30    +0.1742    N/A        N/A                           daily   
+T2M                  LSIP.JK    3     N/A        N/A        +0.0000                       monthly 
+T2M                  LSIP.JK    4     N/A        +0.4649    N/A                           weekly  
+T2M                  LSIP.JK    7     +0.2231    N/A        N/A                           daily   
+T2M                  LSIP.JK    12    N/A        +0.3227    N/A                           weekly  
+T2M                  LSIP.JK    30    +0.2696    N/A        N/A                           daily   
+-----------------------------------------------------------------------------------------------
+Δ(w-d) = perubahan |r| dari daily ke weekly
+Δ(m-d) = perubahan |r| dari daily ke monthly
+Best = frekuensi dengan |r| tertinggi

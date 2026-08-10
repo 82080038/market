@@ -1,0 +1,99 @@
+================================================================================
+LAPORAN ANALISIS KORELASI SATELIT vs HARGA SAHAM
+================================================================================
+
+Test Case: Kasus E — Wheat (Kansas, US)
+Deskripsi: Sentinel-2 NDVI & cuaca Kansas wheat belt vs Wheat futures (ZW=F)
+Koordinat: lat=38.5, lon=-98.0
+Ticker: ZW=F
+Metrik Satelit: NDVI, T2M, PRECTOTCORR, ALLSKY_SFC_SW_DWN
+Periode Data: 2025-08-10 → 2026-08-09
+Total Hari Satelit: 364
+  ZW=F: 250 hari perdagangan
+
+SUMBER DATA:
+  - NASA POWER API (https://power.larc.nasa.gov/)
+    → T2M, PRECTOTCORR, RH2M, ALLSKY_SFC_SW_DWN (real satellite-derived)
+  - NDVI: Sentinel-2 via Microsoft Planetary Computer (71 scenes)
+    → Real NDVI from B04/B08 bands, cloud cover < 30%
+  - Stock: SQLite ohlcv table atau yfinance (untuk futures ZC=F, ZS=F, ZW=F)
+
+HASIL ANALISIS LEAD-LAG:
+--------------------------------------------------------------------------------
+
+  5 hubungan signifikan ditemukan (p < 0.05):
+
+  • [daily] NDVI mengikuti ZW=F sebesar 25 hari
+    r = -0.0803, p(CCF) = 0.2068, p(Granger) = 0.0104
+    Rolling window: 7 hari
+    Korelasi negatif: kenaikan metrik satelit berasosiasi dengan penurunan return saham
+
+  • [daily] PRECTOTCORR mendahului ZW=F sebesar 4 hari
+    r = -0.1720, p(CCF) = 0.0065, p(Granger) = 0.3340
+    Rolling window: 7 hari
+    Korelasi negatif: kenaikan metrik satelit berasosiasi dengan penurunan return saham
+
+  • [daily] ALLSKY_SFC_SW_DWN mengikuti ZW=F sebesar 26 hari
+    r = -0.0886, p(CCF) = 0.1635, p(Granger) = 0.0126
+    Rolling window: 7 hari
+    Korelasi negatif: kenaikan metrik satelit berasosiasi dengan penurunan return saham
+
+  • [daily] NDVI mendahului ZW=F sebesar 60 hari
+    r = +0.0616, p(CCF) = 0.3329, p(Granger) = 0.0243
+    Rolling window: 30 hari
+    Korelasi positif: kenaikan metrik satelit berasosiasi dengan kenaikan return saham
+
+  • [weekly] NDVI mengikuti ZW=F sebesar 5 minggu
+    r = -0.1543, p(CCF) = 0.2795, p(Granger) = 0.0458
+    Rolling window: 4 minggu
+    Korelasi negatif: kenaikan metrik satelit berasosiasi dengan penurunan return saham
+
+TABEL DETAIL:
+Metrik               Ticker     Freq      Win   Lag    r        p(CCF)     p(Granger)   Sig  
+------------------------------------------------------------------------------------------
+NDVI                 ZW=F       daily     7       -25 -0.0803  0.2068    0.0104       YA
+T2M                  ZW=F       daily     7       +55 +0.0716  0.2602    0.4506       -
+PRECTOTCORR          ZW=F       daily     7        +4 -0.1720  0.0065    0.3340       YA
+ALLSKY_SFC_SW_DWN    ZW=F       daily     7       -26 -0.0886  0.1635    0.0126       YA
+NDVI                 ZW=F       daily     30      +60 +0.0616  0.3329    0.0243       YA
+T2M                  ZW=F       daily     30      +60 +0.0819  0.1975    0.4906       -
+PRECTOTCORR          ZW=F       daily     30      +10 -0.0877  0.1676    0.0775       -
+ALLSKY_SFC_SW_DWN    ZW=F       daily     30      +59 +0.0908  0.1533    0.0521       -
+NDVI                 ZW=F       weekly    4        -5 -0.1543  0.2795    0.0458       YA
+T2M                  ZW=F       weekly    4        -6 -0.1014  0.4788    0.7218       -
+PRECTOTCORR          ZW=F       weekly    4        +3 -0.1981  0.1635    0.4234       -
+ALLSKY_SFC_SW_DWN    ZW=F       weekly    4        -6 -0.1161  0.4171    0.1736       -
+NDVI                 ZW=F       weekly    12       +6 -0.1461  0.3062    0.0943       -
+T2M                  ZW=F       weekly    12       +6 -0.1418  0.3208    0.6750       -
+PRECTOTCORR          ZW=F       weekly    12       +6 -0.1493  0.2959    0.2832       -
+ALLSKY_SFC_SW_DWN    ZW=F       weekly    12       -2 -0.1037  0.4690    0.5157       -
+NDVI                 ZW=F       monthly   3        +0 +0.0000  1.0000    N/A          -
+T2M                  ZW=F       monthly   3        +0 +0.0000  1.0000    N/A          -
+PRECTOTCORR          ZW=F       monthly   3        +0 +0.0000  1.0000    N/A          -
+ALLSKY_SFC_SW_DWN    ZW=F       monthly   3        +0 +0.0000  1.0000    N/A          -
+
+FILE PLOT:
+  /home/petrick/projects/market/output/satellite_correlation/case_4_timeseries.png
+  /home/petrick/projects/market/output/satellite_correlation/case_4_ccf_lag.png
+
+METODOLOGI:
+  1. Resampling: daily (harian), weekly (mingguan W), monthly (bulanan ME)
+  2. Cross-Correlation Function (CCF):
+     - Daily: lag -60 h +60 hari
+     - Weekly: lag -8 h +8 minggu
+     - Monthly: lag -3 h +3 bulan
+  3. Granger Causality Test: F-test, lag order disesuaikan per frekuensi
+  4. Rolling average: 7 dan 30 (daily), 4 dan 12 (weekly), 3 (monthly)
+  5. Signifikansi: p-value < 0.05 (CCF atau Granger)
+  6. Data alignment: linear interpolation + forward-fill
+
+CATATAN & KETERBATASAN:
+  - NDVI: data real dari Sentinel-2 via Microsoft Planetary Computer (gratis, no account)
+    → Cloud cover threshold < 30%, 10m resolusi, 5-day revisit
+    → Jika tidak ada scene yang valid, fallback ke simulasi
+  - Nightlight: simulasi (VIIRS Earthdata credentials not configured)
+    → Untuk data real: set EARTHDATA_USERNAME dan EARTHDATA_PASSWORD di .env
+  - Hasil korelasi pada data simulasi TIDAK dapat diinterpretasikan sebagai
+    bukti kausalitas nyata — hanya menguji metodologi pipeline
+  - Untuk analisis produksi: integrasikan GEE dengan service account
+  - Granger causality bukan bukti kausalitas sejati, hanya prediksi statistik

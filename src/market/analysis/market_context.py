@@ -79,6 +79,11 @@ class MarketContext:
     has_whistleblowing: bool | None = None
     has_risk_committee: bool | None = None
 
+    # Astronacci time-cycle signal (pustaka/99)
+    astronacci_signal: float | None = None   # -1.0 to 1.0 (time-cycle directional)
+    astronacci_volatility: float | None = None  # 0.0 to 1.0 (expected volatility)
+    astronacci_active_cycles: list[str] | None = None
+
     # Derived signals
     signals: dict[str, str] = field(default_factory=dict)
 
@@ -92,6 +97,7 @@ class MarketContext:
                 self.foreign_net_flow, self.technical_score,
                 self.corr_us, self.corr_ihsg, self.ml_signal,
                 self.news_sentiment, self.esg_score, self.governance_score,
+                self.astronacci_signal,
             ]
         )
 
@@ -285,16 +291,17 @@ class MarketContext:
         """
         # Base weights
         weights = {
-            "fundamental": 0.15,
-            "macro": 0.12,
-            "sentiment": 0.08,
-            "flow": 0.10,
-            "cross_market": 0.07,
-            "ml": 0.15,
-            "news": 0.08,
-            "commodity": 0.08,
-            "global_sentiment": 0.12,
+            "fundamental": 0.14,
+            "macro": 0.11,
+            "sentiment": 0.07,
+            "flow": 0.09,
+            "cross_market": 0.06,
+            "ml": 0.14,
+            "news": 0.07,
+            "commodity": 0.07,
+            "global_sentiment": 0.11,
             "governance": 0.05,
+            "astronacci": 0.03,
         }
 
         # Sector-specific adjustments
@@ -318,6 +325,7 @@ class MarketContext:
             weights["commodity"] = 0.0
             weights["global_sentiment"] = 0.10
             weights["governance"] = 0.07
+            weights["astronacci"] = 0.04
 
         return (
             self.fundamental_signal() * weights["fundamental"]
@@ -330,6 +338,7 @@ class MarketContext:
             + (self.commodity_signal or 0.0) * weights["commodity"]
             + (self.global_sentiment or 0.0) * weights["global_sentiment"]
             + self.governance_signal() * weights["governance"]
+            + (self.astronacci_signal or 0.0) * weights["astronacci"]
         )
 
 
@@ -389,6 +398,7 @@ class MarketContextProvider:
                 ("commodity", lambda: self._fetch_commodity_signal(session, ticker, ctx, cutoff)),
                 ("global_sentiment", lambda: self._fetch_global_sentiment(session, ctx, cutoff)),
                 ("esg_governance", lambda: self._fetch_esg_governance(session, ticker, ctx)),
+                ("astronacci", lambda: self._fetch_astronacci(ctx, as_of)),
             ]
             for name, fetcher in fetchers:
                 try:
@@ -933,3 +943,28 @@ class MarketContextProvider:
                     ctx.governance_score = grade_map.get(str(acgs).strip().upper(), 50.0)
             ctx.has_whistleblowing = cg_row.has_whistleblowing
             ctx.has_risk_committee = cg_row.has_risk_committee
+
+    def _fetch_astronacci(
+        self, ctx: MarketContext, as_of: str | pd.Timestamp,
+    ) -> None:
+        """Fetch Astronacci time-cycle signal for the given date.
+
+        Computes active astrological cycles (Moon Phases, Retrogrades,
+        Ingresses) within a 3-day forward window and derives a directional
+        signal + volatility expectation.
+        """
+        from datetime import timezone
+
+        from market.analysis.astronacci import compute_astronacci_signal
+
+        cutoff = pd.Timestamp(as_of)
+        if cutoff.tzinfo is None:
+            cutoff = cutoff.tz_localize("UTC")
+        as_of_dt = cutoff.to_pydatetime()
+
+        result = compute_astronacci_signal(as_of_dt, window_days=3)
+
+        if result["cycle_count"] > 0:
+            ctx.astronacci_signal = result["time_signal"]
+            ctx.astronacci_volatility = result["volatility_signal"]
+            ctx.astronacci_active_cycles = result["active_cycles"]

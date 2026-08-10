@@ -1,0 +1,93 @@
+================================================================================
+LAPORAN ANALISIS KORELASI SATELIT vs HARGA SAHAM
+================================================================================
+
+Test Case: Kasus D — Soybean (Illinois, US)
+Deskripsi: Sentinel-2 NDVI & cuaca Illinois soybean belt vs Soybean futures (ZS=F)
+Koordinat: lat=40.0, lon=-89.0
+Ticker: ZS=F
+Metrik Satelit: NDVI, T2M, PRECTOTCORR, ALLSKY_SFC_SW_DWN
+Periode Data: 2025-08-10 → 2026-08-07
+Total Hari Satelit: 363
+  ZS=F: 250 hari perdagangan
+
+SUMBER DATA:
+  - NASA POWER API (https://power.larc.nasa.gov/)
+    → T2M, PRECTOTCORR, RH2M, ALLSKY_SFC_SW_DWN (real satellite-derived)
+  - NDVI: Sentinel-2 via Microsoft Planetary Computer (25 scenes)
+    → Real NDVI from B04/B08 bands, cloud cover < 30%
+  - Stock: SQLite ohlcv table atau yfinance (untuk futures ZC=F, ZS=F, ZW=F)
+
+HASIL ANALISIS LEAD-LAG:
+--------------------------------------------------------------------------------
+
+  4 hubungan signifikan ditemukan (p < 0.05):
+
+  • [daily] PRECTOTCORR mengikuti ZS=F sebesar 58 hari
+    r = -0.1649, p(CCF) = 0.0092, p(Granger) = 0.0029
+    Rolling window: 7 hari
+    Korelasi negatif: kenaikan metrik satelit berasosiasi dengan penurunan return saham
+
+  • [daily] PRECTOTCORR mendahului ZS=F sebesar 42 hari
+    r = +0.0960, p(CCF) = 0.1308, p(Granger) = 0.0073
+    Rolling window: 30 hari
+    Korelasi positif: kenaikan metrik satelit berasosiasi dengan kenaikan return saham
+
+  • [weekly] NDVI mendahului ZS=F sebesar 8 minggu
+    r = -0.3147, p(CCF) = 0.0277, p(Granger) = 0.0684
+    Rolling window: 12 minggu
+    Korelasi negatif: kenaikan metrik satelit berasosiasi dengan penurunan return saham
+
+  • [weekly] PRECTOTCORR mengikuti ZS=F sebesar 6 minggu
+    r = -0.1579, p(CCF) = 0.2685, p(Granger) = 0.0260
+    Rolling window: 12 minggu
+    Korelasi negatif: kenaikan metrik satelit berasosiasi dengan penurunan return saham
+
+TABEL DETAIL:
+Metrik               Ticker     Freq      Win   Lag    r        p(CCF)     p(Granger)   Sig  
+------------------------------------------------------------------------------------------
+NDVI                 ZS=F       daily     7       +38 -0.1095  0.0845    0.0505       -
+T2M                  ZS=F       daily     7       -59 -0.0780  0.2198    0.4627       -
+PRECTOTCORR          ZS=F       daily     7       -58 -0.1649  0.0092    0.0029       YA
+ALLSKY_SFC_SW_DWN    ZS=F       daily     7       +27 -0.0932  0.1425    0.0882       -
+NDVI                 ZS=F       daily     30      +41 -0.1123  0.0770    0.4703       -
+T2M                  ZS=F       daily     30      -25 -0.0528  0.4071    0.5243       -
+PRECTOTCORR          ZS=F       daily     30      +42 +0.0960  0.1308    0.0073       YA
+ALLSKY_SFC_SW_DWN    ZS=F       daily     30      +42 -0.0584  0.3586    0.0959       -
+NDVI                 ZS=F       weekly    4        -7 +0.3190  0.0543    0.2427       -
+T2M                  ZS=F       weekly    4        +5 -0.1230  0.3898    0.8921       -
+PRECTOTCORR          ZS=F       weekly    4        -6 -0.2748  0.0510    0.2682       -
+ALLSKY_SFC_SW_DWN    ZS=F       weekly    4        +6 -0.1452  0.3094    0.2714       -
+NDVI                 ZS=F       weekly    12       +8 -0.3147  0.0277    0.0684       YA
+T2M                  ZS=F       weekly    12       +8 -0.1275  0.3726    0.3595       -
+PRECTOTCORR          ZS=F       weekly    12       -6 -0.1579  0.2685    0.0260       YA
+ALLSKY_SFC_SW_DWN    ZS=F       weekly    12       +8 -0.1264  0.3769    0.3017       -
+T2M                  ZS=F       monthly   3        +0 +0.0000  1.0000    N/A          -
+PRECTOTCORR          ZS=F       monthly   3        +0 +0.0000  1.0000    N/A          -
+ALLSKY_SFC_SW_DWN    ZS=F       monthly   3        +0 +0.0000  1.0000    N/A          -
+
+FILE PLOT:
+  /home/petrick/projects/market/output/satellite_correlation/case_3_timeseries.png
+  /home/petrick/projects/market/output/satellite_correlation/case_3_ccf_lag.png
+
+METODOLOGI:
+  1. Resampling: daily (harian), weekly (mingguan W), monthly (bulanan ME)
+  2. Cross-Correlation Function (CCF):
+     - Daily: lag -60 h +60 hari
+     - Weekly: lag -8 h +8 minggu
+     - Monthly: lag -3 h +3 bulan
+  3. Granger Causality Test: F-test, lag order disesuaikan per frekuensi
+  4. Rolling average: 7 dan 30 (daily), 4 dan 12 (weekly), 3 (monthly)
+  5. Signifikansi: p-value < 0.05 (CCF atau Granger)
+  6. Data alignment: linear interpolation + forward-fill
+
+CATATAN & KETERBATASAN:
+  - NDVI: data real dari Sentinel-2 via Microsoft Planetary Computer (gratis, no account)
+    → Cloud cover threshold < 30%, 10m resolusi, 5-day revisit
+    → Jika tidak ada scene yang valid, fallback ke simulasi
+  - Nightlight: simulasi (VIIRS Earthdata credentials not configured)
+    → Untuk data real: set EARTHDATA_USERNAME dan EARTHDATA_PASSWORD di .env
+  - Hasil korelasi pada data simulasi TIDAK dapat diinterpretasikan sebagai
+    bukti kausalitas nyata — hanya menguji metodologi pipeline
+  - Untuk analisis produksi: integrasikan GEE dengan service account
+  - Granger causality bukan bukti kausalitas sejati, hanya prediksi statistik

@@ -32,6 +32,10 @@ dependencies = [
     "pyarrow>=15.0",
     "psycopg2-binary>=2.9",
     "statsmodels>=0.14.6",
+    "pystac-client>=0.9.0",
+    "planetary-computer>=1.0.0",
+    "rasterio>=1.4.4",
+    "shapely>=2.1.2",
 ]
 
 [project.optional-dependencies]

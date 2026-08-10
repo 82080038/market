@@ -1213,3 +1213,101 @@ class AppNotification(Base):
     title: Mapped[str] = mapped_column(Text, nullable=False)
     body_json: Mapped[str] = mapped_column(Text, nullable=False)
     status: Mapped[str] = mapped_column(String(20), nullable=False, default="UNREAD")
+
+
+# ── Satellite data tables (pustaka/99-matriks-relevansi-satelit-pasar-modal.md) ──
+
+
+class SatelliteObservation(Base):
+    """Satellite observation data — NDVI from Sentinel-2, weather from NASA POWER.
+
+    Stores raw daily/sparse satellite metrics keyed by geographic location
+    and date. Only metrics proven significant in correlation analysis are
+    stored: NDVI, T2M, PRECTOTCORR, RH2M, ALLSKY_SFC_SW_DWN.
+    """
+
+    __tablename__ = "satellite_observations"
+    __table_args__ = (
+        UniqueConstraint("location_name", "date", "metric", "source", name="uq_satobs_pk"),
+        Index("ix_satobs_location_date", "location_name", "date"),
+        Index("ix_satobs_metric", "metric"),
+    )
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    location_name: Mapped[str] = mapped_column(String(100), nullable=False, index=True)
+    lat: Mapped[float] = mapped_column(Numeric(10, 6), nullable=False)
+    lon: Mapped[float] = mapped_column(Numeric(10, 6), nullable=False)
+    date: Mapped[date] = mapped_column(Date, nullable=False, index=True)
+    metric: Mapped[str] = mapped_column(String(30), nullable=False)
+    value: Mapped[float] = mapped_column(Numeric(20, 6), nullable=False)
+    source: Mapped[str] = mapped_column(String(50), nullable=False, default="nasa_power")
+    cloud_cover_pct: Mapped[float | None] = mapped_column(Numeric(5, 2), nullable=True)
+    scene_id: Mapped[str | None] = mapped_column(String(200), nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_utcnow)
+
+
+class SatelliteCorrelationResult(Base):
+    """Correlation analysis results between satellite metrics and stock returns.
+
+    Persisted output of the satellite-to-stock correlation pipeline.
+    Supports daily, weekly, and monthly frequencies with lag analysis.
+    """
+
+    __tablename__ = "satellite_correlation_results"
+    __table_args__ = (
+        UniqueConstraint(
+            "location_name", "satellite_metric", "stock_ticker",
+            "frequency", "rolling_window",
+            name="uq_satcorr_pk",
+        ),
+        Index("ix_satcorr_ticker", "stock_ticker"),
+        Index("ix_satcorr_metric", "satellite_metric"),
+    )
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    location_name: Mapped[str] = mapped_column(String(100), nullable=False, index=True)
+    satellite_metric: Mapped[str] = mapped_column(String(30), nullable=False)
+    stock_ticker: Mapped[str] = mapped_column(String(30), nullable=False)
+    frequency: Mapped[str] = mapped_column(String(10), nullable=False)
+    rolling_window: Mapped[int] = mapped_column(Integer, nullable=False)
+    optimal_lag: Mapped[int] = mapped_column(Integer, nullable=False)
+    optimal_corr: Mapped[float] = mapped_column(Numeric(10, 6), nullable=False)
+    optimal_pvalue: Mapped[float] = mapped_column(Numeric(10, 6), nullable=False)
+    granger_optimal_pvalue: Mapped[float | None] = mapped_column(Numeric(10, 6), nullable=True)
+    is_significant: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
+    lag_unit: Mapped[str] = mapped_column(String(10), nullable=False, default="hari")
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_utcnow)
+
+
+class SatelliteTickerLocation(Base):
+    """Mapping tickers to geographic locations for satellite data fetching.
+
+    Each ticker can have multiple locations (e.g., AALI.JK has plantations
+    in Kalimantan and Sumatera). If no explicit mapping exists, the fetcher
+    falls back to sector-based defaults (SECTOR_FALLBACK_LOCATIONS).
+
+    This makes satellite data truly global — any ticker from any market
+    can be mapped to any location on Earth.
+    """
+
+    __tablename__ = "satellite_ticker_locations"
+    __table_args__ = (
+        UniqueConstraint("ticker", "location_name", name="uq_sattickerloc_pk"),
+        Index("ix_sattickerloc_ticker", "ticker"),
+        Index("ix_sattickerloc_sector", "sector"),
+    )
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    ticker: Mapped[str] = mapped_column(String(30), nullable=False, index=True)
+    location_name: Mapped[str] = mapped_column(String(100), nullable=False)
+    lat: Mapped[float] = mapped_column(Numeric(10, 6), nullable=False)
+    lon: Mapped[float] = mapped_column(Numeric(10, 6), nullable=False)
+    sector: Mapped[str | None] = mapped_column(String(100), nullable=True)
+    metrics: Mapped[str] = mapped_column(
+        Text, nullable=False,
+        default="NDVI,T2M,PRECTOTCORR,RH2M,ALLSKY_SFC_SW_DWN",
+    )
+    description: Mapped[str | None] = mapped_column(Text, nullable=True)
+    is_active: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_utcnow)
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_utcnow, onupdate=_utcnow)

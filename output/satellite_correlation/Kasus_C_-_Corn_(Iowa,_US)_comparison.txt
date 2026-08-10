@@ -1,0 +1,29 @@
+===============================================================================================
+  PERBANDINGAN KORELASI: DAILY vs WEEKLY vs MONTHLY — Kasus C — Corn (Iowa, US)
+===============================================================================================
+Metrik               Ticker     Win   r(daily)   r(weekly)  r(monthly)  Δ(w-d)   Δ(m-d)   Best    
+-----------------------------------------------------------------------------------------------
+ALLSKY_SFC_SW_DWN    ZC=F       3     N/A        N/A        +0.0000                       monthly 
+ALLSKY_SFC_SW_DWN    ZC=F       4     N/A        -0.2286    N/A                           weekly  
+ALLSKY_SFC_SW_DWN    ZC=F       7     -0.0900    N/A        N/A                           daily   
+ALLSKY_SFC_SW_DWN    ZC=F       12    N/A        -0.1634    N/A                           weekly  
+ALLSKY_SFC_SW_DWN    ZC=F       30    -0.0825    N/A        N/A                           daily   
+NDVI                 ZC=F       3     N/A        N/A        +0.0000                       monthly 
+NDVI                 ZC=F       4     N/A        -0.3277    N/A                           weekly  
+NDVI                 ZC=F       7     -0.1614    N/A        N/A                           daily   
+NDVI                 ZC=F       12    N/A        +0.2481    N/A                           weekly  
+NDVI                 ZC=F       30    -0.1450    N/A        N/A                           daily   
+PRECTOTCORR          ZC=F       3     N/A        N/A        +0.0000                       monthly 
+PRECTOTCORR          ZC=F       4     N/A        -0.3205    N/A                           weekly  
+PRECTOTCORR          ZC=F       7     -0.1524    N/A        N/A                           daily   
+PRECTOTCORR          ZC=F       12    N/A        -0.1334    N/A                           weekly  
+PRECTOTCORR          ZC=F       30    -0.1015    N/A        N/A                           daily   
+T2M                  ZC=F       3     N/A        N/A        +0.0000                       monthly 
+T2M                  ZC=F       4     N/A        -0.1726    N/A                           weekly  
+T2M                  ZC=F       7     -0.0806    N/A        N/A                           daily   
+T2M                  ZC=F       12    N/A        +0.1332    N/A                           weekly  
+T2M                  ZC=F       30    -0.0476    N/A        N/A                           daily   
+-----------------------------------------------------------------------------------------------
+Δ(w-d) = perubahan |r| dari daily ke weekly
+Δ(m-d) = perubahan |r| dari daily ke monthly
+Best = frekuensi dengan |r| tertinggi

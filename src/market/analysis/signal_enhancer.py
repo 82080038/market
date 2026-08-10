@@ -131,6 +131,7 @@ class SignalEnhancer:
         meta_weight: float = 0.20,
         smart_money_weight: float = 0.12,
         cross_market_weight: float = 0.12,
+        astronacci_weight: float = 0.06,
         signal_threshold: float = 0.15,
         smart_money_streak_threshold: int = 3,
         mid_cap_relax_factor: float = 0.15,
@@ -166,6 +167,7 @@ class SignalEnhancer:
         self.meta_weight = meta_weight
         self.smart_money_weight = smart_money_weight
         self.cross_market_weight = cross_market_weight
+        self.astronacci_weight = astronacci_weight
         self.signal_threshold = signal_threshold
         self.smart_money_streak_threshold = smart_money_streak_threshold
         self.mid_cap_relax_factor = mid_cap_relax_factor
@@ -233,6 +235,10 @@ class SignalEnhancer:
         domino_sig = self._compute_cross_market_signal(df_trunc, ticker, as_of)
         signals.append(domino_sig)
 
+        # 8. Astronacci time-cycle signal.
+        astro_sig = self._compute_astronacci_signal(as_of)
+        signals.append(astro_sig)
+
         # 7. Meta-labeler bet sizing (with optional threshold relaxation).
         # If Smart Money Score shows accumulation for >=3 consecutive days,
         # relax the meta-labeler prob_threshold for Mid-Cap stocks.
@@ -276,6 +282,8 @@ class SignalEnhancer:
                 total_adj += sig.signal * self.smart_money_weight
             elif sig.source == "cross_market":
                 total_adj += sig.signal * self.cross_market_weight
+            elif sig.source == "astronacci":
+                total_adj += sig.signal * self.astronacci_weight
             elif sig.source == "meta":
                 bet_size = sig.signal  # meta-labeler returns bet size directly
             conf_mult *= sig.confidence_adjustment
@@ -702,6 +710,65 @@ class SignalEnhancer:
         except Exception as e:
             logger.debug("Cross-market signal failed: %s", e)
             return EnhancementSignal(source="cross_market")
+
+    def _compute_astronacci_signal(
+        self,
+        as_of: str | pd.Timestamp,
+    ) -> EnhancementSignal:
+        """Compute Astronacci time-cycle signal.
+
+        Uses the AstronacciEngine to check for active astrological time
+        cycles (Moon Phases, Planetary Retrogrades, Ingresses) within
+        a 3-day forward window from as_of.
+
+        Returns a directional signal in [-1, +1] based on the expected
+        reversal type of active cycles, plus a volatility-based confidence
+        adjustment.
+        """
+        try:
+            from market.analysis.astronacci import compute_astronacci_signal
+
+            cutoff = pd.Timestamp(as_of)
+            if cutoff.tzinfo is None:
+                from datetime import timezone
+                cutoff = cutoff.tz_localize("UTC")
+            as_of_dt = cutoff.to_pydatetime()
+
+            result = compute_astronacci_signal(as_of_dt, window_days=3)
+
+            if result["cycle_count"] == 0:
+                return EnhancementSignal(source="astronacci")
+
+            time_sig = result["time_signal"]
+            vol_sig = result["volatility_signal"]
+            confidence = result["confidence"]
+            active = result["active_cycles"]
+
+            # Confidence adjustment: active cycles boost or reduce confidence
+            # High volatility signal → increase confidence (bigger moves expected)
+            # but also add uncertainty
+            conf_adj = 1.0 + (vol_sig * 0.15) + (confidence * 0.05)
+            conf_adj = max(0.85, min(1.25, conf_adj))
+
+            # Build rationale
+            cycle_summary = ", ".join(active[:5])
+            if len(active) > 5:
+                cycle_summary += f" (+{len(active) - 5} more)"
+            rationale = (
+                f"cycles={result['cycle_count']}, time_signal={time_sig:.3f}, "
+                f"vol_signal={vol_sig:.3f}, active=[{cycle_summary}]"
+            )
+
+            return EnhancementSignal(
+                source="astronacci",
+                signal=time_sig,
+                confidence_adjustment=conf_adj,
+                rationale=rationale,
+                available=True,
+            )
+        except Exception as e:
+            logger.debug("Astronacci signal failed: %s", e)
+            return EnhancementSignal(source="astronacci")
 
     def _compute_meta_signal(
         self,

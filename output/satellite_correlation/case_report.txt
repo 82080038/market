@@ -1,0 +1,56 @@
+================================================================================
+LAPORAN ANALISIS KORELASI SATELIT vs HARGA SAHAM
+================================================================================
+
+Test Case: Kasus B — Logistik/Pelabuhan (Tanjung Priok, Jakarta)
+Deskripsi: Nightlight intensity & cuaca pelabuhan vs saham logistik
+Koordinat: lat=-6.107, lon=106.88
+Ticker: SMDR.JK
+Metrik Satelit: NIGHTLIGHT, T2M, ALLSKY_SFC_SW_DWN
+Periode Data: 2024-08-12 → 2026-08-06
+Total Hari Satelit: 476
+  SMDR.JK: 476 hari perdagangan
+
+SUMBER DATA:
+  - NASA POWER API (https://power.larc.nasa.gov/)
+    → T2M, PRECTOTCORR, RH2M, ALLSKY_SFC_SW_DWN (real satellite-derived)
+  - NDVI: Simulasi (GEE tidak tersedia tanpa autentikasi)
+    → Driven by precipitation + seasonal pattern (Kalimantan wet/dry)
+  - Nightlight: Simulasi (VIIRS/GEE tidak tersedia tanpa autentikasi)
+    → Trend + seasonality + cloud effect proxy
+  - Stock: SQLite ohlcv table (data/market_paper.db)
+
+HASIL ANALISIS LEAD-LAG:
+--------------------------------------------------------------------------------
+
+  Tidak ada hubungan signifikan (p ≥ 0.05) ditemukan.
+
+TABEL DETAIL:
+Metrik                 Ticker     Win   Lag    r        p(CCF)     p(Granger)   Sig  
+--------------------------------------------------------------------------------
+NIGHTLIGHT             SMDR.JK    7       +36 -0.0814  0.0774    0.3499       -
+T2M                    SMDR.JK    7       +34 +0.0424  0.3582    0.2458       -
+ALLSKY_SFC_SW_DWN      SMDR.JK    7       -13 +0.0443  0.3370    0.2096       -
+NIGHTLIGHT             SMDR.JK    30      +49 -0.0619  0.1793    0.1782       -
+T2M                    SMDR.JK    30      +60 +0.0402  0.3835    0.6806       -
+ALLSKY_SFC_SW_DWN      SMDR.JK    30      +10 +0.0288  0.5328    0.1314       -
+
+FILE PLOT:
+  /home/petrick/projects/market/output/satellite_correlation/case_2_timeseries.png
+  /home/petrick/projects/market/output/satellite_correlation/case_2_ccf_lag.png
+
+METODOLOGI:
+  1. Cross-Correlation Function (CCF): lag -60 h +60 hari
+  2. Granger Causality Test: lag order 1-20, F-test
+  3. Rolling average: 7 dan 30 hari untuk smoothing
+  4. Signifikansi: p-value < 0.05 (CCF atau Granger)
+  5. Data alignment: linear interpolation + forward-fill
+
+CATATAN & KETERBATASAN:
+  - NDVI dan Nightlight adalah SIMULASI (GEE/VIIRS memerlukan autentikasi)
+  - Simulasi NDVI menggunakan driver presipitasi NASA POWER + pola musiman
+  - Simulasi Nightlight menggunakan tren ekonomi + efek cuaca
+  - Hasil korelasi pada data simulasi TIDAK dapat diinterpretasikan sebagai
+    bukti kausalitas nyata — hanya menguji metodologi pipeline
+  - Untuk analisis produksi: integrasikan GEE dengan service account
+  - Granger causality bukan bukti kausalitas sejati, hanya prediksi statistik
