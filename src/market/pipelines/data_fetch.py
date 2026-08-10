@@ -136,7 +136,7 @@ class DataFetchPipeline:
             engine.set_repository(repo)
 
             screener = TickerScreener()
-            screening = screener.screen(session, asset_class="equity")
+            screening = screener.screen(session)
             tickers = screening.passed
 
             logger.info(

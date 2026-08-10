@@ -1316,6 +1316,47 @@ def main():
     report.delta_alpha = all_delta_alpha
     report.significance = all_significance
 
+    # ── Step 3b: Post-Trade Execution Analyzer (Ablation Feedback Loop) ──
+    logger.info("")
+    logger.info("=" * 60)
+    logger.info("STEP 3b: POST-TRADE EXECUTION ANALYZER (Slippage & Net Alpha)")
+    logger.info("=" * 60)
+
+    execution_analysis: dict = {}
+    try:
+        from market.analysis.execution_analyzer import run_full_analysis
+
+        execution_analysis = run_full_analysis(session)
+        decay_signal = execution_analysis.get("model_decay_signal", "no_data")
+        n_tx = execution_analysis.get("transactions_count", 0)
+
+        logger.info("  Transactions analyzed: %d", n_tx)
+        logger.info("  Model decay signal: %s", decay_signal)
+
+        if decay_signal == "high_slippage_decay":
+            logger.warning("  ⚠ HIGH SLIPPAGE DETECTED — model predictions may be stale")
+            logger.warning("    Consider retraining or adjusting signal thresholds")
+        elif decay_signal == "moderate_slippage":
+            logger.info("  Moderate slippage — monitor for degradation")
+
+        eff = execution_analysis.get("execution_efficiency")
+        if eff:
+            logger.info("  Avg slippage: %.2f BPS (buy=%.2f, sell=%.2f)",
+                        eff["avg_slippage_bps"], eff["avg_slippage_buy_bps"],
+                        eff["avg_slippage_sell_bps"])
+            logger.info("  Fill rate: %.1f%%, Cost ratio: %.3f%%",
+                        eff["fill_rate"] * 100, eff["cost_ratio_pct"])
+
+        na = execution_analysis.get("net_alpha")
+        if na:
+            logger.info("  Net Alpha: gross=%.0f, fees=%.0f, tax=%.0f, net=%.0f",
+                        na["gross_pnl"], na["broker_fees_total"],
+                        na["pph_final_total"], na["net_pnl"])
+            logger.info("  Net Alpha BPS: %.2f", na["net_alpha_bps"])
+    except Exception as e:
+        logger.warning("  Execution analyzer skipped: %s", e)
+        execution_analysis = {"error": str(e), "model_decay_signal": "skipped"}
+
     # ── Step 4: Automated Score Card ──
     logger.info("")
     logger.info("=" * 60)
@@ -1385,6 +1426,8 @@ def main():
         "any_significant": any(v.significant for v in report.verdicts),
         "features_remediated": len(all_remediation),
         "remediation_actions": actions,
+        "execution_decay_signal": execution_analysis.get("model_decay_signal", "skipped"),
+        "execution_transactions": execution_analysis.get("transactions_count", 0),
     }
 
     logger.info("")
@@ -1419,6 +1462,7 @@ def main():
             for v in report.verdicts
         ],
         "summary": report.summary,
+        "execution_analysis": execution_analysis,
     }
 
     output_path = Path(args.output)

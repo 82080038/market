@@ -169,6 +169,7 @@ Membuat satu aplikasi desktop/web single-user untuk analisis, rekomendasi, simul
 - [x] Trade ledger (double-entry), NAV, reconciliation.
 - [x] DR/BCP & incident response runbooks.
 - [x] Capacity/stress test skeleton.
+- [x] **Post-Trade Execution Analyzer** (`src/market/analysis/execution_analyzer.py`) — slippage measurement (target vs fill price), Net Alpha Attribution (gross PnL − broker fees − PPh Final 0.1%), execution efficiency metrics. Fed into Ablation Study di `audit_ai_advanced.py` sebagai feedback loop untuk deteksi model decay.
 
 **Acceptance:** User can create paper order, see lifecycle status, and view real-time PnL.
 
@@ -233,6 +234,7 @@ Membuat satu aplikasi desktop/web single-user untuk analisis, rekomendasi, simul
 - [x] Champion/challenger promotion workflow.
 - [x] A/B testing framework for strategies.
 - [x] Eval-gated promotion pipeline.
+- [x] **Overnight Strategy Mining** (`scripts/overnight_strategy_mining.py`) — Trade Ideas Mode, crontab 02:00 WIB. Scan bursa global semalam (^GSPC, ^VIX, CL=F, MTF=F) → assess macro regime → LightGBM Donchian parameter sweep (period 10–25) pada mock DB → update `best_ticker_quant_config.json` dengan parameter Max Drawdown tertipis → insert hasil ke `app_notifications` (status UNREAD) untuk panduan transaksi IHSG pagi.
 
 **Acceptance:** Model can be trained, registered, promoted, and inference uses champion alias.
 

@@ -1,5 +1,68 @@
 # Session Memory — Pustaka Pasar Modal
 
+## Checkpoint Sesi 2026-08-10 — Smart Money Integration (Recall)
+
+- **Sumber:** Ringkasan percakapan "Smart Money Integration" yang diberikan user di awal sesi audit E2E.
+- **Topik aktif:** Dua modul post-trade lanjutan selesai diintegrasikan.
+- **Modul 1 — Post-Trade Execution Analyzer** (`src/market/analysis/execution_analyzer.py`):
+  - `SlippageResult` (BPS), `NetAlphaResult` (gross PnL − broker fees − PPh Final 0.1% per PMK-84/2020), `ExecutionEfficiencyResult`, `run_full_analysis()` → `model_decay_signal` (healthy/moderate_slippage/high_slippage_decay/no_data).
+  - Diintegrasikan ke `scripts/audit_ai_advanced.py` sebagai Step 3b (Ablation Study).
+- **Modul 2 — Overnight Strategy Mining** (`scripts/overnight_strategy_mining.py`):
+  - Crontab `0 19 * * 1-5` (02:00 WIB). Flow: fetch global (^GSPC, ^VIX, CL=F, MTF=F) → macro regime (risk_on/risk_off/neutral: VIX≥25, S&P<-1%, Oil<-2%) → ^JKSE dari mock DB → LightGBM Donchian sweep (period 10-25) → update `best_ticker_quant_config.json` (`overnight_strategy` section) → insert `app_notifications` (UNREAD).
+- **Integrasi manual oleh user:**
+  - `MEGAPLAN.md` Fase 5 & Fase 8 ditandai selesai.
+  - `scripts/daily_signal_cron.py` (lines 1413-1458): `build_notification_payload()` inject `execution_analysis` (via `run_full_analysis()`) + `overnight_strategy` (query latest dari `app_notifications`) ke setiap daily signal notification.
+- **Test status:** `test_execution_analyzer.py` 19 PASS, `test_overnight_strategy_mining.py` 22 PASS, full suite 1368 passed / 3 pre-existing failures (BPS API key, IV weight cap ×2).
+- **Next step logical:** commit & push ke GitHub (belum dilakukan di sesi Smart Money).
+- **Sesi audit E2E ini:** User minta audit komprehensif 4-layer (DB / ML / App / DevOps) + laporan MD.
+
+## Checkpoint Sesi 2026-08-10 — Audit E2E: P0 & P1 Implementation
+
+- **Topik:** Implementasi temuan audit E2E — P0 (API + frontend) dan P1 (backfill + cron).
+- **P0-1 SELESAI:** Route API `GET /api/notifications` di `src/market/api/routes_notifications.py`.
+  - Endpoints: list (paginated), get by id, mark as read, latest signals shortcut.
+  - Query `app_notifications` table via SQLAlchemy ORM (`AppNotification` model).
+  - `body_json` di-parse ke object JSON untuk konsumsi frontend.
+  - Router terdaftar di `app.py` sebagai `notifications_router`.
+  - Test: `tests/test_notifications_api.py` — 11 tests, semua PASS.
+- **P0-2 SELESAI:** Halaman frontend `/signals` di `frontend/src/app/signals/page.tsx`.
+  - Render tabel BUY/SELL/HOLD + HRP position sizing (shares, lots, allocation IDR).
+  - Summary cards: KEEP score, modal portofolio, distribusi sinyal, tanggal.
+  - Smart Money / Bandarmology 5-day accumulation grid (green/red cells).
+  - Overnight strategy + execution analysis sections.
+  - Sidebar updated: "Sinyal" dengan icon BellRing, posisi kedua setelah Dashboard.
+- **P0-3 SELESAI:** Commit & push Smart Money + migration 0013 + semua perubahan audit.
+- **P1-4 IN PROGRESS:** Backfill 4 kolom NULL di `technical_indicators_wide` (ema50, donchian×3).
+  - Script: `scripts/backfill_ti_wide_null_cols.py` — compute EMA50, EMA Envelope, Donchian dari OHLCV, batch UPDATE.
+  - 3,049,358 rows NULL → backfill running (1024 tickers, ETA ~12 menit).
+- **P1-5 SELESAI:** Backfill `avg_volume` di `stock_personality` dari OHLCV.
+  - Script: `scripts/backfill_avg_volume.py` — `UPDATE stock_personality SET avg_volume = (SELECT AVG(volume) FROM ohlcv ...)`.
+  - 1026 rows updated, 0 NULL remaining.
+- **P1-6 IN PROGRESS:** Jalankan `daily_signal_cron.py` untuk populate `app_notifications`.
+  - Running tanpa --dry-run, 672 tickers, ~5s per ticker.
+  - Akan insert notification dengan payload lengkap (signals + HRP sizing + smart money).
+- **P1-7:** Update SESSION_MEMORY.md + audit report (this update).
+
+## Checkpoint Sesi 2026-08-10 — Audit E2E Komprehensif Selesai
+
+- **Topik:** Audit End-to-End 4-layer (Database / ML / Application / DevOps) selesai.
+- **Laporan:** `docs/AUDIT-E2E-COMPREHENSIVE-2026-08-10.md` (802 baris, 48 KB).
+- **Database:** 57 tabel, alembic head 0013, 10 GB. Hirarki FK 5-level (Negara→Regulator→Bursa→Sektor→Emiten→Instrumen→Transaksi) sesuai migration 0013.
+- **Temuan kritis:**
+  - 🔴 4 kolom 100% NULL di `technical_indicators_wide` (ema50, donchian×3) — backfill belum dijalankan.
+  - 🔴 `avg_volume` 100% NULL di `stock_personality`.
+  - 🔴 `app_notifications` (0 rows) & `transaksi_investor` (0 rows) — kosong.
+  - 🔴 TIDAK ADA route API untuk `app_notifications` — frontend tidak bisa retrieve sinyal.
+  - 🔴 Frontend belum render BUY/SELL/HOLD + HRP sizing — dashboard static mock.
+  - ⚠️ ML accuracy 40-43% (di bawah random 50%) — perlu meta-labeling retraining.
+  - ✅ Veto filter Lopez de Prado (bet_size < 0.1 → FLAT) tereksekusi benar di 2 lokasi.
+  - ✅ DST guard komprehensif (zoneinfo, T-0 Asian, T-1 US/commodities).
+  - ✅ HRP pipeline efisien (65 detik / 100 saham, cap 15%, fallback inverse-vol).
+- **Pytest:** 1368 passed / 4 failed (pre-existing: device log, BPS API key, IV weight cap ×2), coverage 70.15% (gate 70% tercapai).
+- **Rekomendasi LightGBM (40-43% → 55%+):** max_depth 6→5, lr 0.05→0.03, min_data_in_leaf 40→60, reg_lambda 1.0→2.0, early_stopping 10→20, top_k_features 25→40, triple-barrier labels, regime-aware models, feature remediasi (vol_20→vol_pctile, rsi→rsi_rank).
+- **Prioritas P0:** (1) Buat route API `/api/notifications`, (2) Buat halaman frontend `/signals`, (3) Commit & push Smart Money + migration 0013.
+- **Git:** 14 modified + 7 untracked file belum di-commit (branch main, last commit 790d9dc).
+
 ## Checkpoint Sesi 2026-08-09 14:43 WIB — Production Pipeline Result
 
 - **Topik aktif:** Production pipeline real DB selesai, portfolio belum lolos KEEP, rencana lanjutan

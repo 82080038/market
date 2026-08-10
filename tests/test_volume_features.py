@@ -14,8 +14,10 @@ from market.analysis.volume_features import (
     DivergenceResult,
     ForeignFlowResult,
     OFIResult,
+    RetailAbsorptionResult,
     VolumeProfile,
     VWAPResult,
+    calculate_retail_absorption,
     compute_foreign_flow_signal,
     compute_ofi_proxy,
     compute_volume_profile,
@@ -644,3 +646,176 @@ class TestEdgeCases:
         result = detect_obv_divergence(empty, empty, window=20)
         assert result.divergence_type == "none"
         assert result.strength == 0.0
+
+
+# ── Retail Absorption (Smart Money Score) Tests ──────────────────────────────
+
+
+class TestRetailAbsorption:
+    """Tests for calculate_retail_absorption — Smart Money / Bandarmology."""
+
+    @pytest.fixture()
+    def accumulation_broker_flow(self) -> pd.DataFrame:
+        """5 days of broker flow where retail (YP, CC, XL, PD) are net selling heavily."""
+        rows = []
+        for day in range(5):
+            date = f"2024-01-{day+1:02d}"
+            # Retail brokers selling heavily (>60% of total volume)
+            for broker in ("YP", "CC", "XL", "PD"):
+                rows.append({
+                    "ticker": "TEST.JK",
+                    "date": pd.Timestamp(date),
+                    "broker": broker,
+                    "buy_volume": 100,
+                    "sell_volume": 10000,
+                    "net_volume": -9900,
+                    "buy_value": 1000.0,
+                    "sell_value": 100000.0,
+                    "net_value": -99000.0,
+                })
+            # Institutional brokers buying (small volume)
+            for broker in ("AD", "AG"):
+                rows.append({
+                    "ticker": "TEST.JK",
+                    "date": pd.Timestamp(date),
+                    "broker": broker,
+                    "buy_volume": 3000,
+                    "sell_volume": 200,
+                    "net_volume": 2800,
+                    "buy_value": 30000.0,
+                    "sell_value": 2000.0,
+                    "net_value": 28000.0,
+                })
+        return pd.DataFrame(rows)
+
+    @pytest.fixture()
+    def accumulation_ohlcv(self) -> pd.DataFrame:
+        """5 days of OHLCV where price holds steady (above VWAP)."""
+        dates = pd.date_range("2024-01-01", periods=5, freq="D")
+        return pd.DataFrame(
+            {
+                "high": [101.0, 101.5, 102.0, 101.8, 102.2],
+                "low": [99.0, 99.5, 100.0, 100.2, 100.5],
+                "close": [100.0, 100.5, 101.0, 101.0, 101.5],
+                "volume": [100000, 110000, 120000, 105000, 115000],
+            },
+            index=dates,
+        )
+
+    def test_accumulation_detected(self, accumulation_broker_flow, accumulation_ohlcv):
+        """Retail net selling + price holding → positive smart_money_score."""
+        result = calculate_retail_absorption(
+            broker_flow_df=accumulation_broker_flow,
+            ohlcv_df=accumulation_ohlcv,
+            ticker="TEST.JK",
+            lookback=5,
+        )
+        assert isinstance(result, RetailAbsorptionResult)
+        assert result.smart_money_score > 0
+        assert result.label == "accumulation"
+        assert result.retail_net_volume < 0  # Retail net selling
+
+    def test_accumulation_streak(self, accumulation_broker_flow, accumulation_ohlcv):
+        """5 consecutive days of accumulation → streak = 5."""
+        result = calculate_retail_absorption(
+            broker_flow_df=accumulation_broker_flow,
+            ohlcv_df=accumulation_ohlcv,
+            ticker="TEST.JK",
+            lookback=5,
+        )
+        assert result.accumulation_streak == 5
+
+    def test_daily_scores_length(self, accumulation_broker_flow, accumulation_ohlcv):
+        """daily_scores should have exactly `lookback` entries."""
+        result = calculate_retail_absorption(
+            broker_flow_df=accumulation_broker_flow,
+            ohlcv_df=accumulation_ohlcv,
+            ticker="TEST.JK",
+            lookback=5,
+        )
+        assert len(result.daily_scores) == 5
+
+    def test_empty_broker_flow(self, accumulation_ohlcv):
+        """Empty broker_flow → neutral result with zero score."""
+        empty_bf = pd.DataFrame(columns=["ticker", "date", "broker", "buy_volume", "sell_volume", "net_volume"])
+        result = calculate_retail_absorption(
+            broker_flow_df=empty_bf,
+            ohlcv_df=accumulation_ohlcv,
+            ticker="TEST.JK",
+            lookback=5,
+        )
+        assert result.smart_money_score == 0.0
+        assert result.label == "neutral"
+        assert result.accumulation_streak == 0
+
+    def test_empty_ohlcv(self, accumulation_broker_flow):
+        """Empty OHLCV → neutral result."""
+        empty_ohlcv = pd.DataFrame(columns=["high", "low", "close", "volume"])
+        result = calculate_retail_absorption(
+            broker_flow_df=accumulation_broker_flow,
+            ohlcv_df=empty_ohlcv,
+            ticker="TEST.JK",
+            lookback=5,
+        )
+        assert result.smart_money_score == 0.0
+        assert result.label == "neutral"
+
+    def test_distribution_label(self):
+        """Retail selling + price dropping → distribution or neutral (not accumulation)."""
+        dates = pd.date_range("2024-01-01", periods=5, freq="D")
+        # Price dropping
+        ohlcv = pd.DataFrame(
+            {
+                "high": [100.0, 99.0, 98.0, 97.0, 96.0],
+                "low": [98.0, 97.0, 96.0, 95.0, 94.0],
+                "close": [99.0, 98.0, 97.0, 96.0, 95.0],
+                "volume": [100000] * 5,
+            },
+            index=dates,
+        )
+        bf_rows = []
+        for day in range(5):
+            date = f"2024-01-{day+1:02d}"
+            for broker in ("YP", "CC"):
+                bf_rows.append({
+                    "ticker": "TEST.JK", "date": pd.Timestamp(date), "broker": broker,
+                    "buy_volume": 100, "sell_volume": 5000, "net_volume": -4900,
+                    "buy_value": 1000.0, "sell_value": 50000.0, "net_value": -49000.0,
+                })
+            for broker in ("AD",):
+                bf_rows.append({
+                    "ticker": "TEST.JK", "date": pd.Timestamp(date), "broker": broker,
+                    "buy_volume": 200, "sell_volume": 8000, "net_volume": -7800,
+                    "buy_value": 2000.0, "sell_value": 80000.0, "net_value": -78000.0,
+                })
+        bf = pd.DataFrame(bf_rows)
+        result = calculate_retail_absorption(
+            broker_flow_df=bf, ohlcv_df=ohlcv, ticker="TEST.JK", lookback=5,
+        )
+        assert result.label != "accumulation"
+
+    def test_ticker_filtering(self, accumulation_broker_flow, accumulation_ohlcv):
+        """Broker flow for other tickers should be filtered out."""
+        # Add some rows for a different ticker
+        bf = pd.concat([
+            accumulation_broker_flow,
+            pd.DataFrame([{
+                "ticker": "OTHER.JK", "date": pd.Timestamp("2024-01-01"),
+                "broker": "YP", "buy_volume": 1, "sell_volume": 1,
+                "net_volume": 0, "buy_value": 1.0, "sell_value": 1.0, "net_value": 0.0,
+            }]),
+        ])
+        result = calculate_retail_absorption(
+            broker_flow_df=bf, ohlcv_df=accumulation_ohlcv, ticker="TEST.JK", lookback=5,
+        )
+        assert result.smart_money_score > 0  # Should still detect accumulation for TEST.JK
+
+    def test_retail_sell_ratio_range(self, accumulation_broker_flow, accumulation_ohlcv):
+        """retail_sell_ratio should be in [0, 1]."""
+        result = calculate_retail_absorption(
+            broker_flow_df=accumulation_broker_flow,
+            ohlcv_df=accumulation_ohlcv,
+            ticker="TEST.JK",
+            lookback=5,
+        )
+        assert 0.0 <= result.retail_sell_ratio <= 1.0

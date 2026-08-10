@@ -176,20 +176,54 @@ def load_tickers_from_db(
     conn: sqlite3.Connection,
     limit: int = 0,
 ) -> list[str]:
-    """Load ticker list from stock_personality (best_pattern IS NOT NULL).
+    """Load ticker list from stock_personality, filtered by relational hierarchy.
 
-    Filters by trading_status = 'active' in instrument_master:
-    - Excludes delisted, suspended (BEI), illiquid, and index tickers
-    - trading_status is persisted in DB (updated from BEI announcements + yfinance verification)
+    Uses the new relational tables (migration 0013) to ensure only
+    jenis_instrumen='Saham' on Indonesian bursa (OJK-regulated) are loaded.
+    Falls back to instrument_master.asset_class filter if relational tables empty.
+
+    Filters:
+    - sp.best_pattern IS NOT NULL (weekly HRP cron output)
+    - im.trading_status = 'active' (BEI suspension/delisting awareness)
+    - Relational: instrumen.jenis_instrumen = 'Saham' AND regulator.negara = 'Indonesia'
 
     Falls back to DEFAULT_FOCUS_TICKERS if table empty.
     """
+    # Try relational hierarchy first (migration 0013)
+    sql_relational = (
+        "SELECT sp.ticker FROM stock_personality sp "
+        "JOIN instrument_master im ON sp.ticker = im.ticker "
+        "JOIN emiten e ON sp.ticker = e.kode_ticker "
+        "JOIN instrumen ins ON e.id_emiten = ins.id_emiten "
+        "JOIN bursa_efek b ON e.id_bursa = b.id_bursa "
+        "JOIN regulator r ON b.id_regulator = r.id_regulator "
+        "WHERE sp.best_pattern IS NOT NULL "
+        "AND im.trading_status = 'active' "
+        "AND ins.jenis_instrumen = 'Saham' "
+        "AND r.negara = 'Indonesia' "
+        "AND ins.is_active = 1 "
+        "AND e.is_active = 1 "
+        "ORDER BY sp.ticker"
+    )
+    if limit > 0:
+        sql_relational += f" LIMIT {limit}"
+
+    try:
+        rows = conn.execute(sql_relational).fetchall()
+        tickers = [r[0] for r in rows]
+        if tickers:
+            return tickers
+        logger.info("  Relational hierarchy empty — falling back to asset_class filter")
+    except sqlite3.OperationalError:
+        logger.info("  Relational tables not found — falling back to asset_class filter")
+
+    # Fallback: instrument_master.asset_class filter (pre-migration 0013)
     sql = (
         "SELECT sp.ticker FROM stock_personality sp "
         "JOIN instrument_master im ON sp.ticker = im.ticker "
         "WHERE sp.best_pattern IS NOT NULL "
         "AND im.trading_status = 'active' "
-        "AND sp.ticker LIKE '%.JK' "
+        "AND im.asset_class = 'EQUITY_INDIVIDUAL' "
         "ORDER BY sp.ticker"
     )
     if limit > 0:
@@ -1189,7 +1223,7 @@ def ensure_app_notifications_table(conn: sqlite3.Connection) -> None:
     conn.commit()
 
 
-def build_notification_payload(report: DailySignalReport) -> dict:
+def build_notification_payload(report: DailySignalReport, conn: sqlite3.Connection | None = None) -> dict:
     """Bangun payload JSON lengkap untuk notifikasi aplikasi.
 
     Struktur payload:
@@ -1215,16 +1249,125 @@ def build_notification_payload(report: DailySignalReport) -> dict:
               "vol_60d": 0.289,
               "adapt_kappa": 0.1516,
               "baseline_mode": "donchian",
+              "bursa": "Bursa Efek Indonesia",
+              "sektor": "Energy",
+              "subsektor": "Energy-Coal",
+              "regulator": "Otoritas Jasa Keuangan",
+              "negara": "Indonesia",
               "error": null
             },
             ...
           ]
         }
 
+    Args:
+        report: DailySignalReport with signal data.
+        conn: Optional DB connection for relational hierarchy enrichment.
+              If provided, each signal is enriched with bursa/sektor/regulator
+              from the new relational tables (migration 0013).
+
     Returns:
         Dict siap di-serialisasi ke JSON dan di-insert ke app_notifications.
     """
     from datetime import datetime, timezone
+
+    # Pre-fetch relational hierarchy data for all signal tickers
+    relational_map: dict[str, dict] = {}
+    if conn is not None:
+        tickers = [sig.ticker for sig in report.signals]
+        if tickers:
+            placeholders = ",".join("?" * len(tickers))
+            try:
+                rows = conn.execute(
+                    f"SELECT e.kode_ticker, b.nama_bursa, s.nama_sektor, e.subsektor, "
+                    f"r.nama_regulator, r.negara "
+                    f"FROM emiten e "
+                    f"JOIN bursa_efek b ON e.id_bursa = b.id_bursa "
+                    f"JOIN regulator r ON b.id_regulator = r.id_regulator "
+                    f"LEFT JOIN sektor s ON e.id_sektor = s.id_sektor "
+                    f"WHERE e.kode_ticker IN ({placeholders})",
+                    tickers,
+                ).fetchall()
+                for kode, bursa, sektor, subsektor, regulator, negara in rows:
+                    relational_map[kode] = {
+                        "bursa": bursa,
+                        "sektor": sektor,
+                        "subsektor": subsektor,
+                        "regulator": regulator,
+                        "negara": negara,
+                    }
+            except sqlite3.OperationalError:
+                logger.info("  Relational tables not found — skipping hierarchy enrichment")
+
+        # Pre-fetch broker_flow data for Smart Money / retail absorption analysis
+        smart_money_map: dict[str, dict] = {}
+        if conn is not None and tickers:
+            try:
+                bf_rows = conn.execute(
+                    f"SELECT ticker, date, broker, buy_volume, sell_volume, "
+                    f"net_volume, buy_value, sell_value, net_value "
+                    f"FROM broker_flow "
+                    f"WHERE ticker IN ({placeholders}) "
+                    f"ORDER BY date DESC LIMIT 5000",
+                    tickers,
+                ).fetchall()
+                if bf_rows:
+                    import pandas as pd
+                    bf_df = pd.DataFrame(
+                        bf_rows,
+                        columns=[
+                            "ticker", "date", "broker", "buy_volume",
+                            "sell_volume", "net_volume", "buy_value",
+                            "sell_value", "net_value",
+                        ],
+                    )
+                    # Get OHLCV for these tickers from the last 10 days
+                    ohlcv_rows = conn.execute(
+                        f"SELECT ticker, date, high, low, close, volume "
+                        f"FROM daily_prices "
+                        f"WHERE ticker IN ({placeholders}) "
+                        f"ORDER BY date DESC LIMIT 5000",
+                        tickers,
+                    ).fetchall()
+                    if ohlcv_rows:
+                        ohlcv_df = pd.DataFrame(
+                            ohlcv_rows,
+                            columns=["ticker", "date", "high", "low", "close", "volume"],
+                        )
+                        ohlcv_df["date"] = pd.to_datetime(ohlcv_df["date"])
+
+                        from market.analysis.volume_features import calculate_retail_absorption
+                        for tk in tickers:
+                            tk_ohlcv = ohlcv_df[ohlcv_df["ticker"] == tk].set_index("date")
+                            if tk_ohlcv.empty:
+                                continue
+                            tk_ohlcv = tk_ohlcv[["high", "low", "close", "volume"]].sort_index()
+                            result = calculate_retail_absorption(
+                                broker_flow_df=bf_df,
+                                ohlcv_df=tk_ohlcv,
+                                ticker=tk,
+                                lookback=5,
+                            )
+                            # Build 5-day accumulation grid for UI rendering
+                            # Green = accumulation (positive), Red = distribution (negative)
+                            accumulation_grid = []
+                            for i, score in enumerate(result.daily_scores):
+                                accumulation_grid.append({
+                                    "day": f"D-{i}",
+                                    "score": score,
+                                    "color": "green" if score > 0 else "red" if score < 0 else "gray",
+                                })
+                            smart_money_map[tk] = {
+                                "smart_money_score": result.smart_money_score,
+                                "label": result.label,
+                                "accumulation_streak": result.accumulation_streak,
+                                "retail_sell_ratio": result.retail_sell_ratio,
+                                "accumulation_grid": accumulation_grid,
+                            }
+            except sqlite3.OperationalError:
+                logger.info("  broker_flow table not found — skipping Smart Money enrichment")
+            except Exception as e:
+                logger.debug("  Smart Money enrichment skipped: %s", e)
 
     signals_payload = []
     for sig in report.signals:
@@ -1244,6 +1387,18 @@ def build_notification_payload(report: DailySignalReport) -> dict:
             "baseline_mode": sig.baseline_mode,
             "error": sig.error if sig.error else None,
         }
+        # Enrich with relational hierarchy data (migration 0013)
+        rel = relational_map.get(sig.ticker)
+        if rel:
+            entry["bursa"] = rel["bursa"]
+            entry["sektor"] = rel["sektor"]
+            entry["subsektor"] = rel["subsektor"]
+            entry["regulator"] = rel["regulator"]
+            entry["negara"] = rel["negara"]
+        # Enrich with Smart Money / retail absorption 5-day grid (Bandarmology)
+        sm = smart_money_map.get(sig.ticker)
+        if sm:
+            entry["smart_money"] = sm
         if sig.predicted_direction:
             entry["prediction"] = {
                 "direction": sig.predicted_direction,
@@ -1254,6 +1409,37 @@ def build_notification_payload(report: DailySignalReport) -> dict:
                 "factors": sig.factors_summary,
             }
         signals_payload.append(entry)
+
+    # Pre-fetch execution analyzer data (post-trade slippage + net alpha)
+    execution_data: dict = {}
+    if conn is not None:
+        try:
+            from market.analysis.execution_analyzer import run_full_analysis
+            from market.db.engine import get_sessionmaker
+            sm = get_sessionmaker()
+            exec_session = sm()
+            try:
+                execution_data = run_full_analysis(exec_session)
+            finally:
+                exec_session.close()
+        except Exception as e:
+            logger.debug("  Execution analyzer skipped in notification: %s", e)
+
+    # Pre-fetch latest overnight strategy mining result from app_notifications
+    overnight_data: dict = {}
+    if conn is not None:
+        try:
+            overnight_row = conn.execute(
+                "SELECT body_json FROM app_notifications "
+                "WHERE title LIKE 'Overnight Strategy Mining%' "
+                "AND status = 'UNREAD' "
+                "ORDER BY timestamp DESC LIMIT 1"
+            ).fetchone()
+            if overnight_row:
+                overnight_data = json.loads(overnight_row[0])
+                overnight_data["source_notification"] = "latest_overnight_mining"
+        except Exception as e:
+            logger.debug("  Overnight strategy data not found: %s", e)
 
     return {
         "signal_date": report.signal_date,
@@ -1270,6 +1456,8 @@ def build_notification_payload(report: DailySignalReport) -> dict:
             "total_tickers": report.n_tickers,
         },
         "signals": signals_payload,
+        "execution_analysis": execution_data if execution_data else None,
+        "overnight_strategy": overnight_data if overnight_data else None,
     }
 
 
@@ -1288,7 +1476,7 @@ def insert_app_notification(
     """
     ensure_app_notifications_table(conn)
 
-    payload = build_notification_payload(report)
+    payload = build_notification_payload(report, conn=conn)
     body_json = json.dumps(payload, indent=2, ensure_ascii=False, default=str)
 
     from datetime import datetime, timezone

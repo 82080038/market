@@ -19,31 +19,41 @@ def _seed_instruments(session: Session) -> None:
     instruments = [
         # Active, normal — should pass
         InstrumentMaster(
-            ticker="BBCA.JK", market_mic="XIDX", asset_class="equity",
+            ticker="BBCA.JK", market_mic="XIDX", asset_class="EQUITY_INDIVIDUAL",
             name="Bank Central Asia", is_active=True,
         ),
         InstrumentMaster(
-            ticker="BBRI.JK", market_mic="XIDX", asset_class="equity",
+            ticker="BBRI.JK", market_mic="XIDX", asset_class="EQUITY_INDIVIDUAL",
             name="Bank Rakyat Indonesia", is_active=True,
         ),
         InstrumentMaster(
-            ticker="TLKM.JK", market_mic="XIDX", asset_class="equity",
+            ticker="TLKM.JK", market_mic="XIDX", asset_class="EQUITY_INDIVIDUAL",
             name="Telkom Indonesia", is_active=True,
         ),
         # Active but delisting_date set — should be excluded
         InstrumentMaster(
-            ticker="DEAD.JK", market_mic="XIDX", asset_class="equity",
+            ticker="DEAD.JK", market_mic="XIDX", asset_class="EQUITY_INDIVIDUAL",
             name="Delisted Company", is_active=True, delisting_date=date(2025, 1, 1),
         ),
         # Inactive — should be excluded (not in query at all)
         InstrumentMaster(
-            ticker="INACT.JK", market_mic="XIDX", asset_class="equity",
+            ticker="INACT.JK", market_mic="XIDX", asset_class="EQUITY_INDIVIDUAL",
             name="Inactive Company", is_active=False,
         ),
         # Non-equity — should be excluded
         InstrumentMaster(
             ticker="BOND01", market_mic="XIDX", asset_class="bond",
             name="Bond Fund", is_active=True,
+        ),
+        # Index — should be excluded from EQUITY_INDIVIDUAL filter
+        InstrumentMaster(
+            ticker="^JKSE", market_mic="XIDX", asset_class="INDEX_COMPOSITE",
+            name="Jakarta Composite Index", is_active=True,
+        ),
+        # Commodity futures — should be excluded
+        InstrumentMaster(
+            ticker="CL=F", market_mic="XIDX", asset_class="COMMODITY_FUTURES",
+            name="Crude Oil Futures", is_active=True,
         ),
     ]
     for inst in instruments:
@@ -254,3 +264,46 @@ def test_screener_screen_tickers_returns_list():
     screener = TickerScreener()
     # Just verify it's callable — actual DB test above
     assert hasattr(screener, "screen_tickers")
+
+
+@pytest.mark.isolated_db
+def test_screener_excludes_indices_and_commodities():
+    """Screener with EQUITY_INDIVIDUAL filter excludes indices and commodities."""
+    session = get_sessionmaker()()
+    try:
+        _seed_instruments(session)
+
+        screener = TickerScreener()
+        result = screener.screen(session)
+
+        # Equities pass
+        assert "BBCA.JK" in result.passed
+        assert "BBRI.JK" in result.passed
+        # Index and commodity futures are excluded
+        assert "^JKSE" not in result.passed
+        assert "CL=F" not in result.passed
+        assert "BOND01" not in result.passed
+    finally:
+        session.close()
+
+
+@pytest.mark.isolated_db
+def test_screener_segment_aware_filter():
+    """Screener can filter by other asset_class segments when explicitly asked."""
+    session = get_sessionmaker()()
+    try:
+        _seed_instruments(session)
+
+        screener = TickerScreener()
+
+        # Filter for INDEX_COMPOSITE
+        result_idx = screener.screen(session, asset_class="INDEX_COMPOSITE")
+        assert "^JKSE" in result_idx.passed
+        assert "BBCA.JK" not in result_idx.passed
+
+        # Filter for COMMODITY_FUTURES
+        result_cmd = screener.screen(session, asset_class="COMMODITY_FUTURES")
+        assert "CL=F" in result_cmd.passed
+        assert "BBCA.JK" not in result_cmd.passed
+    finally:
+        session.close()

@@ -955,3 +955,149 @@ class ParquetSyncState(Base):
     last_row_count: Mapped[int | None] = mapped_column(Integer, nullable=True)
     total_partitions_written: Mapped[int | None] = mapped_column(Integer, nullable=True)
     updated_at: Mapped[datetime] = mapped_column(DateTime, default=_utcnow, onupdate=_utcnow)
+
+
+# ── Relational hierarchy tables (migration 0013) ─────────────────────────
+# Negara → Regulator → Bursa → Sektor → Emiten → Instrumen
+# + Indeks Pasar, Broker, Broker-Bursa, Transaksi Investor, App Notifications
+
+
+class Regulator(Base):
+    """Regulator — top of hierarchy (e.g. OJK/Indonesia, SEC/USA)."""
+
+    __tablename__ = "regulator"
+
+    id_regulator: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    nama_regulator: Mapped[str] = mapped_column(String(100), nullable=False)
+    negara: Mapped[str] = mapped_column(String(50), nullable=False)
+
+
+class BursaEfek(Base):
+    """Bursa Efak — exchange regulated by a regulator (e.g. BEI/IDX under OJK)."""
+
+    __tablename__ = "bursa_efek"
+
+    id_bursa: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    nama_bursa: Mapped[str] = mapped_column(String(100), nullable=False)
+    mic_code: Mapped[str | None] = mapped_column(String(10), nullable=True)
+    id_regulator: Mapped[int] = mapped_column(
+        Integer, ForeignKey("regulator.id_regulator", ondelete="RESTRICT"), nullable=False
+    )
+
+
+class Sektor(Base):
+    """Sektor — independent sector lookup (e.g. Energy, Financials)."""
+
+    __tablename__ = "sektor"
+
+    id_sektor: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    nama_sektor: Mapped[str] = mapped_column(String(100), nullable=False, unique=True)
+
+
+class Emiten(Base):
+    """Emiten — company listed on a bursa, belonging to a sector."""
+
+    __tablename__ = "emiten"
+
+    id_emiten: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    kode_ticker: Mapped[str] = mapped_column(String(30), nullable=False, unique=True)
+    nama_perusahaan: Mapped[str | None] = mapped_column(String(200), nullable=True)
+    id_bursa: Mapped[int] = mapped_column(
+        Integer, ForeignKey("bursa_efek.id_bursa", ondelete="RESTRICT"), nullable=False
+    )
+    id_sektor: Mapped[int | None] = mapped_column(
+        Integer, ForeignKey("sektor.id_sektor", ondelete="SET NULL"), nullable=True
+    )
+    subsektor: Mapped[str | None] = mapped_column(String(100), nullable=True)
+    is_active: Mapped[bool] = mapped_column(Boolean, default=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=_utcnow)
+
+
+class Instrumen(Base):
+    """Instrumen — financial instrument issued by an emiten."""
+
+    __tablename__ = "instrumen"
+
+    id_instrumen: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    id_emiten: Mapped[int] = mapped_column(
+        Integer, ForeignKey("emiten.id_emiten", ondelete="CASCADE"), nullable=False
+    )
+    jenis_instrumen: Mapped[str] = mapped_column(String(30), nullable=False)
+    asset_class: Mapped[str] = mapped_column(String(30), nullable=False, default="EQUITY_INDIVIDUAL")
+    base_currency: Mapped[str] = mapped_column(String(3), nullable=False, default="IDR")
+    is_active: Mapped[bool] = mapped_column(Boolean, default=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=_utcnow)
+
+
+class IndeksPasar(Base):
+    """Indeks Pasar — market index belonging to a bursa."""
+
+    __tablename__ = "indeks_pasar"
+
+    id_indeks: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    kode_indeks: Mapped[str] = mapped_column(String(30), nullable=False, unique=True)
+    nama_indeks: Mapped[str | None] = mapped_column(String(200), nullable=True)
+    id_bursa: Mapped[int | None] = mapped_column(
+        Integer, ForeignKey("bursa_efek.id_bursa", ondelete="SET NULL"), nullable=True
+    )
+    jenis_indeks: Mapped[str | None] = mapped_column(String(30), nullable=True)
+    asset_class: Mapped[str] = mapped_column(String(30), nullable=False, default="INDEX_COMPOSITE")
+    is_active: Mapped[bool] = mapped_column(Boolean, default=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=_utcnow)
+
+
+class Broker(Base):
+    """Broker — securities broker."""
+
+    __tablename__ = "broker"
+
+    id_broker: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    nama_broker: Mapped[str] = mapped_column(String(200), nullable=False, unique=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=_utcnow)
+
+
+class BrokerBursa(Base):
+    """Broker-Bursa — many-to-many junction (broker ↔ bursa membership)."""
+
+    __tablename__ = "broker_bursa"
+
+    id_broker: Mapped[int] = mapped_column(
+        Integer, ForeignKey("broker.id_broker", ondelete="CASCADE"), primary_key=True
+    )
+    id_bursa: Mapped[int] = mapped_column(
+        Integer, ForeignKey("bursa_efek.id_bursa", ondelete="CASCADE"), primary_key=True
+    )
+
+
+class TransaksiInvestor(Base):
+    """Transaksi Investor — investor transaction records."""
+
+    __tablename__ = "transaksi_investor"
+
+    id_transaksi: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    tanggal_transaksi: Mapped[date] = mapped_column(Date, nullable=False)
+    id_instrumen: Mapped[int] = mapped_column(
+        Integer, ForeignKey("instrumen.id_instrumen", ondelete="RESTRICT"), nullable=False
+    )
+    id_broker: Mapped[int | None] = mapped_column(
+        Integer, ForeignKey("broker.id_broker", ondelete="SET NULL"), nullable=True
+    )
+    tipe_transaksi: Mapped[str] = mapped_column(String(20), nullable=False)
+    jumlah_lot: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    harga_per_saham: Mapped[Decimal] = mapped_column(Numeric(20, 4), nullable=False, default=0)
+    biaya_broker: Mapped[Decimal | None] = mapped_column(Numeric(20, 4), nullable=True, default=0)
+    pajak_pph_final: Mapped[Decimal | None] = mapped_column(Numeric(20, 4), nullable=True, default=0)
+    status_eksekusi: Mapped[str] = mapped_column(String(20), nullable=False, default="PENDING")
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=_utcnow)
+
+
+class AppNotification(Base):
+    """App Notifications — internal notification for the application backend."""
+
+    __tablename__ = "app_notifications"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    timestamp: Mapped[datetime] = mapped_column(DateTime, nullable=False, default=_utcnow)
+    title: Mapped[str] = mapped_column(Text, nullable=False)
+    body_json: Mapped[str] = mapped_column(Text, nullable=False)
+    status: Mapped[str] = mapped_column(String(20), nullable=False, default="UNREAD")

@@ -13,11 +13,13 @@ import {
   Bot,
   Scan,
   Database,
+  BellRing,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 
 const navItems = [
   { href: "/", label: "Dashboard", icon: LayoutDashboard },
+  { href: "/signals", label: "Sinyal", icon: BellRing },
   { href: "/stock", label: "Saham", icon: TrendingUp },
   { href: "/portfolio", label: "Portofolio", icon: Wallet },
   { href: "/backtest", label: "Backtest", icon: FlaskConical },

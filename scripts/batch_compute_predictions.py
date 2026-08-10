@@ -239,8 +239,14 @@ def main() -> None:
     if args.tickers:
         tickers = [t.strip() for t in args.tickers.split(",")]
     else:
+        # Segment-aware: only process EQUITY_INDIVIDUAL tickers for ML training.
+        # Indices (^JKSE, ^GSPC) and commodities (CL=F, GC=F) are exogenous
+        # features only — they must never enter the prediction target matrix.
         rows = conn_ro.execute(
-            "SELECT ticker FROM stock_personality ORDER BY ticker"
+            "SELECT sp.ticker FROM stock_personality sp "
+            "JOIN instrument_master im ON sp.ticker = im.ticker "
+            "WHERE im.asset_class = 'EQUITY_INDIVIDUAL' "
+            "ORDER BY sp.ticker"
         ).fetchall()
         tickers = [r[0] for r in rows]
 

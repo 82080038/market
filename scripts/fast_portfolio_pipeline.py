@@ -73,8 +73,9 @@ MIN_AVG_VOLUME = 100_000
 def get_all_tickers(conn: sqlite3.Connection, limit: int = 0) -> list[str]:
     """Get tickers with sufficient data (>MIN_BARS bars, active in 2026).
 
-    Only .JK tickers (exclude indices like ^GSPC, ^JKSE, FX pairs, etc.).
-    Filters by trading_status = 'active' in instrument_master:
+    Segment-aware: only EQUITY_INDIVIDUAL tickers (excludes indices ^JKSE,
+    commodities CL=F, volatility ^VIX from ML training data).
+    Also filters by trading_status = 'active' in instrument_master:
     - Excludes delisted, suspended (BEI), illiquid, and index tickers
     - trading_status is persisted in DB (updated from BEI announcements + yfinance verification)
     """
@@ -84,7 +85,7 @@ def get_all_tickers(conn: sqlite3.Connection, limit: int = 0) -> list[str]:
         "FROM ohlcv o "
         "JOIN instrument_master im ON o.ticker = im.ticker "
         "WHERE o.timeframe = '1d' "
-        "AND o.ticker LIKE '%.JK' "
+        "AND im.asset_class = 'EQUITY_INDIVIDUAL' "
         "AND im.trading_status = 'active' "
         "GROUP BY o.ticker "
         "HAVING n_bars > ? AND last_date >= '2026-01-01' "

@@ -64,11 +64,11 @@ class TestSignalEnhancerBasic:
         )
         assert isinstance(result, EnhancementResult)
         assert result.enhanced_prediction.predicted_direction == "up"
-        assert len(result.signals) == 5
+        assert len(result.signals) == 6
         # Volume signal is computed from OHLCV data, not a module instance.
         vol_sig = [s for s in result.signals if s.source == "volume"][0]
         assert vol_sig.available
-        # Other 4 signals require module instances → unavailable.
+        # Other 5 signals require module instances → unavailable.
         for sig in result.signals:
             if sig.source != "volume":
                 assert not sig.available
@@ -101,7 +101,7 @@ class TestSignalEnhancerBasic:
         assert isinstance(result, EnhancementResult)
         assert isinstance(result.enhanced_prediction, Prediction)
         assert isinstance(result.signals, list)
-        assert len(result.signals) == 5
+        assert len(result.signals) == 6
         assert isinstance(result.final_confidence, float)
         assert isinstance(result.final_direction, str)
         assert isinstance(result.bet_size, float)

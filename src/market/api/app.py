@@ -47,6 +47,10 @@ Endpoint inventory:
     GET  /api/prices/latest         — latest intraday price snapshot
     POST /api/prices/intraday/trigger — manually trigger intraday fetch
     GET  /api/prices/compare/{ticker} — prediction vs actual price comparison
+    GET  /api/notifications             — list notifications (paginated, filterable)
+    GET  /api/notifications/{id}        — single notification detail
+    PATCH /api/notifications/{id}/read  — mark notification as READ
+    GET  /api/notifications/signals/latest — latest unread daily signal payload
 """
 
 from __future__ import annotations
@@ -60,6 +64,7 @@ from market.api.routes_backtest import router as backtest_router
 from market.api.routes_data import router as data_router
 from market.api.routes_delisting import router as delisting_router
 from market.api.routes_instruments import router as instruments_router
+from market.api.routes_notifications import router as notifications_router
 from market.api.routes_portfolio import router as portfolio_router
 from market.api.routes_prediction import router as prediction_router
 from market.api.routes_prices import router as prices_router
@@ -87,6 +92,7 @@ def create_app() -> FastAPI:
     app.include_router(data_router)
     app.include_router(prices_router)
     app.include_router(recompute_router)
+    app.include_router(notifications_router)
 
     return app
 

@@ -65,7 +65,7 @@ def test_create_instrument_master(db_session):
     inst = InstrumentMaster(
         ticker="BBCA.JK",
         market_mic="XIDX",
-        asset_class="equity",
+        asset_class="EQUITY_INDIVIDUAL",
         name="Bank Central Asia",
         base_currency="IDR",
         lot_size=100,

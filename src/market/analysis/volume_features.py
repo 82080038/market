@@ -534,3 +534,204 @@ def compute_foreign_flow_signal(
         z_score=z_score,
         signal=signal,
     )
+
+
+# ── 7. Retail Absorption Rate (Smart Money / Bandarmology) ─────────────────
+
+
+# IDX retail broker codes (pustaka/91 — Bandarmology broker classification)
+RETAIL_BROKER_CODES = frozenset({"YP", "CC", "XL", "PD"})
+
+
+@dataclass
+class RetailAbsorptionResult:
+    """Retail absorption rate analysis result (Smart Money Score).
+
+    Attributes:
+        smart_money_score: Accumulation score in [-1, +1]. Positive = institutional
+            accumulation (retail selling, price holding). Negative = institutional
+            distribution (retail buying, price weak).
+        retail_net_volume: Net volume from retail brokers (negative = net selling).
+        retail_net_value: Net value from retail brokers (negative = net selling).
+        retail_sell_ratio: Ratio of retail net sell volume to total daily volume [0, 1].
+        price_above_vwap: Whether close is at or above VWAP.
+        accumulation_streak: Number of consecutive days with positive smart_money_score.
+        daily_scores: List of per-day scores for the lookback period (D-0 to D-(lookback-1)).
+        label: Human-readable label: "accumulation", "distribution", or "neutral".
+    """
+
+    smart_money_score: float
+    retail_net_volume: float
+    retail_net_value: float
+    retail_sell_ratio: float
+    price_above_vwap: bool
+    accumulation_streak: int
+    daily_scores: list[float]
+    label: str
+
+
+def calculate_retail_absorption(
+    broker_flow_df: pd.DataFrame,
+    ohlcv_df: pd.DataFrame,
+    ticker: str,
+    lookback: int = 5,
+    retail_brokers: frozenset[str] = RETAIL_BROKER_CODES,
+    retail_sell_threshold: float = 0.60,
+) -> RetailAbsorptionResult:
+    """Calculate Retail Absorption Rate and Smart Money Score.
+
+    Detects institutional accumulation by analyzing retail broker flow:
+    if retail brokers (YP, CC, XL, PD) are net selling >60% of daily volume
+    but the closing price remains at or above VWAP, this indicates smart money
+    is absorbing retail supply — a bullish accumulation signal (Bandarmology).
+
+    The function is purely computational (no DB access). It requires pre-loaded
+    broker_flow and OHLCV DataFrames.
+
+    Args:
+        broker_flow_df: DataFrame with columns [ticker, date, broker, buy_volume,
+            sell_volume, net_volume, buy_value, sell_value, net_value].
+            Must be filtered to the target ticker (or contain all tickers).
+        ohlcv_df: DataFrame with columns [high, low, close, volume] indexed by date.
+        ticker: Target ticker symbol (e.g. "BBCA.JK").
+        lookback: Number of days to analyze (default 5, i.e. D-0 to D-4).
+        retail_brokers: Set of retail broker codes (default: YP, CC, XL, PD).
+        retail_sell_threshold: Ratio threshold for retail net sell to trigger
+            accumulation signal (default 0.60 = 60% of total volume).
+
+    Returns:
+        RetailAbsorptionResult with smart_money_score and per-day breakdown.
+    """
+    # Filter broker_flow for this ticker
+    if "ticker" in broker_flow_df.columns:
+        bf = broker_flow_df[broker_flow_df["ticker"] == ticker].copy()
+    else:
+        bf = broker_flow_df.copy()
+
+    if bf.empty or ohlcv_df.empty:
+        return RetailAbsorptionResult(
+            smart_money_score=0.0,
+            retail_net_volume=0.0,
+            retail_net_value=0.0,
+            retail_sell_ratio=0.0,
+            price_above_vwap=False,
+            accumulation_streak=0,
+            daily_scores=[],
+            label="neutral",
+        )
+
+    # Ensure date columns are datetime
+    if "date" in bf.columns:
+        bf["date"] = pd.to_datetime(bf["date"])
+    bf = bf.sort_values("date")
+
+    ohlcv_df = ohlcv_df.copy()
+    ohlcv_df.index = pd.to_datetime(ohlcv_df.index)
+
+    # Get the last `lookback` trading dates
+    recent_dates = ohlcv_df.index[-lookback:] if len(ohlcv_df) >= lookback else ohlcv_df.index
+
+    daily_scores: list[float] = []
+    total_retail_net_vol = 0.0
+    total_retail_net_val = 0.0
+    total_retail_sell_ratio = 0.0
+    price_above_vwap_count = 0
+    n_days = 0
+
+    for date in recent_dates:
+        date_mask = bf["date"] == date if "date" in bf.columns else pd.Series([True] * len(bf))
+        day_bf = bf[date_mask]
+        day_ohlcv = ohlcv_df.loc[[date]] if date in ohlcv_df.index else pd.DataFrame()
+
+        if day_bf.empty or day_ohlcv.empty:
+            daily_scores.append(0.0)
+            continue
+
+        # Retail broker flow for this day
+        retail_mask = day_bf["broker"].isin(retail_brokers)
+        retail_bf = day_bf[retail_mask]
+        all_bf = day_bf
+
+        # Total daily volume from all brokers
+        total_buy_vol = float(all_bf["buy_volume"].fillna(0).sum()) if "buy_volume" in all_bf.columns else 0.0
+        total_sell_vol = float(all_bf["sell_volume"].fillna(0).sum()) if "sell_volume" in all_bf.columns else 0.0
+        total_vol = total_buy_vol + total_sell_vol
+
+        # Retail net volume (negative = net selling)
+        retail_net_vol = float(retail_bf["net_volume"].fillna(0).sum()) if "net_volume" in retail_bf.columns else 0.0
+        retail_net_val = float(retail_bf["net_value"].fillna(0).sum()) if "net_value" in retail_bf.columns else 0.0
+
+        # Retail sell ratio: how much of total volume is retail net selling
+        if total_vol > 0:
+            retail_sell_ratio = abs(min(0.0, retail_net_vol)) / total_vol
+        else:
+            retail_sell_ratio = 0.0
+
+        # VWAP check: is close at or above VWAP?
+        close = float(day_ohlcv["close"].iloc[0])
+        high = float(day_ohlcv["high"].iloc[0]) if "high" in day_ohlcv.columns else close
+        low = float(day_ohlcv["low"].iloc[0]) if "low" in day_ohlcv.columns else close
+        vol = float(day_ohlcv["volume"].iloc[0]) if "volume" in day_ohlcv.columns else 0.0
+
+        typical_price = (high + low + close) / 3.0
+        vwap = typical_price  # Single-bar VWAP approximation
+        price_above_vwap = close >= vwap
+
+        # Smart Money Score calculation:
+        # +1.0 when retail is heavily net selling (>threshold) AND price holds at/above VWAP
+        # -1.0 when retail is heavily net buying AND price below VWAP (distribution)
+        # Scaled by the intensity of retail selling/buying
+        if retail_sell_ratio >= retail_sell_threshold and price_above_vwap:
+            # Accumulation: institutions absorbing retail supply
+            score = min(1.0, retail_sell_ratio)
+        elif retail_sell_ratio >= retail_sell_threshold and not price_above_vwap:
+            # Retail selling and price dropping — could be genuine sell-off, not accumulation
+            score = -min(0.5, retail_sell_ratio * 0.5)
+        else:
+            # Neutral or mild signals
+            score = 0.0
+
+        daily_scores.append(score)
+        total_retail_net_vol += retail_net_vol
+        total_retail_net_val += retail_net_val
+        total_retail_sell_ratio += retail_sell_ratio
+        if price_above_vwap:
+            price_above_vwap_count += 1
+        n_days += 1
+
+    # Aggregate score: average of daily scores, scaled
+    if n_days > 0:
+        avg_score = sum(daily_scores) / n_days
+        avg_retail_sell_ratio = total_retail_sell_ratio / n_days
+        price_above_vwap_avg = price_above_vwap_count > (n_days / 2)
+    else:
+        avg_score = 0.0
+        avg_retail_sell_ratio = 0.0
+        price_above_vwap_avg = False
+
+    # Calculate accumulation streak (consecutive positive scores from most recent)
+    streak = 0
+    for score in reversed(daily_scores):
+        if score > 0:
+            streak += 1
+        else:
+            break
+
+    # Label
+    if avg_score > 0.3:
+        label = "accumulation"
+    elif avg_score < -0.2:
+        label = "distribution"
+    else:
+        label = "neutral"
+
+    return RetailAbsorptionResult(
+        smart_money_score=round(avg_score, 4),
+        retail_net_volume=round(total_retail_net_vol, 2),
+        retail_net_value=round(total_retail_net_val, 2),
+        retail_sell_ratio=round(avg_retail_sell_ratio, 4),
+        price_above_vwap=price_above_vwap_avg,
+        accumulation_streak=streak,
+        daily_scores=[round(s, 4) for s in daily_scores],
+        label=label,
+    )

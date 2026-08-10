@@ -50,6 +50,8 @@ if TYPE_CHECKING:
     from market.analysis.prediction import Prediction
     from market.analysis.sector_rotation import SectorRotationEngine
     from market.analysis.volume_features import (
+        RetailAbsorptionResult,
+        calculate_retail_absorption,
         compute_foreign_flow_signal,
         compute_ofi_proxy,
         compute_vwap,
@@ -127,7 +129,10 @@ class SignalEnhancer:
         sector_weight: float = 0.10,
         pairs_weight: float = 0.10,
         meta_weight: float = 0.20,
+        smart_money_weight: float = 0.12,
         signal_threshold: float = 0.15,
+        smart_money_streak_threshold: int = 3,
+        mid_cap_relax_factor: float = 0.15,
     ) -> None:
         """Initialize the signal enhancer.
 
@@ -141,7 +146,13 @@ class SignalEnhancer:
             sector_weight: Weight for sector signal adjustment.
             pairs_weight: Weight for pairs signal adjustment.
             meta_weight: Weight for meta-labeler bet size adjustment.
+            smart_money_weight: Weight for Smart Money (retail absorption) signal.
             signal_threshold: Minimum |total_adjustment| to flip direction.
+            smart_money_streak_threshold: Consecutive days of positive Smart Money
+                Score required to trigger meta_prob_threshold relaxation.
+            mid_cap_relax_factor: How much to relax the meta-labeler prob_threshold
+                for Mid-Cap stocks with strong accumulation streak (e.g. 0.15 means
+                threshold lowered from 0.50 to 0.35).
         """
         self.meta_labeler = meta_labeler
         self.policy_scorer = policy_scorer
@@ -152,7 +163,10 @@ class SignalEnhancer:
         self.sector_weight = sector_weight
         self.pairs_weight = pairs_weight
         self.meta_weight = meta_weight
+        self.smart_money_weight = smart_money_weight
         self.signal_threshold = signal_threshold
+        self.smart_money_streak_threshold = smart_money_streak_threshold
+        self.mid_cap_relax_factor = mid_cap_relax_factor
 
     def enhance(
         self,
@@ -209,9 +223,30 @@ class SignalEnhancer:
         pairs_sig = self._compute_pairs_signal(df_trunc, ticker, pair_ticker, pair_prices)
         signals.append(pairs_sig)
 
-        # 5. Meta-labeler bet sizing.
+        # 5. Smart Money / Retail Absorption signal.
+        smart_money_sig = self._compute_smart_money_signal(df_trunc, ticker)
+        signals.append(smart_money_sig)
+
+        # 6. Meta-labeler bet sizing (with optional threshold relaxation).
+        # If Smart Money Score shows accumulation for >=3 consecutive days,
+        # relax the meta-labeler prob_threshold for Mid-Cap stocks.
+        relax_factor = 0.0
+        if (
+            smart_money_sig.available
+            and hasattr(smart_money_sig, 'rationale')
+            and 'streak=' in smart_money_sig.rationale
+        ):
+            # Extract streak from rationale string
+            import re
+            streak_match = re.search(r'streak=(\d+)', smart_money_sig.rationale)
+            if streak_match:
+                streak_val = int(streak_match.group(1))
+                if streak_val >= self.smart_money_streak_threshold:
+                    relax_factor = self.mid_cap_relax_factor
+
         meta_sig = self._compute_meta_signal(
-            df, base, ticker, as_of, foreign_flow
+            df, base, ticker, as_of, foreign_flow,
+            prob_relax=relax_factor,
         )
         signals.append(meta_sig)
 
@@ -231,6 +266,8 @@ class SignalEnhancer:
                 total_adj += sig.signal * self.sector_weight
             elif sig.source == "pairs":
                 total_adj += sig.signal * self.pairs_weight
+            elif sig.source == "smart_money":
+                total_adj += sig.signal * self.smart_money_weight
             elif sig.source == "meta":
                 bet_size = sig.signal  # meta-labeler returns bet size directly
             conf_mult *= sig.confidence_adjustment
@@ -477,6 +514,55 @@ class SignalEnhancer:
             logger.debug("Pairs signal failed: %s", e)
             return EnhancementSignal(source="pairs")
 
+    def _compute_smart_money_signal(
+        self,
+        df: pd.DataFrame,
+        ticker: str,
+    ) -> EnhancementSignal:
+        """Compute Smart Money Score from retail broker absorption.
+
+        Uses calculate_retail_absorption from volume_features.py to detect
+        institutional accumulation patterns (Bandarmology). Requires
+        broker_flow data to be pre-loaded; gracefully skips if unavailable.
+        """
+        try:
+            from market.analysis.volume_features import calculate_retail_absorption
+
+            # broker_flow data must be passed in or loaded externally.
+            # This method checks if broker_flow_df is available in df as metadata.
+            # If not available, skip gracefully.
+            broker_flow_df = getattr(df, '_attrs', {}).get('broker_flow_df') if hasattr(df, '_attrs') else None
+            if broker_flow_df is None or broker_flow_df.empty:
+                return EnhancementSignal(source="smart_money")
+
+            result = calculate_retail_absorption(
+                broker_flow_df=broker_flow_df,
+                ohlcv_df=df,
+                ticker=ticker,
+                lookback=5,
+            )
+
+            signal = float(np.clip(result.smart_money_score, -1, 1))
+            conf_adj = 1.0
+            if result.accumulation_streak >= 3:
+                conf_adj = 1.15  # Boost confidence when 3+ day accumulation streak
+
+            return EnhancementSignal(
+                source="smart_money",
+                signal=signal,
+                confidence_adjustment=conf_adj,
+                rationale=(
+                    f"smart_money={result.smart_money_score:.2f}, "
+                    f"label={result.label}, "
+                    f"retail_sell_ratio={result.retail_sell_ratio:.2f}, "
+                    f"streak={result.accumulation_streak}"
+                ),
+                available=True,
+            )
+        except Exception as e:
+            logger.debug("Smart money signal failed: %s", e)
+            return EnhancementSignal(source="smart_money")
+
     def _compute_meta_signal(
         self,
         df: pd.DataFrame,
@@ -484,8 +570,15 @@ class SignalEnhancer:
         ticker: str,
         as_of: str | pd.Timestamp,
         foreign_flow: pd.Series | None,
+        prob_relax: float = 0.0,
     ) -> EnhancementSignal:
-        """Compute meta-labeler bet sizing signal."""
+        """Compute meta-labeler bet sizing signal.
+
+        Args:
+            prob_relax: If > 0, relax the meta-labeler prob_threshold by this
+                amount (e.g. 0.15 lowers threshold from 0.50 to 0.35). Used
+                when Smart Money Score detects strong accumulation streak.
+        """
         try:
             if self.meta_labeler is None or self.meta_labeler._model is None:
                 return EnhancementSignal(source="meta")
@@ -510,19 +603,36 @@ class SignalEnhancer:
                 if not ff_before.empty:
                     ff_val = float(ff_before.iloc[-1])
 
-            result = self.meta_labeler.predict(
-                df=df,
-                as_of=as_of,
-                primary_side=side,
-                primary_confidence=base.confidence,
-                foreign_flow=ff_val,
-            )
+            # Apply Smart Money threshold relaxation for Mid-Cap
+            original_threshold = self.meta_labeler.prob_threshold
+            if prob_relax > 0:
+                relaxed = max(0.1, original_threshold - prob_relax)
+                self.meta_labeler.prob_threshold = relaxed
+                logger.debug(
+                    "Meta threshold relaxed: %.2f → %.2f (Smart Money streak)",
+                    original_threshold, relaxed,
+                )
+
+            try:
+                result = self.meta_labeler.predict(
+                    df=df,
+                    as_of=as_of,
+                    primary_side=side,
+                    primary_confidence=base.confidence,
+                    foreign_flow=ff_val,
+                )
+            finally:
+                self.meta_labeler.prob_threshold = original_threshold
+
+            rationale = f"P(correct)={result.probability:.3f}, bet={result.bet_size:.2f}, trade={result.trade}"
+            if prob_relax > 0:
+                rationale += f", threshold_relaxed={prob_relax:.2f}"
 
             return EnhancementSignal(
                 source="meta",
                 signal=result.bet_size,
                 confidence_adjustment=1.0,
-                rationale=f"P(correct)={result.probability:.3f}, bet={result.bet_size:.2f}, trade={result.trade}",
+                rationale=rationale,
                 available=True,
             )
         except Exception as e:
