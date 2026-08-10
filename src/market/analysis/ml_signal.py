@@ -114,7 +114,7 @@ class MLSignalProvider:
         self._models: dict[str, object] = {}
         self._regime_models: dict[str, dict[int, object]] = {}  # ticker → {regime_label: model}
 
-    def _prepare_features(self, df: pd.DataFrame) -> pd.DataFrame:
+    def _prepare_features(self, df: pd.DataFrame, ticker: str | None = None) -> pd.DataFrame:
         """Prepare feature columns from OHLCV data."""
         data = df.copy()
         close = data["close"].astype(float)
@@ -219,6 +219,10 @@ class MLSignalProvider:
         data["ma_ratio_x_vol_pctile"] = data["ma_ratio"] * data["vol_pctile"]
         data["rsi_rank_x_regime"] = data["rsi_rank"] * data["trend_regime"]
 
+        # P7: Exogenous ecosystem features
+        # Load from DB: USD/IDR FX, Shanghai Composite, Indonesia CPI, corporate actions
+        data = self._add_exogenous_features(data, ticker=ticker)
+
         # Target: triple-barrier labels (López de Prado)
         if self.use_triple_barrier:
             data["target"] = self._compute_triple_barrier_labels(data)
@@ -281,6 +285,130 @@ class MLSignalProvider:
 
         return labels
 
+    def _add_exogenous_features(self, data: pd.DataFrame, ticker: str | None = None) -> pd.DataFrame:
+        """P7: Add exogenous ecosystem features from DB.
+        
+        Loads:
+        - USD/IDR FX rate (lag-1 and lag-5 returns)
+        - Shanghai Composite Index (lag-1 and lag-5 returns) — China demand proxy
+        - Indonesia CPI (inflation, monthly → forward-filled)
+        - Corporate action event flags (dividend/split within ±5 days)
+        """
+        import sqlite3
+        from market.config import settings
+        
+        db_path = settings.db_path
+        if not db_path:
+            return data
+        
+        try:
+            conn = sqlite3.connect(db_path)
+            
+            # 1. USD/IDR FX rate from OHLCV
+            try:
+                fx_df = pd.read_sql(
+                    "SELECT timestamp as date, close FROM ohlcv WHERE ticker='IDR=X' ORDER BY timestamp",
+                    conn,
+                )
+                if not fx_df.empty:
+                    fx_df["date"] = pd.to_datetime(fx_df["date"])
+                    fx_df = fx_df.set_index("date")
+                    fx_ret_1 = fx_df["close"].pct_change(1)
+                    fx_ret_5 = fx_df["close"].pct_change(5)
+                    data["usd_idr_ret_1"] = data.index.map(lambda d: fx_ret_1.get(d, np.nan) if d in fx_ret_1.index else np.nan)
+                    data["usd_idr_ret_5"] = data.index.map(lambda d: fx_ret_5.get(d, np.nan) if d in fx_ret_5.index else np.nan)
+            except Exception:
+                pass
+            
+            # 2. Shanghai Composite (000001.SS) from OHLCV — China demand proxy
+            try:
+                sh_df = pd.read_sql(
+                    "SELECT timestamp as date, close FROM ohlcv WHERE ticker='000001.SS' ORDER BY timestamp",
+                    conn,
+                )
+                if not sh_df.empty:
+                    sh_df["date"] = pd.to_datetime(sh_df["date"])
+                    sh_df = sh_df.set_index("date")
+                    sh_ret_1 = sh_df["close"].pct_change(1)
+                    sh_ret_5 = sh_df["close"].pct_change(5)
+                    data["shanghai_ret_1"] = data.index.map(lambda d: sh_ret_1.get(d, np.nan) if d in sh_ret_1.index else np.nan)
+                    data["shanghai_ret_5"] = data.index.map(lambda d: sh_ret_5.get(d, np.nan) if d in sh_ret_5.index else np.nan)
+            except Exception:
+                pass
+            
+            # 3. Indonesia CPI from macro_data (monthly → forward-fill to daily)
+            try:
+                cpi_df = pd.read_sql(
+                    "SELECT date, value FROM macro_data WHERE series_name='ID_CPI' ORDER BY date",
+                    conn,
+                )
+                if not cpi_df.empty:
+                    cpi_df["date"] = pd.to_datetime(cpi_df["date"])
+                    cpi_df = cpi_df.set_index("date").sort_index()
+                    # Forward-fill monthly CPI to daily
+                    cpi_series = cpi_df["value"].reindex(data.index, method="ffill")
+                    # Use CPI change as inflation proxy
+                    cpi_change = cpi_series.pct_change(60)  # ~3 months
+                    data["id_inflation_3m"] = cpi_change.values
+            except Exception:
+                pass
+            
+            # 4. Corporate action event flags (dividend/split within ±5 days)
+            if ticker:
+                try:
+                    ca_df = pd.read_sql(
+                        f"SELECT ex_date, action_type FROM corporate_actions WHERE ticker='{ticker}' AND ex_date IS NOT NULL",
+                        conn,
+                    )
+                    if not ca_df.empty:
+                        ca_df["ex_date"] = pd.to_datetime(ca_df["ex_date"])
+                        # Binary flag: 1 if any corporate action within ±5 days
+                        event_dates = ca_df["ex_date"].values
+                        data["has_corp_action"] = 0
+                        for ed in event_dates:
+                            mask = (data.index >= ed - pd.Timedelta(days=5)) & (data.index <= ed + pd.Timedelta(days=5))
+                            data.loc[mask, "has_corp_action"] = 1
+                    else:
+                        data["has_corp_action"] = 0
+                except Exception:
+                    data["has_corp_action"] = 0
+                
+                try:
+                    div_df = pd.read_sql(
+                        f"SELECT ex_date FROM dividends WHERE ticker='{ticker}' AND ex_date IS NOT NULL",
+                        conn,
+                    )
+                    if not div_df.empty:
+                        div_df["ex_date"] = pd.to_datetime(div_df["ex_date"])
+                        data["has_dividend"] = 0
+                        for ed in div_df["ex_date"].values:
+                            mask = (data.index >= ed - pd.Timedelta(days=5)) & (data.index <= ed + pd.Timedelta(days=5))
+                            data.loc[mask, "has_dividend"] = 1
+                    else:
+                        data["has_dividend"] = 0
+                except Exception:
+                    data["has_dividend"] = 0
+            else:
+                data["has_corp_action"] = 0
+                data["has_dividend"] = 0
+            
+            conn.close()
+        except Exception:
+            pass
+        
+        # Fill NaN for exogenous features
+        exog_cols = [
+            "usd_idr_ret_1", "usd_idr_ret_5", "shanghai_ret_1", "shanghai_ret_5",
+            "id_inflation_3m", "has_corp_action", "has_dividend",
+        ]
+        for col in exog_cols:
+            if col not in data.columns:
+                data[col] = 0.0
+            else:
+                data[col] = data[col].fillna(0.0)
+        
+        return data
+
     def _get_feature_cols(self) -> list[str]:
         return [
             # Remediated features (regime-stable)
@@ -297,6 +425,11 @@ class MLSignalProvider:
             # Feature interactions (P4-2)
             "rsi_x_vol", "momentum_x_regime", "ma_ratio_x_vol_pctile",
             "rsi_rank_x_regime",
+            # P7: Exogenous ecosystem features
+            "usd_idr_ret_1", "usd_idr_ret_5",
+            "shanghai_ret_1", "shanghai_ret_5",
+            "id_inflation_3m",
+            "has_corp_action", "has_dividend",
         ]
 
     def train_and_predict(
@@ -329,7 +462,7 @@ class MLSignalProvider:
         if effective_horizon != self.horizon:
             self.horizon = effective_horizon
         
-        data = self._prepare_features(df)
+        data = self._prepare_features(df, ticker=ticker)
         self.horizon = original_horizon  # restore
         
         feature_cols = self._get_feature_cols()
