@@ -316,6 +316,9 @@ GLOBAL_ASSETS: dict[str, str] = {
     "GC=F": "gold",
     "CL=F": "oil",
     "HG=F": "copper",
+    "MTF=F": "coal",
+    "CPO=F": "cpo",
+    "NI=F": "nickel",
 }
 
 
@@ -329,12 +332,19 @@ def compute_exogenous_features(
     """Compute exogenous (global market) features aligned to ticker data.
 
     For each global asset, computes:
-    - lag_1_return: Previous day's return (closed before IDX open)
+    - lag_1_return: Previous day's return (with timezone-aware alignment)
     - lag_5_return: 5-day momentum
     - rolling_corr: 60-day rolling correlation with ticker returns
 
-    All global returns are lagged by 1 day to ensure only closed sessions
-    are used (strict non-look-ahead per Time-Zone Bucket Grid).
+    Asymmetric lag (anti look-ahead bias per Time-Zone Bucket Grid):
+    - Asian markets (^N225, ^HSI): T-0 (close before IDX → same-day data valid)
+    - US markets (^GSPC, ^VIX, ^TNX): T-1 (close after IDX → previous day only)
+    - Commodities (GC=F, CL=F, HG=F, MTF=F, CPO=F): T-1 (US-centric settle)
+
+    At 16:15 WIB (09:15 UTC) prediction time:
+    - Tokyo (^N225) closed at 06:30 UTC → same-day close available
+    - Hong Kong (^HSI) closed at 08:00 UTC → same-day close available
+    - US (^GSPC) opens at 13:30/14:30 UTC → must use previous day close
 
     Args:
         df: Ticker OHLCV DataFrame (aligned index).
@@ -346,6 +356,8 @@ def compute_exogenous_features(
     Returns:
         DataFrame with exogenous feature columns.
     """
+    from market.analysis.cross_market_timezone import get_ticker_lag
+
     ticker_returns = df["close"].astype(float).pct_change()
     result = pd.DataFrame(index=df.index)
 
@@ -362,13 +374,14 @@ def compute_exogenous_features(
         # Align to ticker index via reindex (forward-fill for non-overlapping days)
         gclose_aligned = gclose.reindex(df.index, method="ffill")
 
-        # Compute returns, then shift by 1 to use only closed session data
-        g_returns = gclose_aligned.pct_change().shift(1)
+        # Asymmetric lag: T-0 for Asian, T-1 for US/commodities
+        lag = get_ticker_lag(gticker)
+        g_returns = gclose_aligned.pct_change().shift(lag)
 
         # Lag returns (previous session close → today's prediction)
         result[f"{gname}_lag1_ret"] = g_returns.fillna(0.0)
         result[f"{gname}_lag5_ret"] = (
-            (gclose_aligned / gclose_aligned.shift(lookback) - 1).shift(1).fillna(0.0)
+            (gclose_aligned / gclose_aligned.shift(lookback) - 1).shift(lag).fillna(0.0)
         )
 
         # Rolling correlation (ticker vs global, 60-day window)

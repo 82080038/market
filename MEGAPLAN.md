@@ -477,6 +477,24 @@ Semua fase 0–11 sudah selesai dari sisi kode dan test (1274 tests, 64 files, c
 - ✅ **IDX sectoral indices backfill via idx.co.id API**: 53,253 rows, 44 indeks, 2021-01-04 s/d 2026-06-30. Semua 13 indeks sektoral (IDXENERGY, IDXFINANCE, IDXHEALTH, IDXBASIC, IDXTECHNO, IDXINDUST, IDXPROPER, IDXTRANS, IDXINFRA, IDXNONCYC, IDXCYCLIC, IDX30, IDX80) + 31 indeks lainnya (JII, KOMPAS100, BISNIS-27, ISSI, INFOBANK15, SMINFRA18, dll). Data: close price only (open=high=low=close, volume=0), source=`idx_api`. Akses via cloudscraper (Cloudflare bypass), endpoint `GetApiData?urlName=LINK_DAILY_IDX_INDICES`. Data IDX API verified 100% match dengan yfinance untuk overlapping dates.
 - Script: `scripts/backfill_indices.py` (yfinance, idempotent), `scripts/backfill_idx_api_indices.py` (idx.co.id API, cloudscraper).
 
+### DST Shift-Aware Logic & Commodity Futures Alignment (10 Agustus 2026)
+
+- ✅ **`verify_dst_cutoff()`** — DST-aware Wall Street close detection via `zoneinfo` (America/New_York). Summer (EDT, Mar→Nov): US close = 03:00 WIB (20:00 UTC). Winter (EST, Nov→Mar): US close = 04:00 WIB (21:00 UTC). Module: `src/market/analysis/cross_market_timezone.py`.
+- ✅ **`daily_signal_cron.py` integration** — DST cutoff check sebelum signal computation. Jika Wall Street masih buka, log WARNING bahwa global index data (^GSPC, ^VIX) mungkin incomplete.
+- ✅ **Commodity futures backfill** — `scripts/backfill_commodity_futures.py` meng-backfill 6 kontrak komoditas:
+  - CL=F (Crude Oil): 2,179 rows (2021-07 → 2026-08-07)
+  - GC=F (Gold): 2,179 rows (2021-07 → 2026-08-07)
+  - HG=F (Copper): 905 rows (2023-01 → 2026-08-07) — **NEW**
+  - MTF=F (Coal API2/ICE): 750 rows (2023-01 → 2025-12-26) — **NEW**
+  - CPO=F (Crude Palm Oil, Bursa Malaysia): 1,408 rows (2023-01 → 2026-08-07) — **NEW**
+  - NI=F (Nickel LME): tidak tersedia di yfinance (404) — logged as warning
+- ✅ **MultiFactorModel feature expansion** — `GLOBAL_ASSETS` di `multi_factor.py` diperluas: +MTF=F (coal), +CPO=F (cpo), +NI=F (nickel). T-1 returns otomatis masuk sebagai exogenous features via `compute_exogenous_features()`.
+- ✅ **Sector-specific commodity signals** — `_fetch_commodity_signal()` di `market_context.py` diperluas: Energy→CL=F+MTF=F, Consumer Defensive→CPO=F, Basic Materials→GC=F+HG=F+NI=F.
+- ✅ **Tests**: 47 tests di `tests/test_cross_market_timezone.py` (DST detection, US close UTC, market closed check, WIB conversion, cutoff verification, ticker lags, market timezones, get_aligned_global_features T-0/T-1). Total 1,317 tests pass (3 pre-existing failures unrelated).
+- ✅ **`get_aligned_global_features()`** — Fungsi baru di `cross_market_timezone.py` yang menyupply global features dengan anti look-ahead bias: T-0 untuk Asian markets (^N225, ^HSI — close sebelum IDX), T-1 untuk US markets (^GSPC, ^VIX, ^TNX — close setelah IDX) dan commodities (GC=F, CL=F, HG=F, MTF=F, CPO=F). Menggunakan `GLOBAL_TICKER_LAGS` dict dan `MARKET_TIMEZONES` metadata untuk menentukan lag per ticker.
+- ✅ **`compute_exogenous_features()` asymmetric lag** — Diganti dari uniform `.shift(1)` menjadi `get_ticker_lag(gticker)` per ticker. Asian markets menggunakan T-0 (same-day close valid), US/commodities menggunakan T-1 (previous-day close only). Mencegah look-ahead bias untuk Asian features yang sebelumnya tertunda 1 hari.
+- Script: `scripts/backfill_commodity_futures.py` (yfinance, idempotent, INSERT OR REPLACE).
+
 ### Instrument Classification (7 Agustus 2026)
 
 - ✅ **Migration 0010**: Kolom `index_category` dan `region` ditambahkan ke `instrument_master`.

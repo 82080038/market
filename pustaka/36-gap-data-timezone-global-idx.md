@@ -499,39 +499,32 @@ US dan Europe mengubah offset UTC 2x per tahun. Aplikasi **wajib** menangani ini
 
 | Periode | US (NYSE/NASDAQ) | Europe (LSE/FWB) | Implikasi WIB |
 |---------|-------------------|-------------------|---------------|
-| **Mar - Nov (US DST)** | UTC-4 | UTC+1 (Mar-Oct) | US open: 21:30 WIB, US close: 05:00 WIB |
-| **Nov - Mar (US non-DST)** | UTC-5 | UTC+0 (Oct-Mar) | US open: 22:30 WIB, US close: 06:00 WIB |
+| **Mar - Nov (US DST)** | UTC-4 | UTC+1 (Mar-Oct) | US open: 21:30 WIB, US close: 03:00 WIB |
+| **Nov - Mar (US non-DST)** | UTC-5 | UTC+0 (Oct-Mar) | US open: 22:30 WIB, US close: 04:00 WIB |
 | **Transition days** | Offset berubah | Offset berubah | Schedule US monitoring harus dinamis |
 
+> **Implementasi production:** Modul `src/market/analysis/cross_market_timezone.py` menggunakan `zoneinfo` (Python 3.9+) untuk deteksi DST yang akurat (mengikuti aturan IANA tzdata — second Sunday of March 02:00 → first Sunday of November 02:00). Fungsi `verify_dst_cutoff()` dipanggil di `daily_signal_cron.py` sebelum signal computation untuk memastikan Wall Street sudah fully closed sebelum global index data (^GSPC, ^VIX, GC=F, CL=F) di-lock untuk LightGBM features.
+>
+> **Anti look-ahead bias dengan asymmetric lag:** `get_aligned_global_features()` dan `compute_exogenous_features()` menerapkan lag berbeda per ticker: T-0 untuk Asian markets (^N225, ^HSI — close sebelum IDX), T-1 untuk US markets (^GSPC, ^VIX, ^TNX) dan commodities (GC=F, CL=F, HG=F, MTF=F, CPO=F). Konfigurasi lag via `GLOBAL_TICKER_LAGS` dict dan `MARKET_TIMEZONES` metadata.
+
 ```python
-from datetime import datetime, timezone, timedelta
+from market.analysis.cross_market_timezone import (
+    verify_dst_cutoff, get_us_close_wib, get_aligned_global_features, get_ticker_lag,
+)
 
-WIB = timezone(timedelta(hours=7))
+# Check apakah Wall Street sudah close (DST-aware)
+result = verify_dst_cutoff()
+if result.us_market_closed:
+    print(f"Wall Street CLOSED ({result.dst_label}) — global data safe")
+    print(f"US close: {get_us_close_wib()}")  # "03:00 WIB" (summer) or "04:00 WIB" (winter)
+else:
+    print(f"Wall Street still OPEN — wait {result.wait_seconds}s")
 
-def get_us_market_hours_wib(dt: datetime) -> dict:
-    """Return US market open/close in WIB, accounting for DST."""
-    # US DST: second Sunday of March to first Sunday of November
-    # Simple check: if month in [4,5,6,7,8,9,10] → DST (UTC-4)
-    # If month in [1,2,12] → non-DST (UTC-5)
-    # March and November need day-of-month check
-    if dt.month in range(4, 11):
-        us_offset = -4  # DST
-    elif dt.month in [1, 2, 12]:
-        us_offset = -5  # non-DST
-    elif dt.month == 3:
-        # Second Sunday of March → DST starts
-        us_offset = -4 if dt.day >= 10 else -5  # approximate
-    else:  # November
-        # First Sunday of November → DST ends
-        us_offset = -5 if dt.day >= 7 else -4  # approximate
-
-    us_tz = timezone(timedelta(hours=us_offset))
-    open_us = datetime(dt.year, dt.month, dt.day, 9, 30, tzinfo=us_tz)
-    close_us = datetime(dt.year, dt.month, dt.day, 16, 0, tzinfo=us_tz)
-    return {
-        "open_wib": open_us.astimezone(WIB).strftime("%H:%M WIB"),
-        "close_wib": close_us.astimezone(WIB).strftime("%H:%M WIB"),
-    }
+# Get aligned features at 16:15 WIB
+features = get_aligned_global_features(as_of_wib=prediction_time, global_data=data)
+# Asian tickers (T-0): nikkei_lag1_ret, hsi_lag1_ret — same-day close
+# US tickers (T-1): sp500_lag1_ret, vix_lag1_ret — previous-day close
+# Commodities (T-1): gold_lag1_ret, oil_lag1_ret — previous-day settle
 ```
 
 ### 9.5 Konversi Waktu untuk Display

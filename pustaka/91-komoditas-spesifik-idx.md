@@ -534,10 +534,13 @@ Data parquet `raw/commodity/` sudah punya 1,523 rows (2018-2026) untuk 10 komodi
 - yfinance — Gold, silver, crude oil, gas futures
 
 ### Internal (Codebase)
-- `src/trading_system/analysis/macro.py` — Macro engine (saat ini hanya oil & gold)
-- `src/trading_system/analysis/relationship.py` — Relationship engine (korelasi)
-- `src/trading_system/analysis/global_market.py` — Global market engine
+- `src/market/analysis/cross_market_timezone.py` — DST-aware Wall Street close detection + `verify_dst_cutoff()` + `get_aligned_global_features()` (T-0 Asian, T-1 US/commodities) + `GLOBAL_TICKER_LAGS` + `MARKET_TIMEZONES`
+- `src/market/analysis/multi_factor.py` — `GLOBAL_ASSETS` dict dengan 11 aset (5 indeks + 6 komoditas: GC=F, CL=F, HG=F, MTF=F, CPO=F, NI=F), asymmetric lag returns via `get_ticker_lag()` sebagai exogenous features
+- `src/market/analysis/market_context.py` — `_fetch_commodity_signal()` sector-specific: Energy→CL=F+MTF=F, Basic Materials→GC=F+HG=F+NI=F, Consumer Defensive→CPO=F
+- `src/market/data/macro_data_fetcher.py` — `CommodityFetcher` dengan `COMMODITY_TICKERS` (CPO proxy, CPO=F, FCPO=F, coal MTF=F, nickel, copper, tin, gold, oil)
+- `scripts/backfill_commodity_futures.py` — Backfill 7 commodity futures dari yfinance (CL=F, GC=F, HG=F, MTF=F, CPO=F, FCPO=F, NI=F)
+- `scripts/daily_signal_cron.py` — DST cutoff check sebelum signal computation + app_notifications INSERT (status=UNREAD)
 
 ---
 
-> **Catatan:** Komoditas adalah faktor yang **sudah punya datanya** tapi **belum di-migrate dan belum diimplementasi**. Ini adalah quick win terbesar: 6-8 hari kerja untuk menutup gap terbesar dari dokumen 89. Data 1,523 rows (10 komoditas, 2018-2026) sudah ada di parquet — tinggal rename kolom, migrate ke DB, buat commodity-to-stock mapping, dan tambah commodity score engine.
+> **Update 10 Agustus 2026:** Commodity futures data sudah di-backfill ke `ohlcv` table (CL=F: 2,179 rows, GC=F: 2,179, HG=F: 905, MTF=F: 750, CPO=F: 1,408). NI=F (nickel) tidak tersedia di yfinance (404). FCPO=F (alt ticker Bursa Malaysia) ditambahkan ke backfill script sebagai fallback. T-1 returns dari 5 komoditas (oil, gold, copper, coal, CPO) sudah masuk sebagai exogenous features di `MultiFactorFeaturePipeline` via `compute_exogenous_features()` dengan **asymmetric lag** (T-0 untuk ^N225/^HSI, T-1 untuk US/commodities) menggunakan `get_ticker_lag()`. Sector-specific commodity momentum signals sudah aktif di `MarketContextProvider._fetch_commodity_signal()`. DST-aware cutoff (`verify_dst_cutoff()`) memastikan global data di-lock hanya setelah Wall Street fully close (03:00 WIB summer / 04:00 WIB winter). `get_aligned_global_features()` menyupply global features siap pakai untuk MultiFactorModel/MLSignalProvider di 16:15 WIB.

@@ -56,7 +56,10 @@ _NOAA_ONI_URL = "https://psl.noaa.gov/data/correlation/oni.data"
 # slot but it may return empty — logged as a warning.
 COMMODITY_TICKERS: dict[str, str] = {
     "cpo_proxy": "^KLSE",  # palm proxy (no direct FCPO on Yahoo)
+    "cpo_futures": "CPO=F",  # Bursa Malaysia palm oil futures
+    "fcpo_futures": "FCPO=F",  # FCPO alt ticker (may 404 on yfinance)
     "newcastle_coal": "COAL=F",  # best-effort coal proxy
+    "api2_coal": "MTF=F",  # ICE API2 coal futures
     "nickel": "NI=F",
     "copper": "HG=F",
     "tin": "TIN=F",  # may be unavailable; handled gracefully

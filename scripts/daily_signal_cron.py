@@ -1431,6 +1431,34 @@ def main() -> None:
 
     fallback_config = None if args.no_fallback else args.config
 
+    # DST cutoff: verify Wall Street has fully closed before using global data
+    try:
+        from market.analysis.cross_market_timezone import (
+            DST_AWARE_GLOBAL_TICKERS,
+            verify_dst_cutoff,
+        )
+        dst_result = verify_dst_cutoff(tickers=DST_AWARE_GLOBAL_TICKERS)
+        if dst_result.us_market_closed:
+            logger.info(
+                "DST cutoff: Wall Street CLOSED (%s, US close=%s UTC / %s WIB). "
+                "Global data safe to use.",
+                dst_result.dst_label,
+                dst_result.us_close_utc.strftime("%H:%M"),
+                dst_result.us_close_utc.astimezone(
+                    __import__("zoneinfo").ZoneInfo("Asia/Jakarta")
+                ).strftime("%H:%M"),
+            )
+        else:
+            logger.warning(
+                "DST cutoff: Wall Street still OPEN (%s, closes at %s UTC). "
+                "Global index data (^GSPC, ^VIX) may be incomplete. "
+                "Signal computation will proceed with latest available data.",
+                dst_result.dst_label,
+                dst_result.us_close_utc.strftime("%H:%M"),
+            )
+    except Exception as e:
+        logger.warning("DST cutoff check failed (non-fatal): %s", e)
+
     # Pre-signal: refresh stale data (>24h) before computation
     try:
         from market.data.refresh_stale import refresh_stale_data

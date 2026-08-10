@@ -620,9 +620,13 @@ class MarketContextProvider:
         # Determine relevant commodity tickers based on sector/industry
         commodity_tickers: list[str] = []
         if ctx.sector == "Basic Materials":
-            commodity_tickers = ["GC=F", "HG=F"]
+            commodity_tickers = ["GC=F", "HG=F", "NI=F"]
         elif ctx.sector == "Industrials":
             commodity_tickers = ["CL=F", "GC=F"]
+        elif ctx.sector == "Energy":
+            commodity_tickers = ["CL=F", "MTF=F"]
+        elif ctx.sector == "Consumer Defensive":
+            commodity_tickers = ["CPO=F"]
         elif ctx.sector == "Financial Services":
             # Banks benefit from steepening yield curve, not commodities
             return
