@@ -62,7 +62,7 @@ def load_ohlcv(engine, ticker: str) -> pd.DataFrame:
     if not rows:
         return pd.DataFrame()
     df = pd.DataFrame(rows, columns=["date", "high", "low", "close", "volume"])
-    df["date"] = pd.to_datetime(df["date"]).dt.date
+    df["date"] = pd.to_datetime(df["date"], format="mixed").dt.date
     for col in ["high", "low", "close", "volume"]:
         df[col] = df[col].astype(float)
     return df
