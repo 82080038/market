@@ -718,17 +718,19 @@ class MultiFactorModel:
         self,
         horizon: int = 5,
         min_train_samples: int = 200,
-        n_estimators: int = 300,
-        max_depth: int = 5,
-        learning_rate: float = 0.05,
-        min_data_in_leaf: int = 50,
-        reg_alpha: float = 0.1,
-        reg_lambda: float = 1.0,
-        subsample: float = 0.8,
-        colsample_bytree: float = 0.8,
-        use_pca: bool = True,
+        n_estimators: int = 200,
+        max_depth: int = 4,
+        learning_rate: float = 0.03,
+        min_data_in_leaf: int = 80,
+        reg_alpha: float = 0.2,
+        reg_lambda: float = 3.0,
+        subsample: float = 0.7,
+        colsample_bytree: float = 0.7,
+        use_pca: bool = False,
         select_features: bool = True,
-        top_k_features: int = 25,
+        top_k_features: int = 40,
+        early_stopping_rounds: int = 25,
+        min_gain_to_split: float = 0.01,
     ) -> None:
         self.horizon = horizon
         self.min_train_samples = min_train_samples
@@ -740,6 +742,8 @@ class MultiFactorModel:
         self.reg_lambda = reg_lambda
         self.subsample = subsample
         self.colsample_bytree = colsample_bytree
+        self.early_stopping_rounds = early_stopping_rounds
+        self.min_gain_to_split = min_gain_to_split
         self.pipeline = MultiFactorFeaturePipeline(
             horizon=horizon,
             use_pca=use_pca,
@@ -830,6 +834,7 @@ class MultiFactorModel:
             reg_lambda=self.reg_lambda,
             subsample=self.subsample,
             colsample_bytree=self.colsample_bytree,
+            min_gain_to_split=self.min_gain_to_split,
             verbose=-1,
             n_jobs=1,
             num_classes=3,
@@ -839,7 +844,7 @@ class MultiFactorModel:
         model.fit(
             X_tr, y_tr,
             eval_X=X_val, eval_y=y_val,
-            callbacks=[lgb.early_stopping(15, verbose=False)],
+            callbacks=[lgb.early_stopping(self.early_stopping_rounds, verbose=False)],
         )
 
         # Predict on latest available row

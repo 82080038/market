@@ -45,14 +45,16 @@ class MLSignalProvider:
         self,
         horizon: int = 5,
         min_train_samples: int = 200,
-        n_estimators: int = 200,
-        max_depth: int = 6,
-        min_data_in_leaf: int = 40,
-        reg_alpha: float = 0.1,
-        reg_lambda: float = 1.0,
-        learning_rate: float = 0.05,
-        subsample: float = 0.8,
-        colsample_bytree: float = 0.8,
+        n_estimators: int = 300,
+        max_depth: int = 5,
+        min_data_in_leaf: int = 60,
+        reg_alpha: float = 0.15,
+        reg_lambda: float = 2.0,
+        learning_rate: float = 0.03,
+        subsample: float = 0.7,
+        colsample_bytree: float = 0.7,
+        early_stopping_rounds: int = 20,
+        min_gain_to_split: float = 0.01,
     ) -> None:
         self.horizon = horizon
         self.min_train_samples = min_train_samples
@@ -64,6 +66,8 @@ class MLSignalProvider:
         self.learning_rate = learning_rate
         self.subsample = subsample
         self.colsample_bytree = colsample_bytree
+        self.early_stopping_rounds = early_stopping_rounds
+        self.min_gain_to_split = min_gain_to_split
         self._models: dict[str, object] = {}
 
     def _prepare_features(self, df: pd.DataFrame) -> pd.DataFrame:
@@ -74,7 +78,7 @@ class MLSignalProvider:
         low = data["low"].astype(float)
         volume = data["volume"].astype(float)
 
-        # RSI (14)
+        # RSI (14) — remediated: use rsi_rank (rolling percentile) for regime stability
         delta = close.diff()
         gain = delta.clip(lower=0)
         loss = -delta.clip(upper=0)
@@ -82,20 +86,27 @@ class MLSignalProvider:
         avg_loss = loss.ewm(alpha=1 / 14, min_periods=14).mean()
         rs = avg_gain / avg_loss
         data["rsi"] = 100 - (100 / (1 + rs))
+        data["rsi_rank"] = data["rsi"].rolling(60, min_periods=20).rank(pct=True)
 
-        # MA ratios
+        # MA ratios — remediated: use ma_ratio_zscore for regime stability
         data["ma_5"] = close.rolling(5).mean()
         data["ma_20"] = close.rolling(20).mean()
         data["ma_ratio"] = data["ma_5"] / data["ma_20"]
+        ma_ratio_mean = data["ma_ratio"].rolling(60, min_periods=20).mean()
+        ma_ratio_std = data["ma_ratio"].rolling(60, min_periods=20).std()
+        data["ma_ratio_zscore"] = (
+            (data["ma_ratio"] - ma_ratio_mean) / ma_ratio_std.replace(0, np.nan)
+        )
 
         # Momentum
         data["momentum_5"] = close.pct_change(5) * 100
         data["momentum_10"] = close.pct_change(10) * 100
 
-        # Volatility
+        # Volatility — remediated: use vol_pctile (rolling percentile) for regime stability
         data["atr_pct"] = (
             (high - low) / close * 100
         ).rolling(14).mean()
+        data["vol_pctile"] = data["atr_pct"].rolling(60, min_periods=20).rank(pct=True)
 
         # Volume relative
         data["vol_ma"] = volume.rolling(20).mean()
@@ -153,6 +164,9 @@ class MLSignalProvider:
 
     def _get_feature_cols(self) -> list[str]:
         return [
+            # Remediated features (regime-stable)
+            "rsi_rank", "ma_ratio_zscore", "vol_pctile",
+            # Original features (kept for signal)
             "rsi", "ma_ratio", "momentum_5", "momentum_10",
             "atr_pct", "vol_ratio", "hl_range_pct",
             "ma_5_slope", "close_to_high", "close_to_low",
@@ -237,13 +251,14 @@ class MLSignalProvider:
             reg_lambda=self.reg_lambda,
             subsample=self.subsample,
             colsample_bytree=self.colsample_bytree,
+            min_gain_to_split=self.min_gain_to_split,
             verbose=-1,
         )
 
         model.fit(
             X_tr, y_tr,
             eval_X=X_val, eval_y=y_val,
-            callbacks=[lgb.early_stopping(10, verbose=False)],
+            callbacks=[lgb.early_stopping(self.early_stopping_rounds, verbose=False)],
         )
 
         # Predict on the as_of row (latest available features)

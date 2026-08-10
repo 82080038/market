@@ -32,16 +32,37 @@
   - Overnight strategy + execution analysis sections.
   - Sidebar updated: "Sinyal" dengan icon BellRing, posisi kedua setelah Dashboard.
 - **P0-3 SELESAI:** Commit & push Smart Money + migration 0013 + semua perubahan audit.
-- **P1-4 IN PROGRESS:** Backfill 4 kolom NULL di `technical_indicators_wide` (ema50, donchian×3).
+- **P1-4 SELESAI:** Backfill 4 kolom NULL di `technical_indicators_wide` (ema50, donchian×3).
   - Script: `scripts/backfill_ti_wide_null_cols.py` — compute EMA50, EMA Envelope, Donchian dari OHLCV, batch UPDATE.
-  - 3,049,358 rows NULL → backfill running (1024 tickers, ETA ~12 menit).
+  - 3,029,908 rows updated (99.4%), 19,456 remain NULL (insufficient OHLCV data < 50 rows).
+  - Fix: `pd.to_datetime(format="mixed")` untuk inconsistent timestamp formats.
 - **P1-5 SELESAI:** Backfill `avg_volume` di `stock_personality` dari OHLCV.
   - Script: `scripts/backfill_avg_volume.py` — `UPDATE stock_personality SET avg_volume = (SELECT AVG(volume) FROM ohlcv ...)`.
   - 1026 rows updated, 0 NULL remaining.
-- **P1-6 IN PROGRESS:** Jalankan `daily_signal_cron.py` untuk populate `app_notifications`.
-  - Running tanpa --dry-run, 672 tickers, ~5s per ticker.
-  - Akan insert notification dengan payload lengkap (signals + HRP sizing + smart money).
-- **P1-7:** Update SESSION_MEMORY.md + audit report (this update).
+- **P1-6 SELESAI:** Jalankan `daily_signal_cron.py` untuk populate `app_notifications`.
+  - 672 tickers processed: 124 BUY, 122 SELL, 426 HOLD.
+  - Notification inserted: id=1, title="Sinyal Harian 2026-08-07: 124 BUY, 122 SELL, 426 HOLD".
+- **P1-7 SELESAI:** Update SESSION_MEMORY.md + audit report.
+
+## Checkpoint Sesi 2026-08-10 — P2: ML Accuracy Improvement
+
+- **Topik:** Hyperparameter tuning + feature remediation untuk fix accuracy 40-43% → target 55%+.
+- **P2-1 SELESAI:** MLSignalProvider hyperparameter tuning (`src/market/analysis/ml_signal.py`):
+  - max_depth 6→5, n_estimators 200→300, lr 0.05→0.03, min_data_in_leaf 40→60.
+  - reg_alpha 0.1→0.15, reg_lambda 1.0→2.0, subsample 0.8→0.7, colsample 0.8→0.7.
+  - early_stopping 10→20, min_gain_to_split=0.01 (new).
+- **P2-2 SELESAI:** MultiFactorModel hyperparameter tuning (`src/market/analysis/multi_factor.py`):
+  - max_depth 5→4, n_estimators 300→200, lr 0.05→0.03, min_data_in_leaf 50→80.
+  - reg_alpha 0.1→0.2, reg_lambda 1.0→3.0, subsample 0.8→0.7, colsample 0.8→0.7.
+  - use_pca True→False, top_k_features 25→40, early_stopping 15→25, min_gain_to_split=0.01 (new).
+- **P2-3 SELESAI:** Feature remediation di `ml_signal.py`:
+  - rsi → rsi_rank (rolling 60-bar percentile, PSI 0.252→0.015).
+  - ma_ratio → ma_ratio_zscore (rolling 60-bar z-score, PSI 0.292→0.096).
+  - atr_pct → vol_pctile (rolling 60-bar percentile, PSI 0.472→0.095).
+  - Original features kept alongside remediated ones for signal richness.
+- **Test status:** 1379 passed, 3 pre-existing failures (device log, BPS API key, IV weight cap ×2). Coverage 70.17%.
+- **P2-4 PENDING:** Run backtest simulation untuk verify accuracy improvement pada real data.
+- **Next:** Commit & push, then run production pipeline re-run dengan tuned hyperparameters.
 
 ## Checkpoint Sesi 2026-08-10 — Audit E2E Komprehensif Selesai
 
