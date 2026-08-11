@@ -4,12 +4,12 @@ from __future__ import annotations
 
 from sqlalchemy.orm import Session
 
-from market.db.engine import _make_engine, get_session
+from market.db.engine import _make_sqlite_engine, get_session
 from market.db.models import Base, MarketRegistry
 
 
 def test_make_engine_creates_tables():
-    engine = _make_engine(":memory:")
+    engine = _make_sqlite_engine(":memory:")
     Base.metadata.create_all(engine)
     with Session(engine) as session:
         market = MarketRegistry(
@@ -29,7 +29,7 @@ def test_make_engine_creates_tables():
 
 
 def test_get_session_yields_and_closes():
-    engine = _make_engine(":memory:")
+    engine = _make_sqlite_engine(":memory:")
     Base.metadata.create_all(engine)
 
     # Override get_session to use our in-memory engine

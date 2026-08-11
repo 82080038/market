@@ -458,3 +458,33 @@ Tanpa `DATABASE_URL`, aplikasi otomatis fallback ke SQLite (`data/market_{env}.d
 - `tests/test_scheduler_tasks.py` — updated for 17 tasks
 - `README.md` — updated components, migrations, stats, docs links
 - `pustaka/00-README.md` — updated statistics (99 docs)
+
+## Checkpoint Sesi 2026-08-11 — Indikator Makroekonomi & Analisis Korelasi
+
+- **Topik:** Integrasi indikator makroekonomi global & domestik ke PostgreSQL, analisis pola hubungan (korelasi & causality) terhadap saham BBCA.JK.
+- **Tabel baru:** `macroeconomic_indicators` (BIGSERIAL PK, indicator_code, name, region, recorded_at TIMESTAMPTZ UTC, value NUMERIC(20,6), composite index indicator_code+recorded_at DESC, unique constraint).
+- **View update:** `v_domino_timeline` sekarang 8 cabang UNION ALL — tambahan `MACRO_INDICATOR` (source: macroeconomic_indicators).
+- **Data terisi:** 4.527 rows dari 7 indikator (USD_IDR, VIX_INDEX, GOLD_PRICE, BRENT_CRUDE dari yfinance; FED_RATE, US_INFLATION, ID_INFLATION dari FRED). BI_RATE gagal (FRED INTDSBIDM193N 404).
+- **Modul analisis:** `src/market/analysis/macro_correlation.py` — 3 pendekatan: lagged CORR() SQL, Pandas event study, Granger causality.
+- **Temuan kunci VIX vs BBCA.JK:** Event study shock ≥20% (12 event) → mean return +1.6% (counterintuitive, positif!), win rate bearish 33%, p=0.1464 (tidak signifikan). Granger lag 3 signifikan (p=0.0139), lag 5 borderline (p=0.0508).
+- **Test:** `tests/test_macro_correlation.py` — 15/15 PASS (PostgreSQL-dependent, skip jika DATABASE_URL bukan PG).
+
+### Files Created/Modified
+- `scripts/macroeconomic_indicators_integration.sql` (NEW) — DDL + view update + verification
+- `alembic/versions/0019_add_macroeconomic_indicators.py` (NEW) — Migration 0019
+- `src/market/db/models.py` — class `MacroeconomicIndicator` + imports CheckConstraint, text
+- `scripts/fetch_macroeconomic_indicators.py` (NEW) — yfinance + FRED ingestion, UTC conversion, idempotent ON CONFLICT
+- `src/market/analysis/macro_correlation.py` (NEW) — lagged_corr_sql, event_study, granger_causality_test, full_analysis
+- `tests/test_macro_correlation.py` (NEW) — 15 tests (schema, ingestion, correlation, timeline chronology)
+- `docs/MACRO-INDICATOR-CORRELATION-REPORT.md` (NEW) — laporan analisis lengkap
+
+### Cara Menjalankan
+```bash
+# Ingestion
+DATABASE_URL="postgresql://petrick:market_dev@localhost:5432/market" \
+ENV=research uv run python scripts/fetch_macroeconomic_indicators.py --years 2
+
+# Test
+DATABASE_URL="postgresql://petrick:market_dev@localhost:5432/market" \
+ENV=research uv run pytest tests/test_macro_correlation.py -v --no-cov
+```

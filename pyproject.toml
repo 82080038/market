@@ -36,6 +36,7 @@ dependencies = [
     "planetary-computer>=1.0.0",
     "rasterio>=1.4.4",
     "shapely>=2.1.2",
+    "ephem>=4.2.1",
 ]
 
 [project.optional-dependencies]

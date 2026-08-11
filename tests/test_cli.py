@@ -49,12 +49,13 @@ def test_scheduler_list_command(capsys):
     captured = capsys.readouterr()
     assert "fetch_eod" in captured.out
     assert "quality_check" in captured.out
-    assert "Total: 13 tasks" in captured.out
+    assert "Total: 21 tasks" in captured.out
 
 
 def test_scheduler_run_command(capsys, monkeypatch):
+    from datetime import UTC, datetime
+
     from market.scheduler import DailyScheduler, TaskExecution, TaskStatus
-    from datetime import datetime, UTC
 
     def _fake_run_all_due(self):
         return [TaskExecution(

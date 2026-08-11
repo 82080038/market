@@ -189,13 +189,29 @@ class TestDeviceContext:
             assert moved.device.type == "cuda"
             assert moved.device.index == 1
 
-    def test_logs_decision(self, caplog):
-        with (
-            caplog.at_level(logging.INFO, logger="market.compute.device"),
-            DeviceContext("lstm_training", data_size=100, device="cpu"),
-        ):
-            pass
-        assert any("DeviceContext" in r.message for r in caplog.records)
+    def test_logs_decision(self):
+        # Use a dedicated handler to avoid caplog propagation issues
+        # when tests run in sequence (other tests may alter logger state).
+        # pytest's logging plugin may set logger.disabled=True for some
+        # loggers during test execution; re-enable to ensure capture.
+        records: list[logging.LogRecord] = []
+
+        class _Capture(logging.Handler):
+            def emit(self, record: logging.LogRecord) -> None:
+                records.append(record)
+
+        target_logger = logging.getLogger("market.compute.device")
+        target_logger.disabled = False  # re-enable if pytest disabled it
+        handler = _Capture(level=logging.INFO)
+        target_logger.addHandler(handler)
+        target_logger.setLevel(logging.INFO)
+        target_logger._cache.clear()  # clear stale isEnabledFor cache
+        try:
+            with DeviceContext("lstm_training", data_size=100, device="cpu"):
+                pass
+        finally:
+            target_logger.removeHandler(handler)
+        assert any("DeviceContext" in r.getMessage() for r in records)
 
 
 # ── benchmark_workload ───────────────────────────────────────────────────

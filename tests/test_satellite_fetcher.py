@@ -30,6 +30,7 @@ from market.db.models import (
     SatelliteTickerLocation,
 )
 from market.data.satellite_fetcher import (
+    DynamicRateLimiter,
     NASA_POWER_PARAMS,
     SECTOR_FALLBACK_LOCATIONS,
     SECTOR_NAME_MAP,
@@ -742,7 +743,12 @@ class TestFetchForTicker:
             count = fetcher.fetch_for_ticker("TEST.JK", "agriculture")
 
         assert count == 5
-        mock_nasa.assert_called_once_with("DB_Mapped_Location", 1.0, 2.0, ["T2M"])
+        mock_nasa.assert_called_once()
+        call_args = mock_nasa.call_args
+        assert call_args.args[0] == "DB_Mapped_Location"
+        assert call_args.args[1] == 1.0
+        assert call_args.args[2] == 2.0
+        assert call_args.args[3] == ["T2M"]
 
     def test_fetch_for_ticker_with_sector_fallback(self, fetcher):
         """Test fetch_for_ticker uses sector fallback when no DB mapping."""
@@ -816,3 +822,180 @@ class TestFetchAllConfigured:
 
         assert total == 5  # Only 1 location fetched
         assert mock_nasa.call_count == 1
+
+
+# ── DynamicRateLimiter Tests ─────────────────────────────────────────────
+
+
+class TestDynamicRateLimiter:
+    """Test the adaptive rate limiter."""
+
+    def test_initial_delay(self):
+        rl = DynamicRateLimiter(initial_delay=1.0)
+        assert rl.delay == 1.0
+        assert rl.min_delay == 0.1
+        assert rl.max_delay == 30.0
+
+    def test_on_success_reduces_delay(self):
+        rl = DynamicRateLimiter(initial_delay=2.0, recovery_factor=0.5)
+        for _ in range(5):
+            rl.on_success()
+        assert rl.delay < 2.0  # Should have decreased
+
+    def test_on_error_increases_delay(self):
+        rl = DynamicRateLimiter(initial_delay=0.5, backoff_factor=2.0)
+        rl.on_error(500)
+        assert rl.delay == 1.0  # 0.5 * 2.0
+
+    def test_on_429_aggressive_backoff(self):
+        rl = DynamicRateLimiter(initial_delay=0.5, backoff_factor=2.0)
+        rl.on_error(429)
+        # 429 uses backoff^2 = 4.0, so 0.5 * 4.0 = 2.0
+        assert rl.delay == 2.0
+
+    def test_delay_capped_at_max(self):
+        rl = DynamicRateLimiter(initial_delay=20.0, max_delay=30.0, backoff_factor=2.0)
+        rl.on_error(500)
+        assert rl.delay == 30.0  # Capped
+
+    def test_success_resets_error_count(self):
+        rl = DynamicRateLimiter(initial_delay=0.5)
+        rl.on_error(500)
+        rl.on_error(500)
+        assert rl._consecutive_errors == 2
+        rl.on_success()
+        assert rl._consecutive_errors == 0
+        assert rl._consecutive_success == 1
+
+    def test_stats_property(self):
+        rl = DynamicRateLimiter(initial_delay=1.0)
+        rl.on_success()
+        rl.on_success()
+        rl.on_error(500)
+        stats = rl.stats
+        assert stats["total_requests"] == 3
+        assert stats["total_errors"] == 1
+        assert abs(stats["error_rate"] - 1/3) < 0.01
+
+    def test_min_delay_floor(self):
+        rl = DynamicRateLimiter(initial_delay=0.15, min_delay=0.1, recovery_factor=0.5)
+        for _ in range(20):
+            rl.on_success()
+        assert rl.delay >= 0.1  # Never below min_delay
+
+
+# ── Batch Processing Tests ───────────────────────────────────────────────
+
+
+class TestBatchProcessing:
+    """Test yearly batch processing for multi-year date ranges."""
+
+    def test_generate_year_batches_single_year(self, fetcher):
+        fetcher.start_date = date(2024, 1, 1)
+        fetcher.end_date = date(2024, 12, 31)
+        batches = fetcher._generate_year_batches()
+        assert len(batches) == 1
+        assert batches[0] == (date(2024, 1, 1), date(2024, 12, 31))
+
+    def test_generate_year_batches_multi_year(self, fetcher):
+        fetcher.start_date = date(2020, 1, 1)
+        fetcher.end_date = date(2023, 12, 31)
+        batches = fetcher._generate_year_batches()
+        assert len(batches) == 4
+        assert batches[0] == (date(2020, 1, 1), date(2020, 12, 31))
+        assert batches[3] == (date(2023, 1, 1), date(2023, 12, 31))
+
+    def test_generate_year_batches_partial_year(self, fetcher):
+        fetcher.start_date = date(2024, 6, 1)
+        fetcher.end_date = date(2025, 3, 15)
+        batches = fetcher._generate_year_batches()
+        assert len(batches) == 2
+        assert batches[0] == (date(2024, 6, 1), date(2024, 12, 31))
+        assert batches[1] == (date(2025, 1, 1), date(2025, 3, 15))
+
+    def test_nasa_power_batched_calls_fetch_per_year(self, fetcher):
+        fetcher.start_date = date(2020, 1, 1)
+        fetcher.end_date = date(2022, 12, 31)
+        with patch.object(fetcher, "_fetch_nasa_power", return_value=100) as mock:
+            total = fetcher._fetch_nasa_power_batched("TestLoc", 1.0, 2.0, ["T2M"])
+        assert total == 300  # 3 years × 100
+        assert mock.call_count == 3
+
+    def test_sentinel2_batched_skips_pre_2015(self, fetcher):
+        fetcher.start_date = date(1981, 1, 1)
+        fetcher.end_date = date(2026, 8, 10)
+        with patch.object(fetcher, "_fetch_sentinel2_ndvi", return_value=5) as mock:
+            total = fetcher._fetch_sentinel2_ndvi_batched("TestLoc", 1.0, 2.0)
+        # Should only call for years 2015-2026 = 12 calls (not 46)
+        assert mock.call_count == 12
+        assert total == 60  # 12 × 5
+
+
+# ── Global Backfill Tests ────────────────────────────────────────────────
+
+
+class TestGlobalBackfill:
+    """Test fetch_all_global_locations method."""
+
+    def test_global_backfill_summary_structure(self, fetcher, db_session):
+        """Test that global backfill returns proper summary dict."""
+        fetcher.start_date = date(2024, 1, 1)
+        fetcher.end_date = date(2024, 12, 31)
+        with patch.object(fetcher, "_fetch_nasa_power", return_value=10), \
+             patch.object(fetcher, "_fetch_sentinel2_ndvi", return_value=2):
+            summary = fetcher.fetch_all_global_locations(
+                sectors=["agriculture"],
+                skip_existing=False,
+            )
+        assert "total_locations" in summary
+        assert "fetched" in summary
+        assert "skipped" in summary
+        assert "errors" in summary
+        assert "observations" in summary
+        assert "rate_limiter_stats" in summary
+        assert summary["total_locations"] == len(SECTOR_FALLBACK_LOCATIONS["agriculture"])
+        assert summary["fetched"] == summary["total_locations"]
+        assert summary["errors"] == 0
+
+    def test_global_backfill_skip_existing(self, fetcher, db_session):
+        """Test that existing locations are skipped."""
+        # Insert an observation for a known location
+        obs = SatelliteObservation(
+            location_name="Indonesia_Palm_Oil_Kalimantan",
+            lat=Decimal("-2.5"), lon=Decimal("113.0"),
+            date=date(2024, 1, 1), metric="T2M",
+            value=Decimal("28.5"), source="nasa_power",
+        )
+        db_session.add(obs)
+        db_session.flush()
+
+        fetcher.start_date = date(2024, 1, 1)
+        fetcher.end_date = date(2024, 12, 31)
+        with patch.object(fetcher, "_fetch_nasa_power", return_value=10) as mock_nasa, \
+             patch.object(fetcher, "_fetch_sentinel2_ndvi", return_value=2):
+            summary = fetcher.fetch_all_global_locations(
+                sectors=["agriculture"],
+                skip_existing=True,
+            )
+        # Indonesia_Palm_Oil_Kalimantan should be skipped
+        assert summary["skipped"] >= 1
+        assert summary["fetched"] == summary["total_locations"] - summary["skipped"]
+
+    def test_global_backfill_error_handling(self, fetcher, db_session):
+        """Test that errors are counted but don't stop the backfill."""
+        fetcher.start_date = date(2024, 1, 1)
+        fetcher.end_date = date(2024, 12, 31)
+        call_count = [0]
+        def side_effect(*args, **kwargs):
+            call_count[0] += 1
+            if call_count[0] == 2:
+                raise RuntimeError("Simulated error")
+            return 10
+        with patch.object(fetcher, "_fetch_nasa_power", side_effect=side_effect), \
+             patch.object(fetcher, "_fetch_sentinel2_ndvi", return_value=2):
+            summary = fetcher.fetch_all_global_locations(
+                sectors=["agriculture"],
+                skip_existing=False,
+            )
+        assert summary["errors"] >= 1
+        assert summary["fetched"] >= 1

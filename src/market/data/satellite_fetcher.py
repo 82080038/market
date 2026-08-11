@@ -19,6 +19,7 @@ References:
 from __future__ import annotations
 
 import logging
+import time
 from datetime import UTC, date, datetime, timedelta
 from decimal import Decimal
 from typing import TYPE_CHECKING
@@ -26,10 +27,19 @@ from typing import TYPE_CHECKING
 import pandas as pd
 import requests
 
+from market.data.rate_limit import CircuitBreakerError, DynamicRateLimiter, retry_with_backoff
+
 if TYPE_CHECKING:
     from sqlalchemy.orm import Session
 
 logger = logging.getLogger(__name__)
+
+# Backward-compat aliases — the canonical implementation lives in
+# market.data.rate_limit. These re-exports keep existing imports working.
+_retry_with_backoff = retry_with_backoff
+
+# Re-export for backward compatibility
+CircuitBreakerError = CircuitBreakerError
 
 NASA_POWER_URL = "https://power.larc.nasa.gov/api/temporal/daily/point"
 PLANETARY_COMPUTER_STAC = "https://planetarycomputer.microsoft.com/api/stac/v1"
@@ -452,11 +462,15 @@ class SatelliteFetcher:
         start_date: date | None = None,
         end_date: date | None = None,
         cloud_cover_threshold: float = 30.0,
+        rate_limiter: DynamicRateLimiter | None = None,
+        batch_years: int = 1,
     ) -> None:
         self.session = session
         self.start_date = start_date or (datetime.now(UTC).date() - timedelta(days=730))
         self.end_date = end_date or datetime.now(UTC).date()
         self.cloud_cover_threshold = cloud_cover_threshold
+        self.rate_limiter = rate_limiter or DynamicRateLimiter()
+        self.batch_years = batch_years
 
     def resolve_locations_for_ticker(
         self,
@@ -597,7 +611,123 @@ class SatelliteFetcher:
                 lon=float(row.lon),
                 metrics=metrics,
             )
+        if self.session is not None:
+            self.session.commit()
         return total
+
+    def fetch_all_global_locations(
+        self,
+        sectors: list[str] | None = None,
+        skip_existing: bool = True,
+    ) -> dict:
+        """Autonomously fetch satellite data for ALL global fallback locations.
+
+        Iterates over every location in SECTOR_FALLBACK_LOCATIONS (114+ locations
+        across 7 sectors, 6 continents). Uses batch processing and dynamic rate
+        limiter. Commits after each location to avoid losing progress on failure.
+
+        Args:
+            sectors: Optional list of sector keys to fetch (default: all).
+            skip_existing: If True, skip locations that already have data in DB.
+
+        Returns:
+            Dict with summary: {total_locations, fetched, skipped, errors, observations, rate_limiter_stats}
+        """
+        target_sectors = sectors or list(SECTOR_FALLBACK_LOCATIONS.keys())
+        all_locations: list[tuple[str, str, float, float, list[str]]] = []
+
+        for sector_key in target_sectors:
+            locs = SECTOR_FALLBACK_LOCATIONS.get(sector_key, [])
+            for loc in locs:
+                all_locations.append((
+                    sector_key,
+                    loc["name"],
+                    loc["lat"],
+                    loc["lon"],
+                    loc["metrics"],
+                ))
+
+        total_locs = len(all_locations)
+        logger.info(
+            "Starting global backfill: %d locations across %d sectors, %s → %s",
+            total_locs, len(target_sectors),
+            self.start_date.isoformat(), self.end_date.isoformat(),
+        )
+
+        fetched = 0
+        skipped = 0
+        errors = 0
+        total_obs = 0
+
+        for i, (sector_key, name, lat, lon, metrics) in enumerate(all_locations):
+            logger.info(
+                "─── Location %d/%d: %s [%s] (%.4f, %.4f) ───",
+                i + 1, total_locs, name, sector_key, lat, lon,
+            )
+
+            # Check if data already exists for this location
+            if skip_existing and self.session is not None:
+                from market.db.models import SatelliteObservation
+                existing = self.session.query(SatelliteObservation).filter(
+                    SatelliteObservation.location_name == name,
+                ).count()
+                if existing > 0:
+                    logger.info("Skipping %s — already has %d observations", name, existing)
+                    skipped += 1
+                    continue
+
+            try:
+                count = self.fetch_location(name, lat, lon, metrics)
+                total_obs += count
+                fetched += 1
+
+                # Commit after each location
+                if self.session is not None:
+                    self.session.commit()
+
+                logger.info(
+                    "✓ %s: %d observations (total so far: %d)",
+                    name, count, total_obs,
+                )
+            except CircuitBreakerError as exc:
+                errors += 1
+                logger.error("✗ %s: circuit breaker tripped — %s", name, exc)
+                if self.session is not None:
+                    self.session.rollback()
+                # Wait for network recovery, then reset circuit and continue
+                logger.info("Waiting 60s for network recovery before next location...")
+                time.sleep(60)
+                self.rate_limiter.reset_circuit()
+
+            except Exception as exc:
+                errors += 1
+                logger.error("✗ %s failed: %s", name, exc)
+                if self.session is not None:
+                    self.session.rollback()
+                # Reset circuit if it tripped during this location
+                if self.rate_limiter.circuit_tripped:
+                    logger.info("Circuit breaker was tripped — resetting for next location")
+                    self.rate_limiter.reset_circuit()
+
+        rl_stats = self.rate_limiter.stats
+        summary = {
+            "total_locations": total_locs,
+            "fetched": fetched,
+            "skipped": skipped,
+            "errors": errors,
+            "observations": total_obs,
+            "rate_limiter_stats": rl_stats,
+        }
+        logger.info(
+            "Global backfill complete: %d fetched, %d skipped, %d errors, %d observations",
+            fetched, skipped, errors, total_obs,
+        )
+        logger.info(
+            "Rate limiter: %d requests, %d errors (%.1f%%), final delay %.1fs",
+            rl_stats["total_requests"], rl_stats["total_errors"],
+            rl_stats["error_rate"] * 100, rl_stats["current_delay"],
+        )
+        return summary
 
     def fetch_location(
         self,
@@ -607,6 +737,9 @@ class SatelliteFetcher:
         metrics: list[str],
     ) -> int:
         """Fetch satellite data for a single location and persist to DB.
+
+        Multi-year requests are automatically batched into yearly chunks
+        to avoid API timeouts and respect rate limits.
 
         Args:
             location_name: Human-readable location identifier.
@@ -622,13 +755,82 @@ class SatelliteFetcher:
         # NASA POWER metrics (T2M, PRECTOTCORR, RH2M, ALLSKY_SFC_SW_DWN)
         nasa_metrics = [m for m in metrics if m in NASA_POWER_PARAMS]
         if nasa_metrics:
-            count += self._fetch_nasa_power(location_name, lat, lon, nasa_metrics)
+            count += self._fetch_nasa_power_batched(location_name, lat, lon, nasa_metrics)
 
         # Sentinel-2 NDVI
         if "NDVI" in metrics:
-            count += self._fetch_sentinel2_ndvi(location_name, lat, lon)
+            count += self._fetch_sentinel2_ndvi_batched(location_name, lat, lon)
 
         return count
+
+    def _generate_year_batches(self) -> list[tuple[date, date]]:
+        """Split self.start_date → self.end_date into yearly batches.
+
+        Returns:
+            List of (batch_start, batch_end) date tuples.
+        """
+        batches: list[tuple[date, date]] = []
+        current = self.start_date
+        while current <= self.end_date:
+            batch_end = min(
+                date(current.year + self.batch_years, 1, 1) - timedelta(days=1),
+                self.end_date,
+            )
+            if batch_end < current:
+                batch_end = self.end_date
+            batches.append((current, batch_end))
+            current = batch_end + timedelta(days=1)
+        return batches
+
+    def _fetch_nasa_power_batched(
+        self,
+        location_name: str,
+        lat: float,
+        lon: float,
+        metrics: list[str],
+    ) -> int:
+        """Fetch NASA POWER data in yearly batches with rate limiting."""
+        batches = self._generate_year_batches()
+        total = 0
+        for i, (batch_start, batch_end) in enumerate(batches):
+            logger.info(
+                "NASA POWER batch %d/%d: %s (%.4f, %.4f) %s→%s",
+                i + 1, len(batches), location_name, lat, lon,
+                batch_start.strftime("%Y%m%d"), batch_end.strftime("%Y%m%d"),
+            )
+            total += self._fetch_nasa_power(
+                location_name, lat, lon, metrics,
+                override_start=batch_start, override_end=batch_end,
+            )
+        return total
+
+    def _fetch_sentinel2_ndvi_batched(
+        self,
+        location_name: str,
+        lat: float,
+        lon: float,
+    ) -> int:
+        """Fetch Sentinel-2 NDVI in yearly batches with rate limiting.
+
+        Sentinel-2 data available from July 2015 onwards — skip earlier batches.
+        """
+        sentinel2_start = date(2015, 7, 1)
+        batches = [
+            (s, e) for s, e in self._generate_year_batches()
+            if e >= sentinel2_start
+        ]
+        total = 0
+        for i, (batch_start, batch_end) in enumerate(batches):
+            logger.info(
+                "Sentinel-2 batch %d/%d: %s (%.4f, %.4f) %s→%s",
+                i + 1, len(batches), location_name, lat, lon,
+                batch_start.strftime("%Y-%m-%d"), batch_end.strftime("%Y-%m-%d"),
+            )
+            total += self._fetch_sentinel2_ndvi(
+                location_name, lat, lon,
+                override_start=batch_start, override_end=batch_end,
+            )
+        return total
 
     def _fetch_nasa_power(
         self,
@@ -636,10 +838,17 @@ class SatelliteFetcher:
         lat: float,
         lon: float,
         metrics: list[str],
+        override_start: date | None = None,
+        override_end: date | None = None,
     ) -> int:
-        """Fetch weather data from NASA POWER API and persist."""
-        start_str = self.start_date.strftime("%Y%m%d")
-        end_str = self.end_date.strftime("%Y%m%d")
+        """Fetch weather data from NASA POWER API and persist.
+
+        Uses rate limiter and retry with backoff for resilience.
+        """
+        start_d = override_start or self.start_date
+        end_d = override_end or self.end_date
+        start_str = start_d.strftime("%Y%m%d")
+        end_str = end_d.strftime("%Y%m%d")
         params_str = ",".join(metrics)
 
         logger.info(
@@ -647,7 +856,8 @@ class SatelliteFetcher:
             params_str, location_name, lat, lon, start_str, end_str,
         )
 
-        try:
+        def _do_request():
+            self.rate_limiter.wait()
             resp = requests.get(
                 NASA_POWER_URL,
                 params={
@@ -659,12 +869,20 @@ class SatelliteFetcher:
                     "end": end_str,
                     "format": "JSON",
                 },
-                timeout=60,
+                timeout=120,
             )
             resp.raise_for_status()
-            data = resp.json()
+            self.rate_limiter.on_success()
+            return resp.json()
+
+        try:
+            data = _retry_with_backoff(_do_request, max_retries=3, rate_limiter=self.rate_limiter)
         except Exception as exc:
             logger.error("NASA POWER fetch failed for %s: %s", location_name, exc)
+            return 0
+
+        if data is None:
+            logger.error("NASA POWER returned None for %s after retries", location_name)
             return 0
 
         props = data.get("properties", {}).get("parameter", {})
@@ -695,17 +913,20 @@ class SatelliteFetcher:
         location_name: str,
         lat: float,
         lon: float,
+        override_start: date | None = None,
+        override_end: date | None = None,
     ) -> int:
         """Fetch NDVI from Sentinel-2 via Microsoft Planetary Computer STAC API.
 
         Reads B04 (red) and B08 (NIR) bands, computes NDVI = (NIR-Red)/(NIR+Red).
+        Uses rate limiter for STAC API calls.
         """
         try:
-            import pystac_client
             import planetary_computer as pc
+            import pystac_client
             import rasterio
-            from rasterio.windows import Window
             from rasterio.warp import transform
+            from rasterio.windows import Window
             from shapely.geometry import Point, shape
         except ImportError:
             logger.warning(
@@ -713,8 +934,10 @@ class SatelliteFetcher:
             )
             return 0
 
-        start_str = self.start_date.strftime("%Y-%m-%d")
-        end_str = self.end_date.strftime("%Y-%m-%d")
+        start_d = override_start or self.start_date
+        end_d = override_end or self.end_date
+        start_str = start_d.strftime("%Y-%m-%d")
+        end_str = end_d.strftime("%Y-%m-%d")
 
         logger.info(
             "Sentinel-2 (Planetary Computer): searching NDVI for %s (%.4f, %.4f) %s→%s",
@@ -722,6 +945,7 @@ class SatelliteFetcher:
         )
 
         try:
+            self.rate_limiter.wait()
             stac = pystac_client.Client.open(
                 PLANETARY_COMPUTER_STAC,
                 modifier=pc.sign_inplace,
@@ -734,7 +958,9 @@ class SatelliteFetcher:
                 max_items=200,
             )
             items = list(search.items())
+            self.rate_limiter.on_success()
         except Exception as exc:
+            self.rate_limiter.on_error()
             logger.error("STAC search failed for %s: %s", location_name, exc)
             return 0
 

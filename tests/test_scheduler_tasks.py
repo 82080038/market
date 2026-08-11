@@ -9,7 +9,7 @@ from market.scheduler_tasks import register_default_tasks
 def test_register_default_tasks_count():
     sched = DailyScheduler(persist=False)
     register_default_tasks(sched)
-    assert len(sched.tasks) == 17
+    assert len(sched.tasks) == 21
 
 
 def test_register_default_tasks_ids():
@@ -23,6 +23,9 @@ def test_register_default_tasks_ids():
         "drift_detection", "generate_reports", "export_parquet",
         "fetch_fundamental", "scrape_news", "strategy_assignment",
         "fetch_fundamental_quarterly", "fetch_macro_fred",
+        # Added 2026-08-11: macro/satellite/astronacci pipeline wiring
+        "fetch_macroeconomic_indicators", "fetch_satellite",
+        "macro_correlation_analysis", "compute_astronacci_cycles",
     }
 
 
@@ -45,7 +48,7 @@ def test_register_default_tasks_idempotent():
     register_default_tasks(sched)
     register_default_tasks(sched)
     # Re-registering overwrites, so count stays the same
-    assert len(sched.tasks) == 17
+    assert len(sched.tasks) == 21
 
 
 def test_register_default_tasks_order():

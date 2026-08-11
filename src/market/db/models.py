@@ -11,6 +11,7 @@ from decimal import Decimal
 
 from sqlalchemy import (
     Boolean,
+    CheckConstraint,
     Date,
     DateTime,
     ForeignKey,
@@ -20,6 +21,7 @@ from sqlalchemy import (
     String,
     Text,
     UniqueConstraint,
+    text,
 )
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column, relationship
 
@@ -389,6 +391,43 @@ class MacroData(Base):
     source: Mapped[str] = mapped_column(String(50), default="yahoo_finance")
     frequency: Mapped[str | None] = mapped_column(String(20), nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_utcnow)
+
+
+class MacroeconomicIndicator(Base):
+    """Macroeconomic indicators — global & domestic causal drivers (Dimensi 1 "WHY").
+
+    Stores time-series readings of macro indicators (Fed Rate, BI Rate, USD/IDR,
+    VIX, Brent, Gold, inflation) on a universal UTC timeline for correlation &
+    causality analysis against stock price movements.
+
+    Integrated into ``v_domino_timeline`` via UNION ALL (MACRO_INDICATOR branch).
+    See ``scripts/macroeconomic_indicators_integration.sql`` and
+    ``pustaka/99-indikator-makroekonomi-korelasi.md``.
+    """
+
+    __tablename__ = "macroeconomic_indicators"
+    __table_args__ = (
+        UniqueConstraint("indicator_code", "recorded_at",
+                         name="uq_macro_indicator"),
+        Index("idx_macro_indicator_code_time",
+              "indicator_code",
+              text("recorded_at DESC")),
+        Index("idx_macro_recorded_at", "recorded_at"),
+        Index("idx_macro_region", "region"),
+        CheckConstraint(
+            "region IN ('US','ID','GLOBAL','EU','ASIA','CN','JP','HK')",
+            name="chk_macro_region"),
+    )
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    indicator_code: Mapped[str] = mapped_column(String(50), nullable=False)
+    name: Mapped[str] = mapped_column(String(150), nullable=False)
+    region: Mapped[str] = mapped_column(String(50), nullable=False)
+    recorded_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False)
+    value: Mapped[Decimal] = mapped_column(Numeric(20, 6), nullable=False)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=_utcnow)
 
 
 class ForeignFlow(Base):

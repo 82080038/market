@@ -213,14 +213,16 @@ def _task_fetch_fundamental() -> None:
     yfinance only provides current fundamental snapshot, so running this
     weekly builds historical fundamental data gradually over time.
     """
-    from market.db.engine import get_sessionmaker
-    from market.db.models import FundamentalData, Instrument, InstrumentMaster
-    from market.data.rate_limit import RateLimiter
-    from market.data.ticker_util import to_yf_ticker
+    from datetime import UTC, datetime
     from decimal import Decimal
-    from datetime import UTC, date, datetime
+
     import yfinance as yf
     from sqlalchemy import select
+
+    from market.data.rate_limit import RateLimiter
+    from market.data.ticker_util import to_yf_ticker
+    from market.db.engine import get_sessionmaker
+    from market.db.models import FundamentalData, Instrument, InstrumentMaster
 
     limiter = RateLimiter(max_calls=1.0)
     session = get_sessionmaker()()
@@ -364,7 +366,7 @@ def _task_strategy_assignment() -> None:
     from market.analysis.profiling import InstrumentProfiler
     from market.analysis.strategy_selector import StrategySelector
     from market.db.engine import get_sessionmaker
-    from market.db.models import InstrumentMaster, OHLCV
+    from market.db.models import InstrumentMaster
 
     session = get_sessionmaker()()
     try:
@@ -494,6 +496,200 @@ def _task_fetch_macro_fred() -> None:
         logger.error("FRED macro fetch: failed — %s", e)
 
 
+def _task_fetch_macroeconomic_indicators() -> None:
+    """Fetch macroeconomic indicators → macroeconomic_indicators table (PostgreSQL).
+
+    Pulls daily global macro from yfinance (USD/IDR, VIX, Gold, Brent) and
+    monthly rates/inflation from FRED (Fed Rate, US/ID CPI) into the
+    TIMESTAMPTZ-anchored macroeconomic_indicators table for correlation
+    analysis. Uses DynamicRateLimiter to avoid HTTP 429 IP bans.
+
+    Runs the fetch_macroeconomic_indicators.py script as a subprocess.
+    """
+    import subprocess
+    import sys
+
+    logger.info("Macroeconomic indicators fetch: starting...")
+
+    try:
+        result = subprocess.run(
+            [sys.executable, "scripts/fetch_macroeconomic_indicators.py", "--years", "2"],
+            capture_output=True,
+            text=True,
+            timeout=600,
+        )
+        if result.returncode == 0:
+            logger.info("Macroeconomic indicators fetch: completed successfully")
+            if result.stdout:
+                for line in result.stdout.strip().split("\n")[-5:]:
+                    logger.info("  %s", line)
+        else:
+            logger.warning(
+                "Macroeconomic indicators fetch: exited with code %d",
+                result.returncode)
+            if result.stderr:
+                logger.debug("stderr: %s", result.stderr[:500])
+    except subprocess.TimeoutExpired:
+        logger.warning("Macroeconomic indicators fetch: timed out after 600s")
+    except Exception as e:
+        logger.error("Macroeconomic indicators fetch: failed — %s", e)
+
+
+def _task_fetch_satellite() -> None:
+    """Fetch satellite observations → satellite_observations table.
+
+    Fetches NASA POWER (T2M, PRECTOTCORR, RH2M, ALLSKY_SFC_SW_DWN) and
+    Sentinel-2 NDVI for all DB-configured ticker-location mappings.
+    Uses DynamicRateLimiter for adaptive backoff on API errors.
+
+    Runs the fetch_satellite_data.py script as a subprocess.
+    """
+    import subprocess
+    import sys
+
+    logger.info("Satellite data fetch: starting...")
+
+    try:
+        result = subprocess.run(
+            [sys.executable, "scripts/fetch_satellite_data.py"],
+            capture_output=True,
+            text=True,
+            timeout=1800,
+        )
+        if result.returncode == 0:
+            logger.info("Satellite data fetch: completed successfully")
+            if result.stdout:
+                for line in result.stdout.strip().split("\n")[-5:]:
+                    logger.info("  %s", line)
+        else:
+            logger.warning(
+                "Satellite data fetch: exited with code %d", result.returncode)
+            if result.stderr:
+                logger.debug("stderr: %s", result.stderr[:500])
+    except subprocess.TimeoutExpired:
+        logger.warning("Satellite data fetch: timed out after 1800s")
+    except Exception as e:
+        logger.error("Satellite data fetch: failed — %s", e)
+
+
+def _task_macro_correlation_analysis() -> None:
+    """Run macro ↔ stock correlation analysis and persist results.
+
+    Computes lagged Pearson correlation, event study, and Granger causality
+    between key macro indicators (VIX, USD/IDR, Gold, Brent) and major IDX
+    tickers (BBCA.JK, BBRI.JK, ANTM.JK, etc.) using the macro_correlation
+    module. Results are logged for the daily report pipeline.
+    """
+
+    from market.analysis.macro_correlation import full_analysis
+    from market.db.engine import get_sessionmaker
+
+    logger.info("Macro correlation analysis: starting...")
+
+    session = get_sessionmaker()()
+    try:
+        # Get top IDX tickers by volume from stock_prices
+        from sqlalchemy import text
+        tickers = session.execute(text("""
+            SELECT ticker, count(*) AS n
+            FROM stock_prices
+            WHERE timeframe = '1d' AND ticker LIKE '%.JK'
+            GROUP BY ticker ORDER BY n DESC LIMIT 5
+        """)).scalars().all()
+        if not tickers:
+            tickers = ["BBCA.JK", "BBRI.JK", "ANTM.JK", "TLKM.JK", "ASII.JK"]
+    finally:
+        session.close()
+
+    indicators = ["VIX_INDEX", "USD_IDR", "GOLD_PRICE", "BRENT_CRUDE"]
+    significant_findings = []
+
+    for indicator in indicators:
+        for ticker in tickers:
+            try:
+                report = full_analysis(
+                    indicator, ticker,
+                    shock_threshold_pct=10.0, forward_window_days=2, max_lag=3)
+                es = report.get("event_study", {})
+                gc = report.get("granger_causality")
+                if gc and gc.get("is_significant"):
+                    significant_findings.append({
+                        "indicator": indicator, "ticker": ticker,
+                        "granger_p": gc["p_value"],
+                        "n_events": es.get("n_events", 0),
+                        "mean_return": es.get("mean_forward_return_pct"),
+                    })
+            except Exception as exc:
+                logger.debug("  %s vs %s: %s", indicator, ticker, exc)
+
+    logger.info("Macro correlation analysis: %d significant findings",
+                len(significant_findings))
+    for f in significant_findings:
+        logger.info(
+            "  %s → %s: Granger p=%.4f, n_events=%d, mean_ret=%.2f%%",
+            f["indicator"], f["ticker"], f["granger_p"],
+            f["n_events"], f["mean_return"])
+
+
+def _task_compute_astronacci_cycles() -> None:
+    """Compute Astronacci time cycles and persist to astronacci_cycles table.
+
+    Generates upcoming time-cycle events (Mercury retrograde, Moon phases,
+    Fibonacci time windows) for the next 90 days and stores them in the
+    astronacci_cycles table for integration with v_domino_timeline.
+    """
+    from datetime import UTC, datetime, timedelta
+
+    from sqlalchemy import text
+
+    from market.analysis.astronacci import AstronacciEngine
+    from market.db.engine import get_sessionmaker
+
+    logger.info("Astronacci cycles computation: starting...")
+
+    engine = AstronacciEngine()
+    now = datetime.now(UTC)
+    end = now + timedelta(days=90)
+
+    try:
+        cycles = engine.compute_cycles(start=now, end=end)
+    except Exception as exc:
+        logger.warning("Astronacci cycle computation failed: %s", exc)
+        return
+
+    session = get_sessionmaker()()
+    inserted = 0
+    try:
+        for cycle in cycles:
+            result = session.execute(text("""
+                INSERT INTO astronacci_cycles
+                    (cycle_type, title, start_at, end_at, potential_impact,
+                     target_asset_class, expected_reversal, description)
+                VALUES (:ctype, :title, :start, :end, :impact, :asset, :rev, :desc)
+                ON CONFLICT DO NOTHING
+                RETURNING id
+            """), {
+                "ctype": getattr(cycle, "cycle_type", "UNKNOWN"),
+                "title": getattr(cycle, "title", "Astronacci Cycle"),
+                "start": getattr(cycle, "start_at", now),
+                "end": getattr(cycle, "end_at", now + timedelta(days=7)),
+                "impact": getattr(cycle, "potential_impact", "MEDIUM"),
+                "asset": getattr(cycle, "target_asset_class", "ALL"),
+                "rev": getattr(cycle, "expected_reversal", "NEUTRAL"),
+                "desc": getattr(cycle, "description", None),
+            })
+            if result.scalar_one_or_none() is not None:
+                inserted += 1
+        session.commit()
+        logger.info("Astronacci cycles: %d new cycles inserted (of %d computed)",
+                    inserted, len(cycles))
+    except Exception as exc:
+        session.rollback()
+        logger.error("Astronacci cycles persistence failed: %s", exc)
+    finally:
+        session.close()
+
+
 def register_default_tasks(scheduler: DailyScheduler) -> None:
     """Register all built-in tasks on the given scheduler.
 
@@ -578,6 +774,20 @@ def register_default_tasks(scheduler: DailyScheduler) -> None:
         time_of_day="12:30",
     )
     scheduler.register_task(
+        task_id="fetch_satellite",
+        name="Weekly satellite observations (NASA POWER + Sentinel-2 NDVI)",
+        func=_task_fetch_satellite,
+        schedule="weekly",
+        time_of_day="13:00",
+    )
+    scheduler.register_task(
+        task_id="compute_astronacci_cycles",
+        name="Weekly Astronacci time cycle computation (next 90 days)",
+        func=_task_compute_astronacci_cycles,
+        schedule="weekly",
+        time_of_day="14:00",
+    )
+    scheduler.register_task(
         task_id="health_check",
         name="Pre-flight health checks",
         func=_task_health_check,
@@ -604,6 +814,13 @@ def register_default_tasks(scheduler: DailyScheduler) -> None:
         func=_task_fetch_macro,
         schedule="EOD",
         time_of_day="17:40",
+    )
+    scheduler.register_task(
+        task_id="fetch_macroeconomic_indicators",
+        name="Daily macroeconomic indicators (USD/IDR, VIX, Gold, Brent → PG)",
+        func=_task_fetch_macroeconomic_indicators,
+        schedule="EOD",
+        time_of_day="17:42",
     )
     scheduler.register_task(
         task_id="quality_check",
@@ -639,6 +856,13 @@ def register_default_tasks(scheduler: DailyScheduler) -> None:
         func=_task_generate_reports,
         schedule="daily",
         time_of_day="19:00",
+    )
+    scheduler.register_task(
+        task_id="macro_correlation_analysis",
+        name="Daily macro ↔ stock correlation & Granger causality analysis",
+        func=_task_macro_correlation_analysis,
+        schedule="daily",
+        time_of_day="19:15",
     )
     scheduler.register_task(
         task_id="export_parquet",

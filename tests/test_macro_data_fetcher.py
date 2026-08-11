@@ -5,6 +5,7 @@ All HTTP/network access is mocked — no real requests are made.
 
 from __future__ import annotations
 
+import logging
 import threading
 from unittest.mock import MagicMock, patch
 
@@ -315,21 +316,36 @@ class TestBPSFetcher:
         assert set(df["source"]) == {"bps"}
         assert "2023-01-01" in df["date"].values
 
-    def test_api_key_missing_returns_empty_and_warns(
-        self, caplog: pytest.LogCaptureFixture,
-    ) -> None:
-        limiter = DynamicRateLimiter(sleep_func=lambda s: None)
-        fetcher = BPSFetcher(limiter, api_key=None)
-        # Ensure env var does not provide a key either.
-        with patch.dict("os.environ", {}, clear=False):
-            import os as _os
+    def test_api_key_missing_returns_empty_and_warns(self) -> None:
+        # Use a dedicated handler to avoid caplog propagation issues
+        # when tests run in sequence (other tests may alter logger state).
+        # pytest's logging plugin may set logger.disabled=True for some
+        # loggers during test execution; re-enable to ensure capture.
+        records: list[logging.LogRecord] = []
 
-            _os.environ.pop("BPS_API_KEY", None)
-            with caplog.at_level("WARNING"):
+        class _Capture(logging.Handler):
+            def emit(self, record: logging.LogRecord) -> None:
+                records.append(record)
+
+        target_logger = logging.getLogger("market.data.macro_data_fetcher")
+        target_logger.disabled = False  # re-enable if pytest disabled it
+        handler = _Capture(level=logging.WARNING)
+        target_logger.addHandler(handler)
+        target_logger.setLevel(logging.WARNING)
+        target_logger._cache.clear()  # clear stale isEnabledFor cache
+        try:
+            limiter = DynamicRateLimiter(sleep_func=lambda s: None)
+            fetcher = BPSFetcher(limiter, api_key=None)
+            with patch.dict("os.environ", {}, clear=False):
+                import os as _os
+
+                _os.environ.pop("BPS_API_KEY", None)
                 df = fetcher.fetch_gdp()
+        finally:
+            target_logger.removeHandler(handler)
         assert df.empty
         assert list(df.columns) == ["date", "indicator", "value", "unit", "source"]
-        assert any("BPS_API_KEY" in rec.getMessage() for rec in caplog.records)
+        assert any("BPS_API_KEY" in rec.getMessage() for rec in records)
 
     def test_http_500_returns_empty_dataframe(self) -> None:
         limiter = DynamicRateLimiter(sleep_func=lambda s: None, monotonic_func=lambda: 0.0)
