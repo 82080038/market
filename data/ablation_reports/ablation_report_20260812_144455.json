@@ -1,0 +1,994 @@
+{
+  "metadata": {
+    "timestamp": "2026-08-12T14:44:55.942338+00:00",
+    "tickers": [
+      "BBCA.JK",
+      "BBRI.JK",
+      "UNVR.JK",
+      "ANTM.JK",
+      "MDKA.JK",
+      "UNTR.JK",
+      "TLKM.JK",
+      "ASII.JK"
+    ],
+    "period": "2024-01-01 to 2026-08-12",
+    "total_engines": 15,
+    "keep": 0,
+    "marginal": 0,
+    "remove": 15
+  },
+  "scorecards": [
+    {
+      "engine_name": "meta",
+      "verdict": "REMOVE",
+      "composite_score": 25.15,
+      "delta_sharpe": -0.9184,
+      "delta_alpha": -0.2601,
+      "delta_win_rate": -13.01,
+      "p_value": 0.16168,
+      "is_significant": false,
+      "n_observations": 4906,
+      "isolated_sharpe": -0.8575,
+      "baseline_sharpe": 0.0609,
+      "reasons": [
+        "Negative or zero Sharpe delta (-0.918)",
+        "Negative alpha contribution (-0.2601)",
+        "Win rate decreased by -13.0%"
+      ]
+    },
+    {
+      "engine_name": "volume",
+      "verdict": "REMOVE",
+      "composite_score": 24.13,
+      "delta_sharpe": -0.3677,
+      "delta_alpha": -0.124,
+      "delta_win_rate": -5.54,
+      "p_value": 0.19559,
+      "is_significant": false,
+      "n_observations": 4906,
+      "isolated_sharpe": -0.3068,
+      "baseline_sharpe": 0.0609,
+      "reasons": [
+        "Negative or zero Sharpe delta (-0.368)",
+        "Negative alpha contribution (-0.1240)",
+        "Win rate decreased by -5.5%"
+      ]
+    },
+    {
+      "engine_name": "smart_money",
+      "verdict": "REMOVE",
+      "composite_score": 21.89,
+      "delta_sharpe": -0.458,
+      "delta_alpha": -0.185,
+      "delta_win_rate": 0.81,
+      "p_value": 0.324722,
+      "is_significant": false,
+      "n_observations": 4906,
+      "isolated_sharpe": -0.3971,
+      "baseline_sharpe": 0.0609,
+      "reasons": [
+        "Negative or zero Sharpe delta (-0.458)",
+        "Negative alpha contribution (-0.1850)",
+        "Win rate improved by +0.8%"
+      ]
+    },
+    {
+      "engine_name": "astronacci",
+      "verdict": "REMOVE",
+      "composite_score": 19.12,
+      "delta_sharpe": 0.0788,
+      "delta_alpha": 0.0226,
+      "delta_win_rate": 0.23,
+      "p_value": 0.465736,
+      "is_significant": false,
+      "n_observations": 4906,
+      "isolated_sharpe": 0.1397,
+      "baseline_sharpe": 0.0609,
+      "reasons": [
+        "Not significant (p=0.4657 >= 0.10)",
+        "Positive alpha contribution (+0.0226)",
+        "Win rate improved by +0.2%"
+      ]
+    },
+    {
+      "engine_name": "event",
+      "verdict": "REMOVE",
+      "composite_score": 0.61,
+      "delta_sharpe": 0.0,
+      "delta_alpha": 0.0,
+      "delta_win_rate": 0.0,
+      "p_value": 1.0,
+      "is_significant": false,
+      "n_observations": 4906,
+      "isolated_sharpe": 0.0609,
+      "baseline_sharpe": 0.0609,
+      "reasons": [
+        "Negative or zero Sharpe delta (0.000)"
+      ]
+    },
+    {
+      "engine_name": "cross_market",
+      "verdict": "REMOVE",
+      "composite_score": 0.61,
+      "delta_sharpe": 0.0,
+      "delta_alpha": 0.0,
+      "delta_win_rate": 0.0,
+      "p_value": 1.0,
+      "is_significant": false,
+      "n_observations": 4906,
+      "isolated_sharpe": 0.0609,
+      "baseline_sharpe": 0.0609,
+      "reasons": [
+        "Negative or zero Sharpe delta (0.000)"
+      ]
+    },
+    {
+      "engine_name": "sector",
+      "verdict": "REMOVE",
+      "composite_score": 0.61,
+      "delta_sharpe": 0.0,
+      "delta_alpha": 0.0,
+      "delta_win_rate": 0.0,
+      "p_value": 1.0,
+      "is_significant": false,
+      "n_observations": 4906,
+      "isolated_sharpe": 0.0609,
+      "baseline_sharpe": 0.0609,
+      "reasons": [
+        "Negative or zero Sharpe delta (0.000)"
+      ]
+    },
+    {
+      "engine_name": "pairs",
+      "verdict": "REMOVE",
+      "composite_score": 0.61,
+      "delta_sharpe": 0.0,
+      "delta_alpha": 0.0,
+      "delta_win_rate": 0.0,
+      "p_value": 1.0,
+      "is_significant": false,
+      "n_observations": 4906,
+      "isolated_sharpe": 0.0609,
+      "baseline_sharpe": 0.0609,
+      "reasons": [
+        "Negative or zero Sharpe delta (0.000)"
+      ]
+    },
+    {
+      "engine_name": "fundamental",
+      "verdict": "REMOVE",
+      "composite_score": 0.61,
+      "delta_sharpe": 0.0,
+      "delta_alpha": 0.0,
+      "delta_win_rate": 0.0,
+      "p_value": 1.0,
+      "is_significant": false,
+      "n_observations": 4906,
+      "isolated_sharpe": 0.0609,
+      "baseline_sharpe": 0.0609,
+      "reasons": [
+        "Negative or zero Sharpe delta (0.000)"
+      ]
+    },
+    {
+      "engine_name": "macro",
+      "verdict": "REMOVE",
+      "composite_score": 0.61,
+      "delta_sharpe": 0.0,
+      "delta_alpha": 0.0,
+      "delta_win_rate": 0.0,
+      "p_value": 1.0,
+      "is_significant": false,
+      "n_observations": 4906,
+      "isolated_sharpe": 0.0609,
+      "baseline_sharpe": 0.0609,
+      "reasons": [
+        "Negative or zero Sharpe delta (0.000)"
+      ]
+    },
+    {
+      "engine_name": "ml",
+      "verdict": "REMOVE",
+      "composite_score": 0.61,
+      "delta_sharpe": 0.0,
+      "delta_alpha": 0.0,
+      "delta_win_rate": 0.0,
+      "p_value": 1.0,
+      "is_significant": false,
+      "n_observations": 4906,
+      "isolated_sharpe": 0.0609,
+      "baseline_sharpe": 0.0609,
+      "reasons": [
+        "Negative or zero Sharpe delta (0.000)"
+      ]
+    },
+    {
+      "engine_name": "news",
+      "verdict": "REMOVE",
+      "composite_score": 0.61,
+      "delta_sharpe": 0.0,
+      "delta_alpha": 0.0,
+      "delta_win_rate": 0.0,
+      "p_value": 1.0,
+      "is_significant": false,
+      "n_observations": 4906,
+      "isolated_sharpe": 0.0609,
+      "baseline_sharpe": 0.0609,
+      "reasons": [
+        "Negative or zero Sharpe delta (0.000)"
+      ]
+    },
+    {
+      "engine_name": "commodity",
+      "verdict": "REMOVE",
+      "composite_score": 0.61,
+      "delta_sharpe": 0.0,
+      "delta_alpha": 0.0,
+      "delta_win_rate": 0.0,
+      "p_value": 1.0,
+      "is_significant": false,
+      "n_observations": 4906,
+      "isolated_sharpe": 0.0609,
+      "baseline_sharpe": 0.0609,
+      "reasons": [
+        "Negative or zero Sharpe delta (0.000)"
+      ]
+    },
+    {
+      "engine_name": "global_sentiment",
+      "verdict": "REMOVE",
+      "composite_score": 0.61,
+      "delta_sharpe": 0.0,
+      "delta_alpha": 0.0,
+      "delta_win_rate": 0.0,
+      "p_value": 1.0,
+      "is_significant": false,
+      "n_observations": 4906,
+      "isolated_sharpe": 0.0609,
+      "baseline_sharpe": 0.0609,
+      "reasons": [
+        "Negative or zero Sharpe delta (0.000)"
+      ]
+    },
+    {
+      "engine_name": "governance",
+      "verdict": "REMOVE",
+      "composite_score": 0.61,
+      "delta_sharpe": 0.0,
+      "delta_alpha": 0.0,
+      "delta_win_rate": 0.0,
+      "p_value": 1.0,
+      "is_significant": false,
+      "n_observations": 4906,
+      "isolated_sharpe": 0.0609,
+      "baseline_sharpe": 0.0609,
+      "reasons": [
+        "Negative or zero Sharpe delta (0.000)"
+      ]
+    }
+  ],
+  "results": [
+    {
+      "engine_name": "volume",
+      "baseline_metrics": {
+        "sharpe_ratio": 0.06093749999999999,
+        "sortino_ratio": 0.0845375,
+        "max_drawdown_pct": -42.68,
+        "win_rate_pct": 39.685,
+        "total_return_pct": -5.7399999999999975,
+        "annual_return_pct": -3.865,
+        "alpha": 0.021325,
+        "beta": -0.26555,
+        "n_days": 613.25
+      },
+      "isolated_metrics": {
+        "sharpe_ratio": -0.30675,
+        "sortino_ratio": -0.3785,
+        "max_drawdown_pct": -45.67125,
+        "win_rate_pct": 34.1425,
+        "total_return_pct": -30.650000000000002,
+        "annual_return_pct": -14.67,
+        "alpha": -0.102625,
+        "beta": -0.19390000000000002,
+        "n_days": 613.25
+      },
+      "delta_metrics": {
+        "sharpe_ratio": -0.3676875,
+        "sortino_ratio": -0.4630375,
+        "max_drawdown_pct": -2.9912500000000004,
+        "win_rate_pct": -5.5424999999999995,
+        "total_return_pct": -24.91,
+        "annual_return_pct": -10.805,
+        "alpha": -0.12395,
+        "beta": 0.07165,
+        "n_days": 0.0
+      },
+      "p_value": 0.19558975,
+      "t_statistic": -1.7055375,
+      "is_significant": false,
+      "n_observations": 4906,
+      "error": null
+    },
+    {
+      "engine_name": "event",
+      "baseline_metrics": {
+        "sharpe_ratio": 0.06093749999999999,
+        "sortino_ratio": 0.0845375,
+        "max_drawdown_pct": -42.68,
+        "win_rate_pct": 39.685,
+        "total_return_pct": -5.7399999999999975,
+        "annual_return_pct": -3.865,
+        "alpha": 0.021325,
+        "beta": -0.26555,
+        "n_days": 613.25
+      },
+      "isolated_metrics": {
+        "sharpe_ratio": 0.06093749999999999,
+        "sortino_ratio": 0.0845375,
+        "max_drawdown_pct": -42.68,
+        "win_rate_pct": 39.685,
+        "total_return_pct": -5.7399999999999975,
+        "annual_return_pct": -3.865,
+        "alpha": 0.021325,
+        "beta": -0.26555,
+        "n_days": 613.25
+      },
+      "delta_metrics": {
+        "sharpe_ratio": 0.0,
+        "sortino_ratio": 0.0,
+        "max_drawdown_pct": 0.0,
+        "win_rate_pct": 0.0,
+        "total_return_pct": 0.0,
+        "annual_return_pct": 0.0,
+        "alpha": 0.0,
+        "beta": 0.0,
+        "n_days": 0.0
+      },
+      "p_value": 1.0,
+      "t_statistic": 0.0,
+      "is_significant": false,
+      "n_observations": 4906,
+      "error": null
+    },
+    {
+      "engine_name": "meta",
+      "baseline_metrics": {
+        "sharpe_ratio": 0.06093749999999999,
+        "sortino_ratio": 0.0845375,
+        "max_drawdown_pct": -42.68,
+        "win_rate_pct": 39.685,
+        "total_return_pct": -5.7399999999999975,
+        "annual_return_pct": -3.865,
+        "alpha": 0.021325,
+        "beta": -0.26555,
+        "n_days": 613.25
+      },
+      "isolated_metrics": {
+        "sharpe_ratio": -0.8574625,
+        "sortino_ratio": -1.0776,
+        "max_drawdown_pct": -56.52625,
+        "win_rate_pct": 26.67875,
+        "total_return_pct": -46.496249999999996,
+        "annual_return_pct": -24.064999999999998,
+        "alpha": -0.238725,
+        "beta": -0.189475,
+        "n_days": 613.25
+      },
+      "delta_metrics": {
+        "sharpe_ratio": -0.9184,
+        "sortino_ratio": -1.1621375,
+        "max_drawdown_pct": -13.84625,
+        "win_rate_pct": -13.00625,
+        "total_return_pct": -40.75625,
+        "annual_return_pct": -20.200000000000003,
+        "alpha": -0.26005,
+        "beta": 0.076075,
+        "n_days": 0.0
+      },
+      "p_value": 0.161680125,
+      "t_statistic": -2.1686,
+      "is_significant": false,
+      "n_observations": 4906,
+      "error": null
+    },
+    {
+      "engine_name": "smart_money",
+      "baseline_metrics": {
+        "sharpe_ratio": 0.06093749999999999,
+        "sortino_ratio": 0.0845375,
+        "max_drawdown_pct": -42.68,
+        "win_rate_pct": 39.685,
+        "total_return_pct": -5.7399999999999975,
+        "annual_return_pct": -3.865,
+        "alpha": 0.021325,
+        "beta": -0.26555,
+        "n_days": 613.25
+      },
+      "isolated_metrics": {
+        "sharpe_ratio": -0.3971,
+        "sortino_ratio": -0.51395,
+        "max_drawdown_pct": -55.6925,
+        "win_rate_pct": 40.49875,
+        "total_return_pct": -40.95375,
+        "annual_return_pct": -20.46875,
+        "alpha": -0.16369999999999998,
+        "beta": -0.3116375,
+        "n_days": 613.25
+      },
+      "delta_metrics": {
+        "sharpe_ratio": -0.4580375,
+        "sortino_ratio": -0.5984875,
+        "max_drawdown_pct": -13.0125,
+        "win_rate_pct": 0.81375,
+        "total_return_pct": -35.213750000000005,
+        "annual_return_pct": -16.60375,
+        "alpha": -0.185025,
+        "beta": -0.0460875,
+        "n_days": 0.0
+      },
+      "p_value": 0.324721625,
+      "t_statistic": -1.196425,
+      "is_significant": false,
+      "n_observations": 4906,
+      "error": null
+    },
+    {
+      "engine_name": "cross_market",
+      "baseline_metrics": {
+        "sharpe_ratio": 0.06093749999999999,
+        "sortino_ratio": 0.0845375,
+        "max_drawdown_pct": -42.68,
+        "win_rate_pct": 39.685,
+        "total_return_pct": -5.7399999999999975,
+        "annual_return_pct": -3.865,
+        "alpha": 0.021325,
+        "beta": -0.26555,
+        "n_days": 613.25
+      },
+      "isolated_metrics": {
+        "sharpe_ratio": 0.06093749999999999,
+        "sortino_ratio": 0.0845375,
+        "max_drawdown_pct": -42.68,
+        "win_rate_pct": 39.685,
+        "total_return_pct": -5.7399999999999975,
+        "annual_return_pct": -3.865,
+        "alpha": 0.021325,
+        "beta": -0.26555,
+        "n_days": 613.25
+      },
+      "delta_metrics": {
+        "sharpe_ratio": 0.0,
+        "sortino_ratio": 0.0,
+        "max_drawdown_pct": 0.0,
+        "win_rate_pct": 0.0,
+        "total_return_pct": 0.0,
+        "annual_return_pct": 0.0,
+        "alpha": 0.0,
+        "beta": 0.0,
+        "n_days": 0.0
+      },
+      "p_value": 1.0,
+      "t_statistic": 0.0,
+      "is_significant": false,
+      "n_observations": 4906,
+      "error": null
+    },
+    {
+      "engine_name": "sector",
+      "baseline_metrics": {
+        "sharpe_ratio": 0.06093749999999999,
+        "sortino_ratio": 0.0845375,
+        "max_drawdown_pct": -42.68,
+        "win_rate_pct": 39.685,
+        "total_return_pct": -5.7399999999999975,
+        "annual_return_pct": -3.865,
+        "alpha": 0.021325,
+        "beta": -0.26555,
+        "n_days": 613.25
+      },
+      "isolated_metrics": {
+        "sharpe_ratio": 0.06093749999999999,
+        "sortino_ratio": 0.0845375,
+        "max_drawdown_pct": -42.68,
+        "win_rate_pct": 39.685,
+        "total_return_pct": -5.7399999999999975,
+        "annual_return_pct": -3.865,
+        "alpha": 0.021325,
+        "beta": -0.26555,
+        "n_days": 613.25
+      },
+      "delta_metrics": {
+        "sharpe_ratio": 0.0,
+        "sortino_ratio": 0.0,
+        "max_drawdown_pct": 0.0,
+        "win_rate_pct": 0.0,
+        "total_return_pct": 0.0,
+        "annual_return_pct": 0.0,
+        "alpha": 0.0,
+        "beta": 0.0,
+        "n_days": 0.0
+      },
+      "p_value": 1.0,
+      "t_statistic": 0.0,
+      "is_significant": false,
+      "n_observations": 4906,
+      "error": null
+    },
+    {
+      "engine_name": "pairs",
+      "baseline_metrics": {
+        "sharpe_ratio": 0.06093749999999999,
+        "sortino_ratio": 0.0845375,
+        "max_drawdown_pct": -42.68,
+        "win_rate_pct": 39.685,
+        "total_return_pct": -5.7399999999999975,
+        "annual_return_pct": -3.865,
+        "alpha": 0.021325,
+        "beta": -0.26555,
+        "n_days": 613.25
+      },
+      "isolated_metrics": {
+        "sharpe_ratio": 0.06093749999999999,
+        "sortino_ratio": 0.0845375,
+        "max_drawdown_pct": -42.68,
+        "win_rate_pct": 39.685,
+        "total_return_pct": -5.7399999999999975,
+        "annual_return_pct": -3.865,
+        "alpha": 0.021325,
+        "beta": -0.26555,
+        "n_days": 613.25
+      },
+      "delta_metrics": {
+        "sharpe_ratio": 0.0,
+        "sortino_ratio": 0.0,
+        "max_drawdown_pct": 0.0,
+        "win_rate_pct": 0.0,
+        "total_return_pct": 0.0,
+        "annual_return_pct": 0.0,
+        "alpha": 0.0,
+        "beta": 0.0,
+        "n_days": 0.0
+      },
+      "p_value": 1.0,
+      "t_statistic": 0.0,
+      "is_significant": false,
+      "n_observations": 4906,
+      "error": null
+    },
+    {
+      "engine_name": "astronacci",
+      "baseline_metrics": {
+        "sharpe_ratio": 0.06093749999999999,
+        "sortino_ratio": 0.0845375,
+        "max_drawdown_pct": -42.68,
+        "win_rate_pct": 39.685,
+        "total_return_pct": -5.7399999999999975,
+        "annual_return_pct": -3.865,
+        "alpha": 0.021325,
+        "beta": -0.26555,
+        "n_days": 613.25
+      },
+      "isolated_metrics": {
+        "sharpe_ratio": 0.1396875,
+        "sortino_ratio": 0.2014375,
+        "max_drawdown_pct": -41.735,
+        "win_rate_pct": 39.91375,
+        "total_return_pct": 2.0687500000000005,
+        "annual_return_pct": -0.9737499999999999,
+        "alpha": 0.04397499999999999,
+        "beta": -0.3605375,
+        "n_days": 613.25
+      },
+      "delta_metrics": {
+        "sharpe_ratio": 0.07875,
+        "sortino_ratio": 0.1169,
+        "max_drawdown_pct": 0.9450000000000001,
+        "win_rate_pct": 0.22875,
+        "total_return_pct": 7.80875,
+        "annual_return_pct": 2.89125,
+        "alpha": 0.02265,
+        "beta": -0.0949875,
+        "n_days": 0.0
+      },
+      "p_value": 0.4657365,
+      "t_statistic": 0.3843375,
+      "is_significant": false,
+      "n_observations": 4906,
+      "error": null
+    },
+    {
+      "engine_name": "fundamental",
+      "baseline_metrics": {
+        "sharpe_ratio": 0.06093749999999999,
+        "sortino_ratio": 0.0845375,
+        "max_drawdown_pct": -42.68,
+        "win_rate_pct": 39.685,
+        "total_return_pct": -5.7399999999999975,
+        "annual_return_pct": -3.865,
+        "alpha": 0.021325,
+        "beta": -0.26555,
+        "n_days": 613.25
+      },
+      "isolated_metrics": {
+        "sharpe_ratio": 0.06093749999999999,
+        "sortino_ratio": 0.0845375,
+        "max_drawdown_pct": -42.68,
+        "win_rate_pct": 39.685,
+        "total_return_pct": -5.7399999999999975,
+        "annual_return_pct": -3.865,
+        "alpha": 0.021325,
+        "beta": -0.26555,
+        "n_days": 613.25
+      },
+      "delta_metrics": {
+        "sharpe_ratio": 0.0,
+        "sortino_ratio": 0.0,
+        "max_drawdown_pct": 0.0,
+        "win_rate_pct": 0.0,
+        "total_return_pct": 0.0,
+        "annual_return_pct": 0.0,
+        "alpha": 0.0,
+        "beta": 0.0,
+        "n_days": 0.0
+      },
+      "p_value": 1.0,
+      "t_statistic": 0.0,
+      "is_significant": false,
+      "n_observations": 4906,
+      "error": null
+    },
+    {
+      "engine_name": "macro",
+      "baseline_metrics": {
+        "sharpe_ratio": 0.06093749999999999,
+        "sortino_ratio": 0.0845375,
+        "max_drawdown_pct": -42.68,
+        "win_rate_pct": 39.685,
+        "total_return_pct": -5.7399999999999975,
+        "annual_return_pct": -3.865,
+        "alpha": 0.021325,
+        "beta": -0.26555,
+        "n_days": 613.25
+      },
+      "isolated_metrics": {
+        "sharpe_ratio": 0.06093749999999999,
+        "sortino_ratio": 0.0845375,
+        "max_drawdown_pct": -42.68,
+        "win_rate_pct": 39.685,
+        "total_return_pct": -5.7399999999999975,
+        "annual_return_pct": -3.865,
+        "alpha": 0.021325,
+        "beta": -0.26555,
+        "n_days": 613.25
+      },
+      "delta_metrics": {
+        "sharpe_ratio": 0.0,
+        "sortino_ratio": 0.0,
+        "max_drawdown_pct": 0.0,
+        "win_rate_pct": 0.0,
+        "total_return_pct": 0.0,
+        "annual_return_pct": 0.0,
+        "alpha": 0.0,
+        "beta": 0.0,
+        "n_days": 0.0
+      },
+      "p_value": 1.0,
+      "t_statistic": 0.0,
+      "is_significant": false,
+      "n_observations": 4906,
+      "error": null
+    },
+    {
+      "engine_name": "ml",
+      "baseline_metrics": {
+        "sharpe_ratio": 0.06093749999999999,
+        "sortino_ratio": 0.0845375,
+        "max_drawdown_pct": -42.68,
+        "win_rate_pct": 39.685,
+        "total_return_pct": -5.7399999999999975,
+        "annual_return_pct": -3.865,
+        "alpha": 0.021325,
+        "beta": -0.26555,
+        "n_days": 613.25
+      },
+      "isolated_metrics": {
+        "sharpe_ratio": 0.06093749999999999,
+        "sortino_ratio": 0.0845375,
+        "max_drawdown_pct": -42.68,
+        "win_rate_pct": 39.685,
+        "total_return_pct": -5.7399999999999975,
+        "annual_return_pct": -3.865,
+        "alpha": 0.021325,
+        "beta": -0.26555,
+        "n_days": 613.25
+      },
+      "delta_metrics": {
+        "sharpe_ratio": 0.0,
+        "sortino_ratio": 0.0,
+        "max_drawdown_pct": 0.0,
+        "win_rate_pct": 0.0,
+        "total_return_pct": 0.0,
+        "annual_return_pct": 0.0,
+        "alpha": 0.0,
+        "beta": 0.0,
+        "n_days": 0.0
+      },
+      "p_value": 1.0,
+      "t_statistic": 0.0,
+      "is_significant": false,
+      "n_observations": 4906,
+      "error": null
+    },
+    {
+      "engine_name": "news",
+      "baseline_metrics": {
+        "sharpe_ratio": 0.06093749999999999,
+        "sortino_ratio": 0.0845375,
+        "max_drawdown_pct": -42.68,
+        "win_rate_pct": 39.685,
+        "total_return_pct": -5.7399999999999975,
+        "annual_return_pct": -3.865,
+        "alpha": 0.021325,
+        "beta": -0.26555,
+        "n_days": 613.25
+      },
+      "isolated_metrics": {
+        "sharpe_ratio": 0.06093749999999999,
+        "sortino_ratio": 0.0845375,
+        "max_drawdown_pct": -42.68,
+        "win_rate_pct": 39.685,
+        "total_return_pct": -5.7399999999999975,
+        "annual_return_pct": -3.865,
+        "alpha": 0.021325,
+        "beta": -0.26555,
+        "n_days": 613.25
+      },
+      "delta_metrics": {
+        "sharpe_ratio": 0.0,
+        "sortino_ratio": 0.0,
+        "max_drawdown_pct": 0.0,
+        "win_rate_pct": 0.0,
+        "total_return_pct": 0.0,
+        "annual_return_pct": 0.0,
+        "alpha": 0.0,
+        "beta": 0.0,
+        "n_days": 0.0
+      },
+      "p_value": 1.0,
+      "t_statistic": 0.0,
+      "is_significant": false,
+      "n_observations": 4906,
+      "error": null
+    },
+    {
+      "engine_name": "commodity",
+      "baseline_metrics": {
+        "sharpe_ratio": 0.06093749999999999,
+        "sortino_ratio": 0.0845375,
+        "max_drawdown_pct": -42.68,
+        "win_rate_pct": 39.685,
+        "total_return_pct": -5.7399999999999975,
+        "annual_return_pct": -3.865,
+        "alpha": 0.021325,
+        "beta": -0.26555,
+        "n_days": 613.25
+      },
+      "isolated_metrics": {
+        "sharpe_ratio": 0.06093749999999999,
+        "sortino_ratio": 0.0845375,
+        "max_drawdown_pct": -42.68,
+        "win_rate_pct": 39.685,
+        "total_return_pct": -5.7399999999999975,
+        "annual_return_pct": -3.865,
+        "alpha": 0.021325,
+        "beta": -0.26555,
+        "n_days": 613.25
+      },
+      "delta_metrics": {
+        "sharpe_ratio": 0.0,
+        "sortino_ratio": 0.0,
+        "max_drawdown_pct": 0.0,
+        "win_rate_pct": 0.0,
+        "total_return_pct": 0.0,
+        "annual_return_pct": 0.0,
+        "alpha": 0.0,
+        "beta": 0.0,
+        "n_days": 0.0
+      },
+      "p_value": 1.0,
+      "t_statistic": 0.0,
+      "is_significant": false,
+      "n_observations": 4906,
+      "error": null
+    },
+    {
+      "engine_name": "global_sentiment",
+      "baseline_metrics": {
+        "sharpe_ratio": 0.06093749999999999,
+        "sortino_ratio": 0.0845375,
+        "max_drawdown_pct": -42.68,
+        "win_rate_pct": 39.685,
+        "total_return_pct": -5.7399999999999975,
+        "annual_return_pct": -3.865,
+        "alpha": 0.021325,
+        "beta": -0.26555,
+        "n_days": 613.25
+      },
+      "isolated_metrics": {
+        "sharpe_ratio": 0.06093749999999999,
+        "sortino_ratio": 0.0845375,
+        "max_drawdown_pct": -42.68,
+        "win_rate_pct": 39.685,
+        "total_return_pct": -5.7399999999999975,
+        "annual_return_pct": -3.865,
+        "alpha": 0.021325,
+        "beta": -0.26555,
+        "n_days": 613.25
+      },
+      "delta_metrics": {
+        "sharpe_ratio": 0.0,
+        "sortino_ratio": 0.0,
+        "max_drawdown_pct": 0.0,
+        "win_rate_pct": 0.0,
+        "total_return_pct": 0.0,
+        "annual_return_pct": 0.0,
+        "alpha": 0.0,
+        "beta": 0.0,
+        "n_days": 0.0
+      },
+      "p_value": 1.0,
+      "t_statistic": 0.0,
+      "is_significant": false,
+      "n_observations": 4906,
+      "error": null
+    },
+    {
+      "engine_name": "governance",
+      "baseline_metrics": {
+        "sharpe_ratio": 0.06093749999999999,
+        "sortino_ratio": 0.0845375,
+        "max_drawdown_pct": -42.68,
+        "win_rate_pct": 39.685,
+        "total_return_pct": -5.7399999999999975,
+        "annual_return_pct": -3.865,
+        "alpha": 0.021325,
+        "beta": -0.26555,
+        "n_days": 613.25
+      },
+      "isolated_metrics": {
+        "sharpe_ratio": 0.06093749999999999,
+        "sortino_ratio": 0.0845375,
+        "max_drawdown_pct": -42.68,
+        "win_rate_pct": 39.685,
+        "total_return_pct": -5.7399999999999975,
+        "annual_return_pct": -3.865,
+        "alpha": 0.021325,
+        "beta": -0.26555,
+        "n_days": 613.25
+      },
+      "delta_metrics": {
+        "sharpe_ratio": 0.0,
+        "sortino_ratio": 0.0,
+        "max_drawdown_pct": 0.0,
+        "win_rate_pct": 0.0,
+        "total_return_pct": 0.0,
+        "annual_return_pct": 0.0,
+        "alpha": 0.0,
+        "beta": 0.0,
+        "n_days": 0.0
+      },
+      "p_value": 1.0,
+      "t_statistic": 0.0,
+      "is_significant": false,
+      "n_observations": 4906,
+      "error": null
+    }
+  ],
+  "recommendations": [
+    {
+      "engine": "meta",
+      "verdict": "REMOVE",
+      "action": "reduce_or_remove",
+      "suggestion": "Reduce weight to 0 or remove from production pipeline",
+      "composite_score": 25.15
+    },
+    {
+      "engine": "volume",
+      "verdict": "REMOVE",
+      "action": "reduce_or_remove",
+      "suggestion": "Reduce weight to 0 or remove from production pipeline",
+      "composite_score": 24.13
+    },
+    {
+      "engine": "smart_money",
+      "verdict": "REMOVE",
+      "action": "reduce_or_remove",
+      "suggestion": "Reduce weight to 0 or remove from production pipeline",
+      "composite_score": 21.89
+    },
+    {
+      "engine": "astronacci",
+      "verdict": "REMOVE",
+      "action": "reduce_or_remove",
+      "suggestion": "Reduce weight to 0 or remove from production pipeline",
+      "composite_score": 19.12
+    },
+    {
+      "engine": "event",
+      "verdict": "REMOVE",
+      "action": "reduce_or_remove",
+      "suggestion": "Reduce weight to 0 or remove from production pipeline",
+      "composite_score": 0.61
+    },
+    {
+      "engine": "cross_market",
+      "verdict": "REMOVE",
+      "action": "reduce_or_remove",
+      "suggestion": "Reduce weight to 0 or remove from production pipeline",
+      "composite_score": 0.61
+    },
+    {
+      "engine": "sector",
+      "verdict": "REMOVE",
+      "action": "reduce_or_remove",
+      "suggestion": "Reduce weight to 0 or remove from production pipeline",
+      "composite_score": 0.61
+    },
+    {
+      "engine": "pairs",
+      "verdict": "REMOVE",
+      "action": "reduce_or_remove",
+      "suggestion": "Reduce weight to 0 or remove from production pipeline",
+      "composite_score": 0.61
+    },
+    {
+      "engine": "fundamental",
+      "verdict": "REMOVE",
+      "action": "reduce_or_remove",
+      "suggestion": "Reduce weight to 0 or remove from production pipeline",
+      "composite_score": 0.61
+    },
+    {
+      "engine": "macro",
+      "verdict": "REMOVE",
+      "action": "reduce_or_remove",
+      "suggestion": "Reduce weight to 0 or remove from production pipeline",
+      "composite_score": 0.61
+    },
+    {
+      "engine": "ml",
+      "verdict": "REMOVE",
+      "action": "reduce_or_remove",
+      "suggestion": "Reduce weight to 0 or remove from production pipeline",
+      "composite_score": 0.61
+    },
+    {
+      "engine": "news",
+      "verdict": "REMOVE",
+      "action": "reduce_or_remove",
+      "suggestion": "Reduce weight to 0 or remove from production pipeline",
+      "composite_score": 0.61
+    },
+    {
+      "engine": "commodity",
+      "verdict": "REMOVE",
+      "action": "reduce_or_remove",
+      "suggestion": "Reduce weight to 0 or remove from production pipeline",
+      "composite_score": 0.61
+    },
+    {
+      "engine": "global_sentiment",
+      "verdict": "REMOVE",
+      "action": "reduce_or_remove",
+      "suggestion": "Reduce weight to 0 or remove from production pipeline",
+      "composite_score": 0.61
+    },
+    {
+      "engine": "governance",
+      "verdict": "REMOVE",
+      "action": "reduce_or_remove",
+      "suggestion": "Reduce weight to 0 or remove from production pipeline",
+      "composite_score": 0.61
+    }
+  ]
+}

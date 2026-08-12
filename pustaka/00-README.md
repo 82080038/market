@@ -376,14 +376,14 @@ Berikut adalah keputusan desain tetap yang berlaku untuk seluruh dokumen di pust
 ## Statistik
 
 - **Total konten:** ~75000+ baris pengetahuan terstruktur
-- **Topik mencakup:** 94 area pengetahuan pasar modal
+- **Topik mencakup:** 103 area pengetahuan pasar modal (00-README + 01-102)
 - **Kode contoh:** Python (pandas, numpy, scikit-learn, FastAPI)
 - **Bahasa:** Indonesia (utama) dengan istilah teknis Inggris
-- **Update terbaru:** Lifecycle environment real/testing/AI, multi-market & multi-asset trading system, reformasi regulasi 2026 (UU P2SK, POJK 3/5, JATS MME), concurrency patterns, stale data detection, Deflated Sharpe Ratio, gap analysis teori vs praktek, audit faktor pasar modal, analisis parquet data awal, komoditas spesifik IDX, geopolitik & event shock, seasonal & kalender
+- **Update terbaru:** Lifecycle environment real/testing/AI, multi-market & multi-asset trading system, reformasi regulasi 2026 (UU P2SK, POJK 3/5, JATS MME), concurrency patterns, stale data detection, Deflated Sharpe Ratio, gap analysis teori vs praktek, audit faktor pasar modal, analisis parquet data awal, komoditas spesifik IDX, geopolitik & event shock, seasonal & kalender, AI/ML audit framework, strategi alternatif & ekspansi data 2026, sync DB→Parquet, migrasi SQLite→PostgreSQL, matriks relevansi satelit, Astronacci time cycle integration
 
 ---
 
-> Dibuat: Agustus 2026 | Repository: `/home/petrick/projects/market/pustaka/`
+> Dibuat: Agustus 2026 | Repository: `<PROJECT_DIR>/pustaka/` (Linux: `/opt/lampp/htdocs/market/pustaka/`, Windows: `C:\xampp\htdocs\market\pustaka\`)
 >
 > **Catatan:** Aplikasi `trading-system` v0.1.11 telah pernah diimplementasikan dan dijalankan di `/home/petrick/projects/global`. Kode, arsitektur, dan pelajaran dari proyek tersebut dapat diadopsi atau dicopy ke aplikasi baru. Pustaka ini berfungsi sebagai dokumentasi referensi sekaligus panduan adopsi.
 >

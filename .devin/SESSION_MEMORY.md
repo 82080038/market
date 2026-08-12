@@ -243,7 +243,7 @@ Tanpa `DATABASE_URL`, aplikasi otomatis fallback ke SQLite (`data/market_{env}.d
 ## Ringkasan Proyek
 
 - Pustaka ini adalah knowledge base untuk membangun aplikasi pasar modal (global & Indonesia), terutama decision-support EOD untuk single-user.
-- Path aplikasi: `C:\xampp\htdocs\market\` — database utama: `data/market_research.db` (~6 GB, dirakit dari part backup di flashdisk `E:\projects\market\database\`).
+- Path aplikasi: `<PROJECT_DIR>/` (Linux: `/opt/lampp/htdocs/market/`, Windows: `C:\xampp\htdocs\market\`) — database utama: `data/market_research.db` (~6 GB, dirakit dari part backup di external drive).
 - Keputusan desain tetap: UI Bahasa Indonesia + tooltip, timezone WIB display / UTC storage, single-user (no RBAC/JWT), GPU `cuda:1` untuk komputasi berat, `.env` untuk kredensial.
 - Implementasi referensi: `trading-system` v0.1.11 (Linux: `/home/petrick/projects/global/`; Windows: `E:\trading_data\` — baca saja, jangan tulis/modifikasi). Lihat AGENTS.md §7 untuk path OS-aware.
 
@@ -330,7 +330,7 @@ Tanpa `DATABASE_URL`, aplikasi otomatis fallback ke SQLite (`data/market_{env}.d
 
 ## Referensi Kunci
 
-- `pustaka/00-README.md` — indeks dan keputusan desain (94 dokumen).
+- `pustaka/00-README.md` — indeks dan keputusan desain (101 dokumen: 00-README + 01-100).
 - `pustaka/18-modul-engine-data-wajib.md` — daftar modul, engine, data wajib (perlu update angka).
 - `pustaka/88-gap-teori-vs-praktek.md` — audit gap teori vs praktek.
 - `pustaka/89-faktor-pasar-modal-analisis-implementasi.md` — audit faktor pasar modal.
@@ -488,3 +488,137 @@ ENV=research uv run python scripts/fetch_macroeconomic_indicators.py --years 2
 DATABASE_URL="postgresql://petrick:market_dev@localhost:5432/market" \
 ENV=research uv run pytest tests/test_macro_correlation.py -v --no-cov
 ```
+
+## Checkpoint Sesi 2026-08-12 — Sync GitHub & Update Rules/Skills/Memory
+
+- **Topik:** Sync aplikasi dari GitHub + audit & update seluruh konfigurasi Devin/Cascade post-sync.
+- **Sync:** `git pull origin main` dari `https://github.com/82080038/market.git` — banyak file baru tersync (scripts, pustaka 94-100, tests, modul src/market/, output satellite correlation).
+- **Audit post-sync menemukan hal-hal yang perlu diupdate:**
+  - AGENTS.md: pustaka count 96→101, aturan hapus 01-91→01-100, referensi cepat kurang lengkap
+  - Skills: doc range 00-93→00-100, new doc numbering 94→101, Next.js 14→16
+  - pustaka/00-README.md: statistik 94→101, path OS-aware, update terbaru list
+  - SESSION_MEMORY.md: path Windows-specific→OS-aware, doc count 94→101
+- **File yang diupdate sesi ini:**
+  - `AGENTS.md` — pustaka count, aturan hapus, referensi cepat (modul/migrasi/pustaka baru)
+  - `.devin/skills/context-checkpoint/SKILL.md` — doc range 00-100, catatan pustaka count
+  - `.devin/skills/knowledge-base-curator/SKILL.md` — doc range 00-100, new doc 101+, referensi docs 96-100
+  - `.devin/skills/megaplan-executor/SKILL.md` — Next.js 16+, PostgreSQL, migrasi 0019, pustaka count
+  - `pustaka/00-README.md` — statistik 101, update terbaru, path OS-aware
+  - `.devin/SESSION_MEMORY.md` — path OS-aware, doc count 101, checkpoint ini
+- **Struktur aplikasi post-sync:**
+  - Pustaka: 101 docs (00-README + 01-100)
+  - Migrations: 0001-0019 (alembic head = 0019)
+  - Modul analisis: 33 files di `src/market/analysis/` (termasuk astronacci, macro_correlation, strategy_selector, pairs_trading, volume_features, policy_event_scorer, sector_rotation, signal_enhancer, meta_labeling, news_sentiment, cross_market_timezone, execution_analyzer)
+  - Modul data: 21 files di `src/market/data/` (termasuk macro_data_fetcher, satellite_fetcher, refresh_stale, timestamp_validation, sync_to_parquet)
+  - Compute: `src/market/compute/device.py` (GPU/CPU dispatch)
+  - API routes: 16 files (termasuk routes_notifications, routes_recompute)
+  - Scripts: 73 files
+  - Tests: 76 files
+  - Frontend: Next.js (package.json, 17 items di src/)
+  - Docs: 10 files (termasuk AUDIT-E2E-COMPREHENSIVE, MACRO-INDICATOR-CORRELATION-REPORT, ASTRONACCI-INTEGRATION-REPORT)
+- **Pending:** Tidak ada perubahan kode Python. Hanya rules/skills/memory/workflows.
+
+## Checkpoint Sesi 2026-08-12 (2) — Engine Ablation Framework
+
+- **Topik:** Pembuatan engine ablation framework untuk menguji setiap signal engine secara terisolasi.
+- **Pemicu:** User bertanya tingkat kebenaran Astronacci → analisis menunjukkan tidak ada backtest isolasi per-engine → user setuju buat framework ablation.
+- **File yang dibuat sesi ini:**
+  - `src/market/ablation/__init__.py` — package init, exports
+  - `src/market/ablation/engine_registry.py` — 15 engine terdaftar (8 SignalEnhancer + 7 MarketContext), default weights, category, factory
+  - `src/market/ablation/isolated_backtest.py` — IsolatedBacktester, simulate_returns, compute_metrics (Sharpe, Sortino, alpha, beta, win rate, max DD), paired t-test
+  - `src/market/ablation/scorecard.py` — Verdict (KEEP/MARGINAL/REMOVE), composite score 0-100, decision logic
+  - `src/market/ablation/ablation_report.py` — AblationReport, JSON output, console summary, weight adjustment recommendations
+  - `scripts/engine_ablation/run_ablation.py` — CLI runner (--tickers, --engines, --start, --end, --dry-run), Astronacci ter-hook ke compute_astronacci_signal()
+  - `scripts/engine_ablation/README.md` — dokumentasi cara pakai
+  - `tests/ablation/__init__.py`
+  - `tests/ablation/test_engine_registry.py` — 8 tests (registry, categories, weights, duplicates, disabled)
+  - `tests/ablation/test_isolated_backtest.py` — 11 tests (simulate_returns, compute_metrics, IsolatedBacktester, benchmark, identical signals, errors)
+  - `tests/ablation/test_scorecard.py` — 11 tests (KEEP/MARGINAL/REMOVE verdicts, composite score, error handling, reasons)
+- **Test results:** 30/30 passed
+- **File yang diupdate:**
+  - `AGENTS.md` §6 referensi cepat — tambah entry engine ablation framework
+- **Engine yang sudah ter-hook ke signal generator aktual:** Astronacci (via `compute_astronacci_signal()`). Engine lain masih placeholder — perlu di-hook ke engine aktual untuk hasil ablation yang bermakna.
+- **Verdict thresholds:** KEEP (p<0.05 AND Δ Sharpe>0.1), MARGINAL (p<0.10 OR small Δ Sharpe), REMOVE (Δ Sharpe≤0 OR p≥0.10)
+- **Composite score:** (1-p)×30 + Δ Sharpe×10 (max 25) + Δ Alpha×20 (max 20) + Δ WinRate×2 (max 15) + isolated Sharpe×10 (max 10) = 0-100
+- **Pending:** ~~Hook engine lain ke signal generator aktual~~ → SELESAI (lihat Checkpoint 6)
+
+## Checkpoint Sesi 2026-08-12 (3) — Engine Ablation: Real Engine Hooks
+
+- **Topik:** Hook semua engine di `generate_engine_signals()` ke modul implementasi aktual untuk hasil ablation yang bermakna.
+- **Pemicu:** User menanyakan apakah ablation sudah mengetahui fungsi masing-masing engine dan apakah hasilnya dapat dipertanggungjawabkan.
+- **File yang diubah sesi ini:**
+  - `src/market/ablation/engine_registry.py` — tambah `SignalType` enum (DIRECTIONAL, TIMING, FILTER, SIZING, CONTEXT) + field `purpose`, `module`, `data_tables` per engine
+  - `src/market/ablation/__init__.py` — export `SignalType`
+  - `scripts/engine_ablation/run_ablation.py` — rewrite `generate_engine_signals()` dengan 13/15 engine ter-hook ke modul aktual:
+    - volume → `compute_vwap()` dari volume_features
+    - event → `PolicyEventScorer.compute_event_signal()` — loads 298 events dari DB
+    - meta → ATR-based filter (proxy, butuh trained LightGBM untuk full)
+    - smart_money → `calculate_retail_absorption()` (butuh broker_flow match)
+    - cross_market → global OHLCV (^N225, ^HSI, 000001.SS, CPO=F) anti-lookahead
+    - sector → `compute_sector_momentum()` + `compute_relative_strength()` vs ^JKSE
+    - pairs → `PairsTradingEngine.compute_spread()` + `compute_zscore()`
+    - astronacci → `compute_astronacci_signal()`
+    - fundamental → fundamental_data table (PE ratio)
+    - macro → macro_data table (BI rate)
+    - news → `NewsSentimentAnalyzer.weighted_sentiment()` keyword backend
+    - commodity → OHLCV CPO=F, GC=F, ^BRENT
+    - global_sentiment → VIX OHLCV + fear_greed table
+    - governance → esg_scores table
+  - `tests/ablation/test_engine_registry.py` — update test untuk new EngineEntry fields
+- **Hasil ablation (8 tickers, 2024-01-01 to 2026-08-12):**
+  - 13/15 engine menghasilkan real signals (non-zero Δ Sharpe)
+  - 2 engine zero: smart_money (broker_flow data format mismatch), ml (no trained model)
+  - Semua verdict REMOVE — tidak ada engine yang memberikan alpha signifikan secara isolated
+  - Hasil ini real: engine memang menghasilkan sinyal dari logika aktualnya
+- **Test results:** 30/30 passed
+- **DB lokal tersedia:** ohlcv (3M), broker_flow (15K), policy_events (179), external_events (119), fundamental_data (1K), macro_data (10K), news (110), fear_greed (1.2K), foreign_flow (178K), esg_scores (164), corporate_governance (208)
+- **Pending:** 
+  - Fix smart_money broker_flow ticker format matching
+  - Train LightGBM model untuk ml dan meta engine
+  - Investigasi mengapa semua engine REMOVE — mungkin perlu evaluasi per-ticker bukan aggregate
+
+## Checkpoint Sesi 2026-08-12 (4) — Pre-flight Data Checker + Isolation Read-Only
+
+- **Topik:** User menanyakan: (1) apakah data sudah diperiksa/diperbaiki, (2) ablation harus terisolasi ke aplikasi, (3) apakah data dan durasi per engine sudah diperiksa sebelum testing, (4) apakah ada engine yang tahu hubungan antar data dengan durasi berbeda.
+- **Pemicu:** User melihat terminal output dengan DB stats dan parquet archive, menanyakan apakah data tersebut sudah diperiksa atau dibutuhkan oleh ablation.
+- **Audit data menemukan masalah:**
+  - `broker_flow`: hanya ticker `__MARKET__`, tidak per-ticker → smart_money engine tidak bisa jalan
+  - `fundamental_data`: hanya 1 row per ticker, 4 hari data (snapshot) → fundamental engine tidak punya time-series
+  - `news`: hanya 110 rows, 2 hari (Jul-Aug 2026) → news engine severely limited
+  - `esg_scores`: data tahunan 2018-2024, tidak ada 2025-2026 → governance engine stale
+  - `^BRENT`: 0 rows → commodity engine missing 1 dari 3 sumber
+  - `^VIX`, `^JKSE`: data berakhir 2026-07-10, bukan 2026-08-12 → 1 bulan gap
+  - Column name mismatches: `pe` bukan `pe_ratio`, `score` bukan `esg_score`, `published_at` bukan `date`, `series_name` bukan `indicator`, `tanggal` bukan `event_date`, `kode`/`nama` bukan `sector`
+- **File yang diubah sesi ini:**
+  - `src/market/ablation/data_checker.py` (BARU) — pre-flight data validation:
+    - `TABLE_COLUMN_MAP`: mapping tabel → date_column, ticker_column, required_columns
+    - `ENGINE_MIN_DAYS`: minimum data days per engine (volume=20, sector=60, pairs=60, ml=200, governance=365)
+    - `DataChecker.check_engine()`: cek tabel exists, row count, date range overlap, column names, per-ticker data
+    - Cross-data duration awareness: hitung INTERSECTION date range jika engine butuh multiple tables
+    - Year-based table handling: ESG/corporate_governance pakai `year` column
+    - Text-format date handling: news `published_at` (RFC822) di-parse di Python
+    - Status: PASS / WARN / SKIP dengan reason detail
+  - `src/market/ablation/engine_registry.py` — tambah field `min_data_days` di EngineEntry
+  - `src/market/ablation/__init__.py` — export DataChecker, EngineDataCheck, CheckStatus
+  - `scripts/engine_ablation/run_ablation.py`:
+    - Tambah PHASE 1: Pre-flight data check (DataChecker) sebelum backtest
+    - Engine dengan SKIP tidak di-test → mencegah false "REMOVE" dari data gap
+    - Docstring eksplisit: ISOLATION GUARANTEE (READ-ONLY, tidak write DB, tidak modifikasi aplikasi)
+    - Fix column names: `pe` bukan `pe_ratio`, `series_name` bukan `indicator`, `published_at` bukan `date`, `headline` bukan `title`, `score` bukan `esg_score`
+    - Fix macro engine: implementasi proper directional signal dari BI rate changes
+- **Hasil pre-flight check:**
+  - PASS: 10 engine (volume, event, meta, cross_market, sector, pairs, astronacci, macro, commodity, global_sentiment)
+  - WARN: 3 engine (fundamental=3 hari overlap, news=4 hari overlap, governance=4/8 ticker missing ESG)
+  - SKIP: 2 engine (smart_money=broker_flow tidak per-ticker, ml=butuh trained model)
+- **Hasil ablation (13 engine tested):**
+  - 13/13 engine menghasilkan real signals (non-zero Δ Sharpe)
+  - Semua verdict REMOVE — tidak ada engine yang memberikan alpha signifikan secara isolated
+  - commodity dan volume memiliki Δ Sharpe paling negatif (-1.66, -1.24) — engine ini mengurangi performa
+- **Test results:** 30/30 passed
+- **Pending:** 
+  - Fix smart_money: broker_flow data perlu per-ticker (bukan __MARKET__)
+  - Train LightGBM model untuk ml dan meta engine
+  - Backfill fundamental_data time-series (scheduler weekly)
+  - Backfill news data (lebih dari 2 hari)
+  - Per-ticker evaluation sebagai alternatif aggregate
+

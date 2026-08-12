@@ -24,7 +24,7 @@ When invoked (e.g., `/context-checkpoint` or `/context-checkpoint about-to-start
    - **Files read or modified**
    - **Pending tasks / next steps**
    - **Dependencies / blockers**
-   - **References to relevant docs (00-93)**
+   - **References to relevant docs (00-100)**
 3. Append the summary to `.devin/SESSION_MEMORY.md`.
 4. If supported (Cascade memory tool or Devin equivalent), save the same summary as a memory entry with tags: `pustaka`, `context_checkpoint`, `market`, `<active-topic>`.
 5. Notify the user that a checkpoint has been written and remind them to read it at the start of the next session.
@@ -37,3 +37,4 @@ Rules:
 - Always update `.devin/SESSION_MEMORY.md` in the project root.
 - **Cross-OS (AGENTS.md §7):** Use OS-aware paths (`market.paths`); never hardcode Linux-only paths in checkpoint entries.
 - **Terminal (AGENTS.md §8):** Never use `tail`/`head`/`Select-Object -Last` to truncate command output.
+- **Pustaka count (AGENTS.md §1):** 101 docs (00-README + 01-100). Update references accordingly.
