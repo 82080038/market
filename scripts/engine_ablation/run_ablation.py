@@ -47,7 +47,7 @@ from market.ablation.engine_registry import (
     SignalType,
     create_default_registry,
 )
-from market.ablation.isolated_backtest import IsolatedBacktester, IsolationResult
+from market.ablation.isolated_backtest import IsolatedBacktester, IsolationResult, simulate_returns, compute_metrics
 from market.ablation.ablation_report import generate_report
 from market.backtest.strategies import Signal
 from market.db.engine import get_sessionmaker
@@ -68,6 +68,30 @@ DEFAULT_TICKERS = [
     "MDKA.JK", "UNTR.JK", "TLKM.JK", "ASII.JK",
 ]
 
+
+def _load_equity_tickers_from_db(session, limit: int = 20) -> list[str]:
+    """Load IDX equity tickers from instruments table.
+
+    Filters by exchange_mic='XIDX' and asset_class='EQUITY_INDIVIDUAL'
+    to exclude indices (^JKSE, ^JKLQ45), commodities, ETFs, etc.
+
+    Falls back to DEFAULT_TICKERS if DB is unavailable.
+    """
+    try:
+        from market.db.models import Instrument
+        rows = session.execute(
+            select(Instrument.ticker).where(
+                Instrument.exchange_mic == "XIDX",
+                Instrument.asset_class == "EQUITY_INDIVIDUAL",
+                Instrument.is_active == True,  # noqa: E712
+            ).order_by(Instrument.ticker).limit(limit)
+        ).scalars().all()
+        if rows:
+            return list(rows)
+    except Exception as e:
+        logger.warning("Failed to load tickers from DB: %s — using DEFAULT_TICKERS", e)
+    return DEFAULT_TICKERS
+
 DEFAULT_START = "2024-01-01"
 DEFAULT_END = "2026-08-12"
 
@@ -75,17 +99,20 @@ OUTPUT_DIR = Path("data/ablation_reports")
 
 
 def load_ohlcv_data(session, ticker: str, start: str, end: str) -> pd.DataFrame:
-    """Load daily OHLCV from DB into DataFrame."""
+    """Load daily OHLCV from DB into DataFrame.
+
+    Uses raw SQL to avoid ORM/PG schema mismatch (PG table lacks `id` column).
+    """
+    from sqlalchemy import text as sa_text
     rows = session.execute(
-        select(OHLCV)
-        .where(
-            OHLCV.ticker == ticker,
-            OHLCV.timeframe == "1d",
-            OHLCV.timestamp >= start,
-            OHLCV.timestamp <= end,
-        )
-        .order_by(OHLCV.timestamp)
-    ).scalars().all()
+        sa_text(
+            "SELECT timestamp, open, high, low, close, volume "
+            "FROM ohlcv WHERE ticker = :ticker AND timeframe = '1d' "
+            "AND timestamp >= :start AND timestamp <= :end "
+            "ORDER BY timestamp"
+        ),
+        {"ticker": ticker, "start": start, "end": end},
+    ).all()
 
     if not rows:
         return pd.DataFrame()
@@ -103,21 +130,24 @@ def load_ohlcv_data(session, ticker: str, start: str, end: str) -> pd.DataFrame:
         ],
         index=pd.DatetimeIndex([r.timestamp for r in rows]),
     )
+    # Normalize timezone: PG returns tz-aware timestamps, strip tz for consistent comparisons
+    if df.index.tz is not None:
+        df.index = df.index.tz_localize(None)
     return df
 
 
 def load_benchmark(session, start: str, end: str) -> pd.Series:
     """Load IHSG (^JKSE) daily returns as benchmark."""
+    from sqlalchemy import text as sa_text
     rows = session.execute(
-        select(OHLCV)
-        .where(
-            OHLCV.ticker == "^JKSE",
-            OHLCV.timeframe == "1d",
-            OHLCV.timestamp >= start,
-            OHLCV.timestamp <= end,
-        )
-        .order_by(OHLCV.timestamp)
-    ).scalars().all()
+        sa_text(
+            "SELECT timestamp, close FROM ohlcv "
+            "WHERE ticker = '^JKSE' AND timeframe = '1d' "
+            "AND timestamp >= :start AND timestamp <= :end "
+            "ORDER BY timestamp"
+        ),
+        {"start": start, "end": end},
+    ).all()
 
     if not rows:
         return pd.Series(dtype=float)
@@ -126,6 +156,9 @@ def load_benchmark(session, start: str, end: str) -> pd.Series:
         [float(r.close) for r in rows],
         index=pd.DatetimeIndex([r.timestamp for r in rows]),
     )
+    # Normalize timezone: PG returns tz-aware timestamps, strip tz for consistent comparisons
+    if closes.index.tz is not None:
+        closes.index = closes.index.tz_localize(None)
     return closes.pct_change().dropna()
 
 
@@ -158,13 +191,19 @@ def generate_baseline_signals(ohlcv: pd.DataFrame) -> pd.Series:
 
 
 def _load_table_df(table: str, ticker_filter: str | None = None) -> pd.DataFrame:
-    """Load a DB table into a DataFrame via raw query."""
+    """Load a DB table into a DataFrame via raw query.
+
+    Supports both SQLite (?) and PostgreSQL (%s) parameter styles.
+    """
     try:
         from market.db.raw import get_raw_connection
+        from market.config import settings as _settings
+        is_pg = _settings.db_backend == "postgresql"
+        ph = "%s" if is_pg else "?"
         with get_raw_connection() as conn:
             if ticker_filter and table in ("fundamental_data", "esg_scores", "corporate_governance"):
                 cursor = conn.execute(
-                    f"SELECT * FROM {table} WHERE ticker = ?",
+                    f"SELECT * FROM {table} WHERE ticker = {ph}",
                     (ticker_filter,),
                 )
             else:
@@ -684,9 +723,16 @@ def generate_engine_signals(
                     news_df[date_col] = pd.to_datetime(news_df[date_col], errors="coerce", utc=True)
                     news_df = news_df.dropna(subset=[date_col])
                     for idx in signals.index:
+                        # Handle both tz-aware and tz-naive ohlcv index
+                        day_start = idx.normalize()
+                        if day_start.tzinfo is not None:
+                            day_start = day_start.tz_convert("UTC")
+                        else:
+                            day_start = day_start.tz_localize("UTC")
+                        day_end = day_start + pd.Timedelta(days=1)
                         day_news = news_df[
-                            (news_df[date_col] >= idx.tz_localize("UTC").normalize()) &
-                            (news_df[date_col] < idx.tz_localize("UTC").normalize() + pd.Timedelta(days=1))
+                            (news_df[date_col] >= day_start) &
+                            (news_df[date_col] < day_end)
                         ]
                         if not day_news.empty:
                             items = [{"title": row.get(title_col, ""), "date": row[date_col].date()} for _, row in day_news.iterrows()]
@@ -1578,7 +1624,748 @@ def generate_engine_signals(
         except Exception as e:
             logger.warning("Sector global link signal failed: %s", e)
 
+    # ════════════════════════════════════════════════════════════════════
+    # ── MISSING PRODUCTION ENGINES (added to match application pipeline) ─
+    # ════════════════════════════════════════════════════════════════════
+
+    # ── mc_sentiment: Fear & Greed contrarian (MarketContext factor) ────
+    elif engine_name == "mc_sentiment":
+        try:
+            fg_df = data_cache.get("fear_greed")
+            if fg_df is None:
+                fg_df = _load_table_df("fear_greed")
+                data_cache["fear_greed"] = fg_df
+            signals = pd.Series(0, index=ohlcv.index)
+            if not fg_df.empty:
+                fg_date_col = "tanggal" if "tanggal" in fg_df.columns else "date"
+                fg_val_col = "nilai" if "nilai" in fg_df.columns else "value"
+                if fg_date_col in fg_df.columns and fg_val_col in fg_df.columns:
+                    fg_df[fg_date_col] = pd.to_datetime(fg_df[fg_date_col], errors="coerce")
+                    fg_df = fg_df.dropna(subset=[fg_date_col, fg_val_col])
+                    fg_indexed = fg_df.set_index(fg_date_col)[fg_val_col].sort_index()
+                    for idx in signals.index:
+                        prior = fg_indexed[fg_indexed.index <= idx]
+                        if not prior.empty:
+                            val = float(prior.iloc[-1])
+                            if val < 25:  # Extreme Fear → contrarian bullish
+                                signals.loc[idx] = 1
+                            elif val > 75:  # Extreme Greed → contrarian bearish
+                                signals.loc[idx] = -1
+        except Exception as e:
+            logger.warning("MC sentiment signal failed: %s", e)
+
+    # ── mc_flow: Foreign net flow 5-day cumulative (MarketContext factor) ─
+    elif engine_name == "mc_flow":
+        try:
+            ff_df = data_cache.get("foreign_flow_mc")
+            if ff_df is None:
+                ff_df = _load_table_df("foreign_flow", ticker_filter=ticker)
+                data_cache["foreign_flow_mc"] = ff_df
+            signals = pd.Series(0, index=ohlcv.index)
+            if not ff_df.empty:
+                date_col = "date" if "date" in ff_df.columns else "tanggal"
+                if date_col in ff_df.columns and "foreign_net" in ff_df.columns:
+                    ff_df[date_col] = pd.to_datetime(ff_df[date_col], errors="coerce")
+                    ff_df = ff_df.dropna(subset=[date_col, "foreign_net"]).sort_values(date_col)
+                    ff_indexed = ff_df.set_index(date_col)["foreign_net"]
+                    ff_5d = ff_indexed.rolling(5).sum()
+                    for idx in signals.index:
+                        prior = ff_5d[ff_5d.index <= idx]
+                        if not prior.empty:
+                            val = prior.iloc[-1]
+                            if pd.notna(val):
+                                if val > 0:
+                                    signals.loc[idx] = 1
+                                elif val < 0:
+                                    signals.loc[idx] = -1
+        except Exception as e:
+            logger.warning("MC flow signal failed: %s", e)
+
+    # ── mc_cross_market: Correlation regime (MarketContext factor) ──────
+    elif engine_name == "mc_cross_market":
+        try:
+            global_tickers = ["^GSPC", "^HSI", "^N225", "^JKSE"]
+            global_data = data_cache.get("mc_cm_global_ohlcv")
+            if global_data is None:
+                global_data = _load_global_ohlcv(session, global_tickers, "2024-01-01", "2026-08-12")
+                data_cache["mc_cm_global_ohlcv"] = global_data
+
+            signals = pd.Series(0, index=ohlcv.index)
+            ticker_ret = close.pct_change()
+            corr_window = 60
+
+            for gt in global_tickers:
+                gdf = global_data.get(gt)
+                if gdf is None or gdf.empty:
+                    continue
+                g_ret = gdf["close"].astype(float).pct_change()
+                aligned = pd.DataFrame({"ticker": ticker_ret, "global": g_ret}).dropna()
+                if len(aligned) < corr_window + 20:
+                    continue
+                rolling_corr = aligned["ticker"].rolling(corr_window).corr(aligned["global"]).shift(1)
+                for idx in signals.index:
+                    if idx in rolling_corr.index:
+                        c = rolling_corr.loc[idx]
+                        if pd.notna(c):
+                            if gt == "^JKSE":
+                                # IHSG correlation: high = normal, low = decoupled (opportunity)
+                                if c < 0.3:
+                                    signals.loc[idx] = max(signals.loc[idx], 1)
+                                elif c > 0.8:
+                                    signals.loc[idx] = min(signals.loc[idx], -1)
+                            else:
+                                # Global correlation: high = contagion risk, low = idiosyncratic
+                                if c > 0.7:
+                                    signals.loc[idx] = min(signals.loc[idx], -1)
+                                elif c < 0.2:
+                                    signals.loc[idx] = max(signals.loc[idx], 1)
+        except Exception as e:
+            logger.warning("MC cross-market signal failed: %s", e)
+
+    # ── mc_astronacci: Astronacci as MarketContext factor (low weight) ──
+    elif engine_name == "mc_astronacci":
+        try:
+            from market.analysis.astronacci import compute_astronacci_signal
+            signals = pd.Series(0, index=ohlcv.index)
+            for idx in signals.index:
+                dt = idx.to_pydatetime().replace(tzinfo=timezone.utc)
+                result = compute_astronacci_signal(dt, window_days=3)
+                if result["cycle_count"] > 0:
+                    ts = result["time_signal"]
+                    if ts < -0.1:
+                        signals.loc[idx] = -1
+                    elif ts > 0.1:
+                        signals.loc[idx] = 1
+        except Exception as e:
+            logger.warning("MC astronacci signal failed: %s", e)
+
+    # ── multi_factor: LightGBM 3-class BUY/SELL/HOLD with PCA ──────────
+    elif engine_name == "multi_factor":
+        try:
+            import lightgbm as lgb
+            from sklearn.preprocessing import StandardScaler
+            from sklearn.decomposition import PCA
+
+            close_f = close.astype(float)
+            high = ohlcv["high"].astype(float)
+            low = ohlcv["low"].astype(float)
+            volume = ohlcv["volume"].astype(float)
+            returns = close_f.pct_change()
+
+            # Endogenous features (subset of production 30 features)
+            rsi = _rsi(close_f, 14).shift(1)
+            mom_5 = returns.rolling(5).sum().shift(1)
+            mom_20 = returns.rolling(20).sum().shift(1)
+            vol_20 = returns.rolling(20).std().shift(1)
+            lag_1 = returns.shift(1)
+            lag_2 = returns.shift(2)
+            lag_3 = returns.shift(3)
+            autocorr_5 = returns.rolling(5).apply(lambda x: x.autocorr(lag=1) if len(x) > 2 else 0, raw=False).shift(1)
+            autocorr_10 = returns.rolling(10).apply(lambda x: x.autocorr(lag=1) if len(x) > 2 else 0, raw=False).shift(1)
+
+            # Candlestick
+            body_ratio = ((close_f - ohlcv["open"].astype(float)).abs() / (high - low).replace(0, np.nan)).shift(1)
+            doji = (body_ratio < 0.1).astype(float).shift(1)
+
+            # Bollinger
+            bb_mid = close_f.rolling(20).mean()
+            bb_std = close_f.rolling(20).std()
+            bb_width = (bb_std / bb_mid).shift(1)
+            bb_pct = ((close_f - bb_mid) / (2 * bb_std).replace(0, np.nan)).shift(1)
+
+            # MACD
+            ema_12 = close_f.ewm(span=12, adjust=False).mean()
+            ema_26 = close_f.ewm(span=26, adjust=False).mean()
+            macd = (ema_12 - ema_26).shift(1)
+            macd_signal = macd.rolling(9).mean().shift(1)
+
+            # MA ratios
+            ma_5 = close_f.rolling(5).mean()
+            ma_20 = close_f.rolling(20).mean()
+            ma_ratio = (ma_5 / ma_20).shift(1)
+
+            # Volume features
+            vol_ma = volume.rolling(20).mean()
+            vol_ratio = (volume / vol_ma.replace(0, np.nan)).shift(1)
+            vwap = (high * volume + low * volume + close_f * volume).rolling(20).sum() / volume.rolling(20).sum().replace(0, np.nan)
+            vwap_ratio = (close_f / vwap).shift(1)
+
+            # ATR
+            tr = (high - low).abs()
+            atr_14 = tr.rolling(14).mean()
+            atr_50 = tr.rolling(50).mean()
+            atr_ratio = (atr_14 / atr_50.replace(0, np.nan)).shift(1)
+
+            features = pd.DataFrame({
+                "rsi": rsi, "mom_5": mom_5, "mom_20": mom_20, "vol_20": vol_20,
+                "lag_1": lag_1, "lag_2": lag_2, "lag_3": lag_3,
+                "autocorr_5": autocorr_5, "autocorr_10": autocorr_10,
+                "body_ratio": body_ratio, "doji": doji,
+                "bb_width": bb_width, "bb_pct": bb_pct,
+                "macd": macd, "macd_signal": macd_signal,
+                "ma_ratio": ma_ratio, "vol_ratio": vol_ratio,
+                "vwap_ratio": vwap_ratio, "atr_ratio": atr_ratio,
+            }).dropna()
+
+            # Label: 3-class (up >1% = 2, down <-1% = 0, else 1)
+            labels = returns.shift(-1).apply(
+                lambda x: 2 if x > 0.01 else 0 if x < -0.01 else 1
+            ).dropna()
+
+            common_idx = features.index.intersection(labels.index)
+            if len(common_idx) > 252:
+                X_all = features.loc[common_idx].values
+                y_all = labels.loc[common_idx].values
+
+                signals = pd.Series(0, index=ohlcv.index)
+
+                # Walk-forward: 80/20 split, retrain every 60 days
+                initial_train = int(len(common_idx) * 0.8)
+                retrain_interval = 60
+                model = None
+                scaler = None
+                pca = None
+                last_train_end = 0
+
+                for i in range(initial_train, len(common_idx)):
+                    if model is None or (i - last_train_end) >= retrain_interval:
+                        X_train = X_all[:i]
+                        y_train = y_all[:i]
+                        scaler = StandardScaler()
+                        X_train_s = scaler.fit_transform(X_train)
+                        # PCA: reduce to min(18, n_features) components
+                        n_components = min(18, X_train_s.shape[1])
+                        pca = PCA(n_components=n_components, random_state=42)
+                        X_train_pca = pca.fit_transform(X_train_s)
+                        model = lgb.LGBMClassifier(
+                            n_estimators=300,
+                            max_depth=5,
+                            learning_rate=0.05,
+                            subsample=0.8,
+                            colsample_bytree=0.8,
+                            random_state=42,
+                            verbose=-1,
+                        )
+                        model.fit(X_train_pca, y_train)
+                        last_train_end = i
+
+                    # Predict
+                    X_bar = pca.transform(scaler.transform(X_all[i:i+1]))
+                    y_proba = model.predict_proba(X_bar)[0]
+                    # Signal = P(BUY) - P(SELL)
+                    p_buy = y_proba[2] if len(y_proba) > 2 else 0.0
+                    p_sell = y_proba[0] if len(y_proba) > 0 else 0.0
+                    signal_val = p_buy - p_sell
+
+                    idx = common_idx[i]
+                    if signal_val > 0.15:
+                        signals.loc[idx] = 1
+                    elif signal_val < -0.15:
+                        signals.loc[idx] = -1
+
+                logger.debug("Multi-factor: LightGBM 3-class, %d predictions", len(common_idx) - initial_train)
+            else:
+                logger.debug("Multi-factor: insufficient data (%d samples)", len(common_idx))
+        except Exception as e:
+            logger.warning("Multi-factor signal failed: %s", e)
+
+    # ── pred_ma: MA crossover (PredictionEngine core method) ───────────
+    elif engine_name == "pred_ma":
+        try:
+            close_f = close.astype(float)
+            ma_short = close_f.rolling(5).mean()
+            ma_long = close_f.rolling(20).mean()
+            signals = pd.Series(0, index=ohlcv.index)
+            # MA short > MA long → bullish, else bearish
+            diff = (ma_short - ma_long).shift(1)  # no look-ahead
+            signals[diff > 0] = 1
+            signals[diff < 0] = -1
+        except Exception as e:
+            logger.warning("Pred MA signal failed: %s", e)
+
+    # ── pred_momentum: Damped momentum (PredictionEngine core method) ──
+    elif engine_name == "pred_momentum":
+        try:
+            close_f = close.astype(float)
+            returns = close_f.pct_change()
+            momentum = returns.rolling(5).sum().shift(1)  # 5-day momentum, no look-ahead
+            # Damped: signal direction based on sign, magnitude damped by 0.5
+            signals = pd.Series(0, index=ohlcv.index)
+            signals[momentum > 0] = 1
+            signals[momentum < 0] = -1
+        except Exception as e:
+            logger.warning("Pred momentum signal failed: %s", e)
+
+    # ── pred_pattern: Chart pattern detection (PredictionEngine core) ──
+    elif engine_name == "pred_pattern":
+        try:
+            from market.analysis.pattern_detector import PatternDetector
+            detector = PatternDetector()
+            signals = pd.Series(0, index=ohlcv.index)
+            for i in range(len(ohlcv)):
+                if i < 30:
+                    continue
+                window_df = ohlcv.iloc[:i+1]
+                patterns = detector.detect(ticker, window_df, window_df.index[-1])
+                if patterns:
+                    bullish = sum(1 for p in patterns if p.direction == "bullish")
+                    bearish = sum(1 for p in patterns if p.direction == "bearish")
+                    if bullish > bearish:
+                        signals.iloc[i] = 1
+                    elif bearish > bullish:
+                        signals.iloc[i] = -1
+        except Exception as e:
+            logger.warning("Pred pattern signal failed: %s", e)
+
+    # ── pred_vol_adj: Volatility-adjusted prediction (PredictionEngine) ─
+    elif engine_name == "pred_vol_adj":
+        try:
+            close_f = close.astype(float)
+            high = ohlcv["high"].astype(float)
+            low = ohlcv["low"].astype(float)
+            ma_short = close_f.rolling(5).mean()
+            ma_long = close_f.rolling(20).mean()
+            tr = (high - low).abs()
+            atr = tr.rolling(14).mean()
+            atr_ratio = (atr / atr.rolling(50).mean().replace(0, np.nan)).shift(1)
+            ma_diff = (ma_short - ma_long).shift(1)
+
+            signals = pd.Series(0, index=ohlcv.index)
+            for idx in signals.index:
+                if idx in ma_diff.index and idx in atr_ratio.index:
+                    md = ma_diff.loc[idx]
+                    ar = atr_ratio.loc[idx]
+                    if pd.notna(md) and pd.notna(ar):
+                        if md > 0 and ar < 1.5:
+                            signals.loc[idx] = 1  # MA bullish + low vol → confident buy
+                        elif md < 0 and ar < 1.5:
+                            signals.loc[idx] = -1  # MA bearish + low vol → confident sell
+                        elif md > 0 and ar >= 1.5:
+                            signals.loc[idx] = 0  # High vol → no signal (uncertain)
+        except Exception as e:
+            logger.warning("Pred vol-adj signal failed: %s", e)
+
+    # ════════════════════════════════════════════════════════════════════
+    # ── GLOBAL MARKET AI ENGINES (pustaka research integration) ─────────
+    # ════════════════════════════════════════════════════════════════════
+
+    # ── vta_reasoning: VTA-style verbal technical analysis ──────────────
+    elif engine_name == "vta_reasoning":
+        try:
+            from market.analysis.vta_reasoning import VTAReasoningEngine
+            engine = VTAReasoningEngine(lookback=20)
+            signals = engine.generate_signal_series(ohlcv)
+        except Exception as e:
+            logger.warning("VTA reasoning signal failed: %s", e)
+
+    # ── causal_discovery: CausalStock-style Granger causality ───────────
+    elif engine_name == "causal_discovery":
+        try:
+            from market.analysis.causal_discovery import CausalDiscoveryEngine
+
+            # Load all tickers' OHLCV for cross-ticker causal analysis
+            all_tickers = data_cache.get("all_tickers", [ticker])
+            all_ohlcv = data_cache.get("causal_all_ohlcv")
+            if all_ohlcv is None:
+                all_ohlcv = {}
+                for t in all_tickers:
+                    t_df = load_ohlcv_data(session, t, "2024-01-01", "2026-08-12")
+                    if not t_df.empty:
+                        all_ohlcv[t] = t_df["close"].astype(float).pct_change()
+                # Add IHSG as market factor
+                ihsg = data_cache.get("ihsg_ohlcv")
+                if ihsg is None:
+                    ihsg = load_ohlcv_data(session, "^JKSE", "2024-01-01", "2026-08-12")
+                    data_cache["ihsg_ohlcv"] = ihsg
+                if not ihsg.empty:
+                    all_ohlcv["^JKSE"] = ihsg["close"].astype(float).pct_change()
+                data_cache["causal_all_ohlcv"] = all_ohlcv
+
+            # Build returns DataFrame
+            returns_df = pd.DataFrame(all_ohlcv).dropna()
+            if len(returns_df) >= 120 and ticker in returns_df.columns:
+                engine = CausalDiscoveryEngine(max_lag=3, retest_interval=60, min_data_days=120)
+                signals = engine.generate_signal_series(ticker, returns_df)
+            else:
+                signals = pd.Series(0, index=ohlcv.index)
+        except Exception as e:
+            logger.warning("Causal discovery signal failed: %s", e)
+
+    # ── denoised_news: Multi-perspective denoised news scoring ──────────
+    elif engine_name == "denoised_news":
+        try:
+            from market.analysis.denoised_news import DenoisedNewsEncoder
+
+            news_df = data_cache.get("denoised_news_df")
+            if news_df is None:
+                news_df = _load_table_df("news", ticker_filter=ticker)
+                data_cache["denoised_news_df"] = news_df
+
+            encoder = DenoisedNewsEncoder()
+            signals = encoder.generate_signal_series(
+                news_df, ticker, ohlcv.index, lookback_days=5,
+            )
+        except Exception as e:
+            logger.warning("Denoised news signal failed: %s", e)
+
+    # ── spillover_lab: Full Diebold-Yilmaz spillover index ──────────────
+    elif engine_name == "spillover_lab":
+        try:
+            from market.analysis.spillover_lab import SpilloverLabEngine
+
+            global_tickers = ["^GSPC", "^N225", "^HSI"]
+            global_data = data_cache.get("spillover_lab_global_ohlcv")
+            if global_data is None:
+                global_data = _load_global_ohlcv(session, global_tickers, "2024-01-01", "2026-08-12")
+                data_cache["spillover_lab_global_ohlcv"] = global_data
+
+            ihsg = data_cache.get("ihsg_ohlcv")
+            if ihsg is None:
+                ihsg = load_ohlcv_data(session, "^JKSE", "2024-01-01", "2026-08-12")
+                data_cache["ihsg_ohlcv"] = ihsg
+
+            if ihsg.empty:
+                signals = pd.Series(0, index=ohlcv.index)
+            else:
+                # Build returns DataFrame with ticker + IHSG + global
+                ret_data = {ticker: close.pct_change(), "^JKSE": ihsg["close"].astype(float).pct_change()}
+                for gt in global_tickers:
+                    gdf = global_data.get(gt)
+                    if gdf is not None and not gdf.empty:
+                        ret_data[gt] = gdf["close"].astype(float).pct_change()
+
+                returns_df = pd.DataFrame(ret_data).dropna()
+
+                if len(returns_df) >= 120:
+                    engine = SpilloverLabEngine(
+                        lag_order=2, horizon=10, window=120, retest_interval=60,
+                    )
+                    signals = engine.generate_signal_series(ticker, returns_df)
+                else:
+                    signals = pd.Series(0, index=ohlcv.index)
+        except Exception as e:
+            logger.warning("Spillover lab signal failed: %s", e)
+
     return signals
+
+
+def build_composite_signal(
+    engine_signals: dict[str, pd.Series],
+    engine_entries: list,
+    baseline_signals: pd.Series,
+    index: pd.Index,
+) -> pd.Series:
+    """Build a weighted composite signal from multiple engine signals.
+
+    Mimics the real application pipeline (SignalEnhancer + MarketContextProvider)
+    by blending engine signals using their registry default_weight.
+
+    Signal type handling:
+    - DIRECTIONAL: weighted vote → contributes to direction
+    - TIMING: modulates confidence (acts as gate)
+    - FILTER: vetoes signals (can zero out directional signals)
+    - CONTEXT: modulates signal strength (scales directional)
+    - SIZING: scales confidence (treated like context)
+
+    Args:
+        engine_signals: Dict of engine_name → signal Series.
+        engine_entries: List of EngineEntry objects with weights.
+        baseline_signals: Baseline technical signals (MA+RSI).
+        index: OHLCV index to align signals.
+
+    Returns:
+        Composite signal series {-1, 0, +1}.
+    """
+    from market.ablation.engine_registry import SignalType
+
+    # Start with baseline as the foundation
+    composite = baseline_signals.copy().astype(float)
+
+    # Separate engines by signal type
+    directional_signals = {}
+    directional_weights = {}
+    filter_signals = {}
+    context_signals = {}
+    timing_signals = {}
+
+    for entry in engine_entries:
+        if entry.name not in engine_signals:
+            continue
+        sig = engine_signals[entry.name]
+        if entry.signal_type == SignalType.DIRECTIONAL:
+            directional_signals[entry.name] = sig
+            directional_weights[entry.name] = entry.default_weight
+        elif entry.signal_type == SignalType.FILTER:
+            filter_signals[entry.name] = sig
+            directional_weights[entry.name] = entry.default_weight * 0.5  # half weight
+        elif entry.signal_type in (SignalType.CONTEXT, SignalType.SIZING):
+            context_signals[entry.name] = sig
+            directional_weights[entry.name] = entry.default_weight * 0.3  # reduced weight
+        elif entry.signal_type == SignalType.TIMING:
+            timing_signals[entry.name] = sig
+            directional_weights[entry.name] = entry.default_weight * 0.5
+
+    # Weighted vote from all engines
+    total_weight = sum(directional_weights.values())
+    if total_weight > 0 and directional_signals:
+        weighted_sum = pd.Series(0.0, index=index)
+        for name, sig in directional_signals.items():
+            w = directional_weights[name] / total_weight
+            aligned = sig.reindex(index).fillna(0)
+            weighted_sum += aligned * w
+
+        # Apply context modulation (scale by context signals)
+        if context_signals:
+            context_scale = pd.Series(1.0, index=index)
+            for sig in context_signals.values():
+                aligned = sig.reindex(index).fillna(0)
+                # Context signals in [-1, 1] → scale [0.5, 1.5]
+                context_scale *= (1.0 + aligned * 0.5)
+            weighted_sum *= context_scale
+
+        # Apply timing gates (reduce signal when timing says inactive)
+        if timing_signals:
+            for sig in timing_signals.values():
+                aligned = sig.reindex(index).fillna(0)
+                # Where timing signal is 0, reduce composite by 50%
+                gate = 1.0 - (aligned.abs() == 0).astype(float) * 0.5
+                weighted_sum *= gate
+
+        # Convert weighted sum to discrete signals
+        composite = pd.Series(0, index=index)
+        composite[weighted_sum > 0.15] = 1
+        composite[weighted_sum < -0.15] = -1
+
+        # Apply filters (veto): where any filter says 0, zero out the signal
+        for sig in filter_signals.values():
+            aligned = sig.reindex(index).fillna(0)
+            # Filter engine outputs 0 → veto
+            veto_mask = aligned == 0
+            composite[veto_mask] = 0
+
+    return composite
+
+
+def run_pipeline_ablation(
+    tickers: list[str],
+    engines: list[str],
+    start: str,
+    end: str,
+    output_dir: Path,
+) -> None:
+    """Run pipeline (leave-one-out) ablation study.
+
+    For each engine X:
+    1. Generate signals from ALL engines
+    2. Build full composite (weighted blend of all engines)
+    3. Build composite WITHOUT engine X
+    4. delta = backtest(full_composite) - backtest(composite_without_X)
+    5. Positive delta → engine X contributes to the pipeline
+
+    This tests engines as they actually function in the application —
+    as part of a modular pipeline where output from one module feeds
+    into the composite signal.
+    """
+    registry = create_default_registry()
+
+    if engines[0] == "all":
+        engine_entries = registry.enabled_entries()
+    else:
+        engine_entries = []
+        for name in engines:
+            entry = registry.get(name)
+            if entry is None:
+                logger.error("Unknown engine: %s", name)
+                continue
+            engine_entries.append(entry)
+
+    if not engine_entries:
+        logger.error("No valid engines to test")
+        return
+
+    # Pre-flight data check
+    from market.ablation.data_checker import DataChecker
+    checker = DataChecker()
+    check_results = checker.check_engines(engine_entries, tickers, start, end)
+
+    runnable_engines = []
+    skipped_engines = []
+    for entry in engine_entries:
+        result = check_results.get(entry.name)
+        if result and result.status.value == "PASS":
+            runnable_engines.append(entry)
+        else:
+            reason = result.reason if result else "Unknown"
+            skipped_engines.append((entry.name, reason))
+
+    if skipped_engines:
+        logger.info("Skipping %d engines due to insufficient data:", len(skipped_engines))
+        for name, reason in skipped_engines:
+            logger.info("  ✗ %s: %s", name, reason)
+
+    if not runnable_engines:
+        logger.error("No engines have sufficient data to run ablation")
+        return
+
+    logger.info("")
+    logger.info("PHASE 2: Pipeline (leave-one-out) backtest (%d engines)", len(runnable_engines))
+    logger.info("=" * 70)
+    logger.info("Method: For each engine X, compare full pipeline vs pipeline-without-X")
+    logger.info("Delta = backtest(all_engines) - backtest(all_minus_X)")
+    logger.info("Positive delta → engine contributes to pipeline")
+    logger.info("=" * 70)
+
+    engine_entries = runnable_engines
+    engine_names = [e.name for e in engine_entries]
+
+    session = get_sessionmaker()()
+    backtester = IsolatedBacktester()
+
+    benchmark = load_benchmark(session, start, end)
+    if benchmark.empty:
+        logger.warning("No IHSG benchmark data — alpha/beta will be 0")
+
+    data_cache: dict = {"all_tickers": tickers}
+    all_results: list[IsolationResult] = []
+
+    try:
+        for ticker in tickers:
+            logger.info("Loading data for %s...", ticker)
+            ohlcv = load_ohlcv_data(session, ticker, start, end)
+
+            if ohlcv.empty or len(ohlcv) < 60:
+                logger.warning("  Insufficient data for %s (%d bars), skipping", ticker, len(ohlcv))
+                continue
+
+            logger.info("  %d bars (%s to %s)", len(ohlcv), ohlcv.index[0].date(), ohlcv.index[-1].date())
+
+            baseline_signals = generate_baseline_signals(ohlcv)
+
+            # ── Generate signals from ALL engines for this ticker ──
+            logger.info("  Generating signals for all %d engines...", len(engine_entries))
+            engine_signals: dict[str, pd.Series] = {}
+            for entry in engine_entries:
+                sig = generate_engine_signals(
+                    ohlcv, entry.name, baseline_signals, ticker, session, data_cache,
+                )
+                engine_signals[entry.name] = sig
+
+            # ── Build full composite (all engines) ──
+            full_composite = build_composite_signal(
+                engine_signals, engine_entries, baseline_signals, ohlcv.index,
+            )
+            full_ret = simulate_returns(ohlcv, full_composite, backtester.cost_per_trade)
+            full_metrics = compute_metrics(full_ret, benchmark if not benchmark.empty else None)
+
+            logger.info("  Full pipeline: Sharpe=%.4f, Alpha=%.4f, WinRate=%.1f%%",
+                        full_metrics["sharpe_ratio"], full_metrics["alpha"],
+                        full_metrics["win_rate_pct"])
+
+            # ── Leave-one-out: for each engine, build composite without it ──
+            for entry in engine_entries:
+                loo_name = entry.name
+                loo_entries = [e for e in engine_entries if e.name != loo_name]
+                loo_signals = {k: v for k, v in engine_signals.items() if k != loo_name}
+
+                loo_composite = build_composite_signal(
+                    loo_signals, loo_entries, baseline_signals, ohlcv.index,
+                )
+
+                result = backtester.run(
+                    engine_name=loo_name,
+                    ohlcv=ohlcv,
+                    baseline_signals=full_composite,  # "baseline" is now the full pipeline
+                    engine_signals=loo_composite,     # "engine" is the reduced pipeline
+                    benchmark_returns=benchmark if not benchmark.empty else None,
+                )
+
+                # Invert delta: we want full - without_X, but backtester computes engine - baseline
+                # So delta = loo - full = -(full - loo) → we need to negate
+                for key in result.delta_metrics:
+                    result.delta_metrics[key] = -result.delta_metrics[key]
+
+                all_results.append(result)
+
+                if result.error:
+                    logger.error("    FAILED: %s", result.error)
+                else:
+                    logger.info(
+                        "    %s: Δ Sharpe=%+.4f, Δ Alpha=%+.4f, p=%.4f, sig=%s",
+                        loo_name,
+                        result.delta_sharpe,
+                        result.delta_alpha,
+                        result.p_value,
+                        result.is_significant,
+                    )
+
+    finally:
+        session.close()
+
+    # Generate report
+    if not all_results:
+        logger.error("No results to report")
+        return
+
+    # Aggregate results across tickers
+    engine_names_unique = list(dict.fromkeys(r.engine_name for r in all_results))
+    aggregated: list[IsolationResult] = []
+
+    for name in engine_names_unique:
+        engine_results = [r for r in all_results if r.engine_name == name and not r.error]
+        if not engine_results:
+            if any(r.engine_name == name for r in all_results):
+                err = next(r for r in all_results if r.engine_name == name)
+                aggregated.append(IsolationResult(
+                    engine_name=name,
+                    baseline_metrics={},
+                    isolated_metrics={},
+                    error=err.error,
+                ))
+            continue
+
+        avg_baseline: dict[str, float] = {}
+        avg_isolated: dict[str, float] = {}
+        avg_delta: dict[str, float] = {}
+
+        keys = engine_results[0].baseline_metrics.keys()
+        for key in keys:
+            vals_b = [r.baseline_metrics.get(key, 0) for r in engine_results]
+            vals_i = [r.isolated_metrics.get(key, 0) for r in engine_results]
+            vals_d = [r.delta_metrics.get(key, 0) for r in engine_results]
+            avg_baseline[key] = sum(vals_b) / len(vals_b)
+            avg_isolated[key] = sum(vals_i) / len(vals_i)
+            avg_delta[key] = sum(vals_d) / len(vals_d)
+
+        avg_p = sum(r.p_value for r in engine_results) / len(engine_results)
+        avg_t = sum(r.t_statistic for r in engine_results) / len(engine_results)
+        total_obs = sum(r.n_observations for r in engine_results)
+
+        aggregated.append(IsolationResult(
+            engine_name=name,
+            baseline_metrics=avg_baseline,
+            isolated_metrics=avg_isolated,
+            delta_metrics=avg_delta,
+            p_value=avg_p,
+            t_statistic=avg_t,
+            is_significant=avg_p < 0.05,
+            n_observations=total_obs,
+        ))
+
+    period_str = f"{start} to {end}"
+    report = generate_report(aggregated, tickers, period_str, n_engines_tested=len(engine_entries))
+
+    timestamp_str = datetime.now(timezone.utc).strftime("%Y%m%d_%H%M%S")
+    output_path = output_dir / f"ablation_pipeline_report_{timestamp_str}.json"
+    report.save_json(output_path)
+
+    try:
+        run_id = report.save_to_db()
+        logger.info("Report saved to DB (run_id=%s)", run_id)
+    except Exception as e:
+        logger.warning("Failed to save ablation run to DB: %s", e)
+
+    report.print_summary()
+    logger.info("Pipeline report saved to: %s", output_path)
 
 
 def run_ablation(
@@ -1587,8 +2374,13 @@ def run_ablation(
     start: str,
     end: str,
     output_dir: Path,
+    mode: str = "isolated",
 ) -> None:
     """Run ablation study across specified engines and tickers.
+
+    Args:
+        mode: "isolated" (test each engine alone), "pipeline" (leave-one-out),
+              "both" (run both modes for comparison).
 
     ISOLATION GUARANTEE:
         This function is READ-ONLY. It reads from the application database
@@ -1602,6 +2394,41 @@ def run_ablation(
         Engines with insufficient data (missing tables, too few rows,
         inadequate date range overlap) are SKIPPED with a clear reason.
         This prevents false "REMOVE" verdicts caused by data gaps.
+    """
+    # ── Mode dispatch ──
+    if mode == "pipeline":
+        run_pipeline_ablation(tickers, engines, start, end, output_dir)
+        return
+    elif mode == "both":
+        logger.info("=" * 70)
+        logger.info("RUNNING BOTH MODES: isolated + pipeline")
+        logger.info("=" * 70)
+        logger.info("")
+        logger.info("╔══════════════════════════════════════════════════════════╗")
+        logger.info("║  MODE 1: ISOLATED (each engine tested independently)    ║")
+        logger.info("╚══════════════════════════════════════════════════════════╝")
+        _run_isolated_ablation(tickers, engines, start, end, output_dir)
+        logger.info("")
+        logger.info("╔══════════════════════════════════════════════════════════╗")
+        logger.info("║  MODE 2: PIPELINE (leave-one-out, modular pipeline)     ║")
+        logger.info("╚══════════════════════════════════════════════════════════╝")
+        run_pipeline_ablation(tickers, engines, start, end, output_dir)
+        return
+
+    # Default: isolated mode (original behavior)
+    _run_isolated_ablation(tickers, engines, start, end, output_dir)
+
+
+def _run_isolated_ablation(
+    tickers: list[str],
+    engines: list[str],
+    start: str,
+    end: str,
+    output_dir: Path,
+) -> None:
+    """Run isolated per-engine ablation (original method).
+
+    Tests each engine independently against a baseline (no engine).
     """
     registry = create_default_registry()
 
@@ -1799,8 +2626,14 @@ def main() -> None:
     parser.add_argument(
         "--tickers",
         type=str,
-        default=",".join(DEFAULT_TICKERS),
-        help="Comma-separated tickers (default: BBCA,BBRI,UNVR,ANTM,MDKA,UNTR,TLKM,ASII)",
+        default=None,
+        help="Comma-separated tickers (default: auto-load EQUITY_INDIVIDUAL from DB)",
+    )
+    parser.add_argument(
+        "--max-tickers",
+        type=int,
+        default=20,
+        help="Max tickers to load from DB when --tickers not specified (default: 20)",
     )
     parser.add_argument(
         "--engines",
@@ -1827,19 +2660,35 @@ def main() -> None:
         help=f"Output directory (default: {OUTPUT_DIR})",
     )
     parser.add_argument(
+        "--mode",
+        type=str,
+        default="isolated",
+        choices=["isolated", "pipeline", "both"],
+        help="Ablation mode: 'isolated' (each engine alone), 'pipeline' (leave-one-out), 'both' (default: isolated)",
+    )
+    parser.add_argument(
         "--dry-run",
         action="store_true",
         help="Show config without executing",
     )
     args = parser.parse_args()
 
-    tickers = [t.strip() for t in args.tickers.split(",")]
+    if args.tickers:
+        tickers = [t.strip() for t in args.tickers.split(",")]
+    else:
+        session = get_sessionmaker()()
+        try:
+            tickers = _load_equity_tickers_from_db(session, limit=args.max_tickers)
+        finally:
+            session.close()
+        logger.info("Auto-loaded %d EQUITY_INDIVIDUAL tickers from DB", len(tickers))
     engines = [e.strip() for e in args.engines.split(",")]
     output_dir = Path(args.output_dir)
 
     if args.dry_run:
         registry = create_default_registry()
         print("DRY RUN — Configuration:")
+        print(f"  Mode: {args.mode}")
         print(f"  Tickers: {tickers}")
         print(f"  Engines: {engines}")
         print(f"  Period: {args.start} to {args.end}")
@@ -1847,7 +2696,7 @@ def main() -> None:
         print(f"  Available engines: {registry.names()}")
         return
 
-    run_ablation(tickers, engines, args.start, args.end, output_dir)
+    run_ablation(tickers, engines, args.start, args.end, output_dir, mode=args.mode)
 
 
 if __name__ == "__main__":

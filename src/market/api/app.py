@@ -59,6 +59,7 @@ from fastapi import FastAPI
 
 from market.api.routes_analysis import router as analysis_router
 from market.api.routes_automation import router as automation_router
+from market.api.routes_cosmos import router as cosmos_router
 from market.api.routes_backtest import autonomous_router as autonomous_backtest_router
 from market.api.routes_backtest import router as backtest_router
 from market.api.routes_data import router as data_router
@@ -93,6 +94,7 @@ def create_app() -> FastAPI:
     app.include_router(prices_router)
     app.include_router(recompute_router)
     app.include_router(notifications_router)
+    app.include_router(cosmos_router)
 
     return app
 

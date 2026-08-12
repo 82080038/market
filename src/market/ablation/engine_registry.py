@@ -26,6 +26,7 @@ from typing import Any, Callable
 class EngineCategory(str, Enum):
     SIGNAL_ENHANCER = "signal_enhancer"
     MARKET_CONTEXT = "market_context"
+    PREDICTION_CORE = "prediction_core"
 
 
 class SignalType(str, Enum):
@@ -402,6 +403,7 @@ def create_default_registry() -> EngineRegistry:
         factory=_noop_factory,
         min_data_days=30,
         data_duration_notes="BB window=20d, RSI period=14d. Need 30d minimum for warmup. 252d recommended for multiple regime cycles.",
+        enabled=False,  # BUANG: overlap with Bollinger/RSI in MultiFactor features
     ))
 
     registry.register(EngineEntry(
@@ -421,6 +423,7 @@ def create_default_registry() -> EngineRegistry:
         factory=_noop_factory,
         min_data_days=60,
         data_duration_notes="Lookback=10d, Z-score rolling window=60d. Need 60d minimum for Z-score stability. 252d recommended.",
+        enabled=False,  # BUANG: overlap with pred_momentum (momentum reversal)
     ))
 
     registry.register(EngineEntry(
@@ -439,6 +442,7 @@ def create_default_registry() -> EngineRegistry:
         factory=_noop_factory,
         min_data_days=30,
         data_duration_notes="EWMA short=12d, long=26d, vol window=20d. Need 30d minimum. 252d recommended for vol scaling stability.",
+        enabled=False,  # BUANG: overlap with pred_ma (MA crossover)
     ))
 
     registry.register(EngineEntry(
@@ -457,6 +461,7 @@ def create_default_registry() -> EngineRegistry:
         factory=_noop_factory,
         min_data_days=120,
         data_duration_notes="Vol short=20d, vol long=120d, momentum lookback=20d, reversion lookback=10d. Need 120d minimum for long vol window. 252d recommended.",
+        enabled=False,  # PERTIMBANGKAN: regime detection unik, pending ablation test
     ))
 
     # ── Alternative engines (v2) for underperformers ───────────────────
@@ -479,6 +484,7 @@ def create_default_registry() -> EngineRegistry:
         factory=_noop_factory,
         min_data_days=60,
         data_duration_notes="Commodity vol short=20d, long=60d. Need 60d minimum. 252d recommended.",
+        enabled=False,  # BUANG: commodity (price momentum) sudah dipakai, v2 (vol ratio) redundant
     ))
 
     registry.register(EngineEntry(
@@ -498,6 +504,7 @@ def create_default_registry() -> EngineRegistry:
         factory=_noop_factory,
         min_data_days=60,
         data_duration_notes="RS window=60d, z-score window=60d. Need 60d minimum. 252d recommended.",
+        enabled=False,  # BUANG: sector (momentum+RS) sudah dipakai, v2 (z-score mean-reversion) bertentangan
     ))
 
     registry.register(EngineEntry(
@@ -517,6 +524,7 @@ def create_default_registry() -> EngineRegistry:
         factory=_noop_factory,
         min_data_days=30,
         data_duration_notes="MFI period=14d. Need 30d minimum. 252d recommended for multiple cycles.",
+        enabled=False,  # BUANG: volume (OFI+VWAP+OBV) lebih lengkap, MFI redundant
     ))
 
     registry.register(EngineEntry(
@@ -536,6 +544,7 @@ def create_default_registry() -> EngineRegistry:
         factory=_noop_factory,
         min_data_days=90,
         data_duration_notes="Quarterly comparison needs 90d minimum. 365d recommended for 4 quarters.",
+        enabled=False,  # BUANG: event (PolicyEventScorer) + fundamental sudah cover, v2 redundant
     ))
 
     registry.register(EngineEntry(
@@ -555,6 +564,7 @@ def create_default_registry() -> EngineRegistry:
         factory=_noop_factory,
         min_data_days=252,
         data_duration_notes="Walk-forward: 252d initial train, retrain every 60d. 504d recommended.",
+        enabled=False,  # BUANG: ml (LogReg) + multi_factor (LightGBM 3-class) sudah cover, v2 redundant
     ))
 
     # ── Advanced global-IDX models (pustaka/101) ───────────────────────
@@ -575,6 +585,7 @@ def create_default_registry() -> EngineRegistry:
         factory=_noop_factory,
         min_data_days=120,
         data_duration_notes="GARCH window=20d, DCC needs 120d for stable correlation estimate. 252d recommended.",
+        enabled=False,  # PERTIMBANGKAN: dynamic correlation unik, pending ablation test
     ))
 
     registry.register(EngineEntry(
@@ -594,6 +605,7 @@ def create_default_registry() -> EngineRegistry:
         factory=_noop_factory,
         min_data_days=120,
         data_duration_notes="VAR lag=2, FEVD horizon=10. Need 120d for stable VAR. 252d recommended.",
+        enabled=False,  # PERTIMBANGKAN: spillover index unik, tapi VAR berat, pending ablation test
     ))
 
     registry.register(EngineEntry(
@@ -613,6 +625,7 @@ def create_default_registry() -> EngineRegistry:
         factory=_noop_factory,
         min_data_days=90,
         data_duration_notes="Monthly macro data + daily VIX/USDIDR. Need 90d minimum. 365d recommended.",
+        enabled=False,  # BUANG: mc_flow (actual flow) + smart_money (broker absorption) sudah cover
     ))
 
     registry.register(EngineEntry(
@@ -632,6 +645,7 @@ def create_default_registry() -> EngineRegistry:
         factory=_noop_factory,
         min_data_days=60,
         data_duration_notes="US T-1 + Asian T-0. Need 60d for stable weights. 252d recommended.",
+        enabled=False,  # PERTIMBANGKAN: overnight signal unik, tapi overlap dengan cross_market, pending test
     ))
 
     # ── Sector-Global Link Engine (pustaka/102) ─────────────────────────
@@ -653,6 +667,288 @@ def create_default_registry() -> EngineRegistry:
         factory=_noop_factory,
         min_data_days=60,
         data_duration_notes="Global OHLCV + sector mapping. Need 60d minimum. 252d recommended.",
+        enabled=False,  # PERTIMBANGKAN: sector-global driver unik, tapi overlap dengan commodity, pending test
+    ))
+
+    # ── Missing MarketContext factors (production pipeline) ────────────
+    # These are separate from the SignalEnhancer versions above.
+    # In the application, MarketContext.composite_signal() uses 11 weighted
+    # factors. The original 7 were already registered; these 4 were missing.
+
+    registry.register(EngineEntry(
+        name="mc_sentiment",
+        category=mc,
+        signal_type=SignalType.CONTEXT,
+        default_weight=0.07,
+        purpose="Assess market sentiment via Fear & Greed index (contrarian signal)",
+        description=(
+            "Uses fear_greed table to compute contrarian sentiment signal. "
+            "Extreme Fear (<25) → bullish (contrarian buy), Extreme Greed (>75) "
+            "→ bearish (contrarian sell). This is SEPARATE from global_sentiment "
+            "(which uses VIX + Time-Zone Bucket Grid). In production, both have "
+            "independent weights in MarketContext.composite_signal()."
+        ),
+        module="market.analysis.market_context.MarketContext.sentiment_signal",
+        data_tables=["fear_greed"],
+        factory=_noop_factory,
+        data_duration_notes="CNN F&G uses 125-day SMA for momentum component. Need 30d minimum. 252d recommended.",
+    ))
+
+    registry.register(EngineEntry(
+        name="mc_flow",
+        category=mc,
+        signal_type=SignalType.CONTEXT,
+        default_weight=0.09,
+        purpose="Assess foreign investor flow pressure (5-day net buy/sell momentum)",
+        description=(
+            "Uses foreign_flow table to compute 5-day cumulative net foreign flow. "
+            "Positive net flow → bullish (institutional buying), negative → bearish. "
+            "This is the MarketContext factor, NOT the SignalEnhancer smart_money "
+            "(which uses broker-level absorption) or the foreign_flow prediction model "
+            "(which predicts flow direction from rate differentials)."
+        ),
+        module="market.analysis.market_context.MarketContext.flow_signal",
+        data_tables=["foreign_flow"],
+        factory=_noop_factory,
+        data_duration_notes="5-day rolling cumulative. Need 20d minimum. 90d recommended for flow pattern stability.",
+    ))
+
+    registry.register(EngineEntry(
+        name="mc_cross_market",
+        category=mc,
+        signal_type=SignalType.CONTEXT,
+        default_weight=0.06,
+        purpose="Assess cross-market correlation regime (vs US, HK, JP, IHSG)",
+        description=(
+            "Uses rolling correlation between ticker and global indices (^GSPC, ^HSI, "
+            "^N225, ^JKSE) from relationship_matrix or computed on-the-fly. High corr "
+            "= contagion risk, low = idiosyncratic opportunity. This is the "
+            "MarketContext factor, NOT the SignalEnhancer cross_market (which uses "
+            "pre-IDX Asian market returns for domino effect directional signal)."
+        ),
+        module="market.analysis.market_context.MarketContext.cross_market_signal",
+        data_tables=["ohlcv", "relationship_matrix"],
+        factory=_noop_factory,
+        data_duration_notes="Rolling correlation window=60d. Need 60d minimum. 252d recommended.",
+    ))
+
+    registry.register(EngineEntry(
+        name="mc_astronacci",
+        category=mc,
+        signal_type=SignalType.TIMING,
+        default_weight=0.03,
+        purpose="Astronacci time-cycle as MarketContext factor (low weight timing overlay)",
+        description=(
+            "Same AstronacciEngine as the SignalEnhancer version (weight 0.06), but "
+            "here as a MarketContext factor with lower weight (0.03, or 0.04 for "
+            "Communication Services sector). Provides time_signal and volatility_signal "
+            "as context overlay. The dual registration reflects the actual production "
+            "architecture where Astronacci appears in both pipelines."
+        ),
+        module="market.analysis.astronacci",
+        data_tables=["astronacci_cycles"],
+        factory=_noop_factory,
+        notes="Timing indicator. Same engine as 'astronacci' (SE) but with MC weight.",
+        data_duration_notes="Astronomical calculation — no DB data dependency. 1d minimum.",
+    ))
+
+    # ── MultiFactorModel (production pipeline) ─────────────────────────
+    registry.register(EngineEntry(
+        name="multi_factor",
+        category=mc,
+        signal_type=SignalType.DIRECTIONAL,
+        default_weight=0.14,
+        purpose="LightGBM 3-class BUY/SELL/HOLD with 30+ features + PCA dimensionality reduction",
+        description=(
+            "MultiFactorFeaturePipeline: 30 endogenous features (autocorrelation, "
+            "candlestick, Bollinger, MACD, RSI, momentum, MA ratios, vol regime, VWAP, "
+            "volume trend) + 24 exogenous features (global returns + rolling corr) → "
+            "PCA 18 components (95.8% variance). LightGBM 3-class (BUY=2, HOLD=1, SELL=0), "
+            "300 trees, depth 5, lr 0.05, walk-forward 80/20. Signal = P(BUY) - P(SELL). "
+            "In production, blended 60% with MLSignalProvider (40%) in MarketContext.ml_signal."
+        ),
+        module="market.analysis.multi_factor.MultiFactorModel",
+        data_tables=["ohlcv"],
+        factory=_noop_factory,
+        notes="Requires 200+ samples for training. Walk-forward CV.",
+        data_duration_notes="Walk-forward 80/20 split needs 252d minimum. 504d recommended for stable PCA.",
+    ))
+
+    # ── PredictionEngine core ensemble methods ─────────────────────────
+    # These 4 methods form the ensemble in PredictionEngine._predict_ensemble().
+    # Testing them individually reveals which contributes most to prediction.
+    pc = EngineCategory.PREDICTION_CORE
+
+    registry.register(EngineEntry(
+        name="pred_ma",
+        category=pc,
+        signal_type=SignalType.DIRECTIONAL,
+        default_weight=0.25,
+        purpose="Moving average crossover prediction (MA short vs MA long)",
+        description=(
+            "Computes MA short (5-day) and MA long (20-day) crossover. "
+            "MA short > MA long → bullish, MA short < MA long → bearish. "
+            "One of 4 ensemble methods in PredictionEngine._predict_ensemble(). "
+            "Ticker-specific weights (e.g. UNTR.JK: 0.30, ANTM.JK: 0.15)."
+        ),
+        module="market.analysis.prediction.PredictionEngine._predict_ma",
+        data_tables=["ohlcv"],
+        factory=_noop_factory,
+        min_data_days=20,
+        data_duration_notes="MA short=5d, MA long=20d. Need 20d minimum. 252d recommended.",
+    ))
+
+    registry.register(EngineEntry(
+        name="pred_momentum",
+        category=pc,
+        signal_type=SignalType.DIRECTIONAL,
+        default_weight=0.25,
+        purpose="Damped momentum prediction (recent return × 0.5 damping factor)",
+        description=(
+            "Computes momentum as percentage return over horizon (default 5d), "
+            "applies 0.5 damping factor. Positive momentum → bullish, negative → bearish. "
+            "Confidence = 0.4 + |momentum|/20, capped at 0.8. "
+            "One of 4 ensemble methods in PredictionEngine._predict_ensemble()."
+        ),
+        module="market.analysis.prediction.PredictionEngine._predict_momentum",
+        data_tables=["ohlcv"],
+        factory=_noop_factory,
+        min_data_days=5,
+        data_duration_notes="Momentum period=5d. Need 5d minimum. 60d recommended for momentum stability.",
+    ))
+
+    registry.register(EngineEntry(
+        name="pred_pattern",
+        category=pc,
+        signal_type=SignalType.DIRECTIONAL,
+        default_weight=0.30,
+        purpose="Chart pattern detection prediction (head&shoulders, triangle, double top/bottom)",
+        description=(
+            "PatternDetector detects technical patterns in OHLCV data. "
+            "Aggregates bullish/bearish/neutral pattern signals. "
+            "If no patterns detected → flat. If more bullish → buy, more bearish → sell. "
+            "Highest weight in ensemble (0.30 default, up to 0.40 when no patterns found). "
+            "One of 4 ensemble methods in PredictionEngine._predict_ensemble()."
+        ),
+        module="market.analysis.pattern_detector.PatternDetector",
+        data_tables=["ohlcv"],
+        factory=_noop_factory,
+        min_data_days=30,
+        data_duration_notes="Pattern detection needs 30d minimum for reliable pattern formation. 252d recommended.",
+    ))
+
+    registry.register(EngineEntry(
+        name="pred_vol_adj",
+        category=pc,
+        signal_type=SignalType.DIRECTIONAL,
+        default_weight=0.25,
+        purpose="Volatility-adjusted prediction (ATR-based confidence scaling)",
+        description=(
+            "Combines MA crossover with ATR-based volatility adjustment. "
+            "High ATR → reduce confidence (uncertain regime), low ATR → increase confidence. "
+            "One of 4 ensemble methods in PredictionEngine._predict_ensemble()."
+        ),
+        module="market.analysis.prediction.PredictionEngine._predict_vol_adj",
+        data_tables=["ohlcv"],
+        factory=_noop_factory,
+        min_data_days=20,
+        data_duration_notes="ATR period=14d, MA short=5d, MA long=20d. Need 20d minimum. 252d recommended.",
+    ))
+
+    # ════════════════════════════════════════════════════════════════════
+    # ── GLOBAL MARKET AI ENGINES (pustaka research integration) ─────────
+    # ════════════════════════════════════════════════════════════════════
+
+    # ── vta_reasoning: VTA-style verbal technical analysis ──────────────
+    # Inspired by VTA (Koa et al., ICLR 2026). Converts OHLCV → textual
+    # annotations → rule-based reasoning → signal + natural language explanation.
+    # Future upgrade: replace rules with LLM (FinGPT/Ollama).
+    registry.register(EngineEntry(
+        name="vta_reasoning",
+        category=se,
+        signal_type=SignalType.DIRECTIONAL,
+        default_weight=0.10,
+        purpose="VTA-style verbal reasoning: OHLCV → annotations → reasoning → signal + explanation",
+        description=(
+            "Implements VTA framework (ICLR 2026): (1) Convert OHLCV to textual annotations "
+            "(MA, RSI, momentum, BB, volume, ATR, MACD), (2) Generate reasoning trace from "
+            "annotations using weighted rule-based logic, (3) Produce directional signal + "
+            "Bahasa Indonesia explanation. Rule-based version of LLM reasoning. "
+            "Source: arxiv.org/abs/2511.08616"
+        ),
+        module="market.analysis.vta_reasoning.VTAReasoningEngine",
+        data_tables=["ohlcv"],
+        factory=_noop_factory,
+        min_data_days=20,
+        data_duration_notes="MA20 + BB20 + ATR14. Need 20d minimum. 252d recommended for stable reasoning.",
+    ))
+
+    # ── causal_discovery: CausalStock-style directed causal graph ───────
+    # Inspired by CausalStock (Liu et al., 2024). Uses Granger causality
+    # to discover directed (asymmetric) causal links between tickers.
+    registry.register(EngineEntry(
+        name="causal_discovery",
+        category=se,
+        signal_type=SignalType.DIRECTIONAL,
+        default_weight=0.08,
+        purpose="CausalStock-style lag-dependent causal discovery between tickers (Granger causality)",
+        description=(
+            "Discovers directed causal relationships between tickers using Granger causality "
+            "(practical substitute for CausalStock's variational inference). Builds causal graph "
+            "with F-test significance + sigmoid strength normalization. Signal: weighted consensus "
+            "of causal influencers' recent returns. Re-estimates graph every 60 days (walk-forward). "
+            "Source: arxiv.org/abs/2411.06391"
+        ),
+        module="market.analysis.causal_discovery.CausalDiscoveryEngine",
+        data_tables=["ohlcv"],
+        factory=_noop_factory,
+        min_data_days=120,
+        data_duration_notes="Granger causality needs 120d minimum for stable F-test. 252d recommended.",
+    ))
+
+    # ── denoised_news: CausalStock-style denoised news encoder ──────────
+    # Inspired by CausalStock's Denoised News Encoder + Ploutos' Sentiment Expert.
+    # Scores news from multiple perspectives (sentiment, impact, relevance).
+    registry.register(EngineEntry(
+        name="denoised_news",
+        category=se,
+        signal_type=SignalType.DIRECTIONAL,
+        default_weight=0.10,
+        purpose="Multi-perspective denoised news scoring (sentiment + impact + relevance)",
+        description=(
+            "CausalStock-style denoised news encoder: scores each news article from 3 perspectives "
+            "(sentiment [-1,1], impact [0,100], relevance [0,1]). Produces denoised_score = "
+            "sentiment × impact × relevance. Aggregates with exponential time decay over lookback "
+            "window. Rule-based backend (keyword + lexicon). Future: LLM backend. "
+            "Sources: arxiv.org/abs/2411.06391 (§4.2), arxiv.org/abs/2403.00782 (§3.1.1)"
+        ),
+        module="market.analysis.denoised_news.DenoisedNewsEncoder",
+        data_tables=["news"],
+        factory=_noop_factory,
+        min_data_days=30,
+        data_duration_notes="News sentiment with 5-day exponential decay. Need 30d minimum. 90d recommended.",
+    ))
+
+    # ── spillover_lab: Full Diebold-Yilmaz spillover index ──────────────
+    # Upgraded from simplified spillover_dy. Adds directional TO/FROM/NET measures.
+    registry.register(EngineEntry(
+        name="spillover_lab",
+        category=mc,
+        signal_type=SignalType.CONTEXT,
+        default_weight=0.06,
+        purpose="Full Diebold-Yilmaz spillover: directional TO/FROM/NET + rolling dynamics",
+        description=(
+            "Upgraded spillover_dy with full DY (2012) framework: (1) VAR(p) with optimal lag, "
+            "(2) Generalized FEVD (Pesaran-Shin, order-invariant), (3) Directional TO/FROM/NET "
+            "spillover measures per ticker, (4) Total spillover index, (5) Rolling window "
+            "re-estimation. Signal: high NET spillover → contagion (bearish), low → decoupled (bullish). "
+            "Source: Diebold-Yilmaz (2012), github.com/aalemoro/spillover-lab"
+        ),
+        module="market.analysis.spillover_lab.SpilloverLabEngine",
+        data_tables=["ohlcv"],
+        factory=_noop_factory,
+        min_data_days=120,
+        data_duration_notes="VAR(2) + FEVD(10) needs 120d minimum. 252d recommended for stable estimation.",
     ))
 
     return registry

@@ -133,9 +133,9 @@ TABLE_COLUMN_MAP: dict[str, DataColumnSpec] = {
     ),
     "fear_greed": DataColumnSpec(
         table="fear_greed",
-        date_column="tanggal",
+        date_column="date",
         ticker_column=None,
-        required_columns=["nilai", "label"],
+        required_columns=["value", "label"],
     ),
     "esg_scores": DataColumnSpec(
         table="esg_scores",
@@ -161,6 +161,18 @@ TABLE_COLUMN_MAP: dict[str, DataColumnSpec] = {
         ticker_column=None,
         required_columns=["kode", "nama"],
     ),
+    "relationship_matrix": DataColumnSpec(
+        table="relationship_matrix",
+        date_column=None,  # as_of is a snapshot timestamp, not a historical date range
+        ticker_column="asset_a",
+        required_columns=["asset_b", "correlation"],
+    ),
+    "astronacci_cycles": DataColumnSpec(
+        table="astronacci_cycles",
+        date_column="event_date",
+        ticker_column=None,
+        required_columns=["event_type", "element"],
+    ),
 }
 
 
@@ -181,10 +193,10 @@ ENGINE_MIN_DAYS: dict[str, int] = {
     "fundamental": 365,     # Annual/quarterly fundamental data needs 1 year
     "macro": 90,            # Macro correlation stability (monthly/quarterly)
     "ml": 500,              # Walk-forward train/test split (Lopez de Prado)
-    "news": 30,             # Meaningful sentiment patterns + decay (half-life=7d)
+    "news": 30,             # Sentiment decay (half-life=7d), 30d for meaningful patterns
     "commodity": 60,        # Stable commodity-equity correlation estimates
     "global_sentiment": 125, # F&G 125-day SMA component + VIX 20d MA
-    "governance": 730,      # 2 years for ESG trend (annual frequency)
+    "governance": 730,      # 2 years for ESG trend (annual frequency, 2018-2026 populated)
     # ── New research-backed alpha signal engines ──
     "mean_reversion": 30,   # BB window=20d + RSI period=14d
     "reversal": 60,         # Z-score rolling window=60d
@@ -202,6 +214,21 @@ ENGINE_MIN_DAYS: dict[str, int] = {
     "foreign_flow": 90,     # Monthly macro + daily VIX/USDIDR
     "overnight_idx": 60,    # US T-1 + Asian T-0, 60d for stable weights
     "sector_global_link": 60,  # Sector-specific global driver, 60d minimum
+    # ── Missing production engines (added to match application pipeline) ──
+    "mc_sentiment": 30,        # F&G contrarian, 30d minimum
+    "mc_flow": 20,              # 5-day rolling foreign flow
+    "mc_cross_market": 60,      # 60-day rolling correlation
+    "mc_astronacci": 1,         # Astronomical calculation — no DB data needed
+    "multi_factor": 252,        # Walk-forward 80/20 split needs 252d
+    "pred_ma": 20,              # MA short=5d, MA long=20d
+    "pred_momentum": 5,         # 5-day momentum
+    "pred_pattern": 30,         # Pattern detection needs 30d
+    "pred_vol_adj": 20,         # ATR 14d + MA 20d
+    # ── Global Market AI engines (pustaka research integration) ──
+    "vta_reasoning": 20,        # MA20 + BB20 + ATR14
+    "causal_discovery": 120,    # Granger causality F-test stability
+    "denoised_news": 30,        # News sentiment 5-day decay, 30d for stable patterns
+    "spillover_lab": 120,       # VAR(2) + FEVD(10) stability
 }
 
 
@@ -232,27 +259,55 @@ class DataChecker:
 
         try:
             from market.db.raw import get_raw_connection
+            from market.config import settings as _settings
+            is_pg = _settings.db_backend == "postgresql"
             with get_raw_connection() as conn:
-                # Check if table exists
-                cursor = conn.execute(
-                    "SELECT name FROM sqlite_master WHERE type='table' AND name=?",
-                    (table,),
-                )
-                row = cursor.fetchone()
-                if not row:
-                    info.error = f"Table '{table}' does not exist"
-                    self._table_cache[table] = info
-                    return info
+                if is_pg:
+                    # PostgreSQL: check information_schema
+                    cursor = conn.execute(
+                        "SELECT table_name FROM information_schema.tables "
+                        "WHERE table_schema = 'public' AND table_name = %s",
+                        (table,),
+                    )
+                    row = cursor.fetchone()
+                    if not row:
+                        info.error = f"Table '{table}' does not exist"
+                        self._table_cache[table] = info
+                        return info
 
-                info.exists = True
+                    info.exists = True
 
-                # Get columns and their types
-                cursor = conn.execute(f"PRAGMA table_info({table})")
-                col_info = cursor.fetchall()
-                info.columns = [r[1] for r in col_info]
-                col_types = {r[1]: (r[2] or "").upper() for r in col_info}
+                    # Get columns and types
+                    cursor = conn.execute(
+                        "SELECT column_name, data_type FROM information_schema.columns "
+                        "WHERE table_schema = 'public' AND table_name = %s "
+                        "ORDER BY ordinal_position",
+                        (table,),
+                    )
+                    col_info = cursor.fetchall()
+                    info.columns = [r[0] for r in col_info]
+                    col_types = {r[0]: (r[1] or "").upper() for r in col_info}
+                else:
+                    # SQLite: check sqlite_master
+                    cursor = conn.execute(
+                        "SELECT name FROM sqlite_master WHERE type='table' AND name=?",
+                        (table,),
+                    )
+                    row = cursor.fetchone()
+                    if not row:
+                        info.error = f"Table '{table}' does not exist"
+                        self._table_cache[table] = info
+                        return info
 
-                # Get row count
+                    info.exists = True
+
+                    # Get columns and types
+                    cursor = conn.execute(f"PRAGMA table_info({table})")
+                    col_info = cursor.fetchall()
+                    info.columns = [r[1] for r in col_info]
+                    col_types = {r[1]: (r[2] or "").upper() for r in col_info}
+
+                # Get row count (same for both backends)
                 cursor = conn.execute(f"SELECT COUNT(*) FROM {table}")
                 info.row_count = cursor.fetchone()[0]
 
@@ -338,20 +393,23 @@ class DataChecker:
 
         try:
             from market.db.raw import get_raw_connection
+            from market.config import settings as _settings
+            is_pg = _settings.db_backend == "postgresql"
+            ph = "%s" if is_pg else "?"
             with get_raw_connection() as conn:
                 # Handle year-based tables
                 if spec.date_column == "year":
                     start_year = start.year
                     end_year = end.year
                     cursor = conn.execute(
-                        f"SELECT COUNT(*) FROM {table} WHERE {spec.ticker_column}=? "
-                        f"AND {spec.date_column} >= ? AND {spec.date_column} <= ?",
+                        f"SELECT COUNT(*) FROM {table} WHERE {spec.ticker_column}={ph} "
+                        f"AND {spec.date_column} >= {ph} AND {spec.date_column} <= {ph}",
                         (ticker, start_year, end_year),
                     )
                 else:
                     cursor = conn.execute(
-                        f"SELECT COUNT(*) FROM {table} WHERE {spec.ticker_column}=? "
-                        f"AND {spec.date_column} >= ? AND {spec.date_column} <= ?",
+                        f"SELECT COUNT(*) FROM {table} WHERE {spec.ticker_column}={ph} "
+                        f"AND {spec.date_column} >= {ph} AND {spec.date_column} <= {ph}",
                         (ticker, start.strftime("%Y-%m-%d"), end.strftime("%Y-%m-%d")),
                     )
                 count = cursor.fetchone()[0]
@@ -388,8 +446,8 @@ class DataChecker:
             min_required_days=min_days,
         )
 
-        # Special case: astronacci doesn't need DB data (astronomical calc)
-        if entry.name == "astronacci":
+        # Special case: astronacci engines don't need DB data (astronomical calc)
+        if entry.name in ("astronacci", "mc_astronacci"):
             check.status = CheckStatus.PASS
             check.reason = "Astronomical calculation — no DB data needed"
             check.overlap_days = test_days

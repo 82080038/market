@@ -399,6 +399,30 @@ MARKET_SESSIONS: dict[str, MarketSession] = {
         close_utc=(16, 30), # 16:30 GMT = 16:30 UTC (standard)
         supports_dst=True,
     ),
+    "XNSE": MarketSession(
+        mic_code="XNSE",
+        name="National Stock Exchange of India (NSE)",
+        tz_name="Asia/Kolkata",
+        open_utc=(3, 45),   # 09:15 IST = 03:45 UTC
+        close_utc=(10, 0),  # 15:30 IST = 10:00 UTC
+        supports_dst=False,
+    ),
+    "XBSE": MarketSession(
+        mic_code="XBSE",
+        name="Bombay Stock Exchange (BSE)",
+        tz_name="Asia/Kolkata",
+        open_utc=(3, 45),   # 09:15 IST = 03:45 UTC
+        close_utc=(10, 0),  # 15:30 IST = 10:00 UTC
+        supports_dst=False,
+    ),
+    "XFRA": MarketSession(
+        mic_code="XFRA",
+        name="Frankfurt Stock Exchange (XETRA)",
+        tz_name="Europe/Berlin",
+        open_utc=(8, 0),    # 09:00 CET = 08:00 UTC
+        close_utc=(16, 30), # 17:30 CET = 16:30 UTC
+        supports_dst=True,
+    ),
 }
 
 
