@@ -54,16 +54,18 @@
 - Strategi alternatif & ekspansi data: `pustaka/97-strategi-alternatif-ekspansi-data-2026.md`
 - Matriks relevansi satelit: `pustaka/99-matriks-relevansi-satelit-pasar-modal.md`
 - Astronacci time cycle: `pustaka/100-astronacci-time-cycle-integration.md`
+- Global-IDX advanced models: `pustaka/101-global-idx-advanced-models.md` (DCC-GARCH, Diebold-Yilmaz, Foreign Flow, Overnight IDX)
+- Sector-global link engine: `pustaka/102-sector-global-link-engine.md` (sektor-specific global driver dengan timezone lag)
 - Ticker suffix helper: `src/market/data/ticker_util.py` (`to_yf_ticker`, `from_yf_ticker`, `get_currency`)
 - Cross-platform path helper: `src/market/paths.py` (`default_parquet_archive`, `default_external_data`, `default_parquet_seed`, `default_global_trading_data`)
 - GPU/CPU device dispatch: `src/market/compute/device.py` (`select_device`, VRAM check, workload-type routing)
 - Sync DB → Parquet (hybrid incremental): `src/market/data/sync_to_parquet.py` (`sync_all`, `PARTITIONED_TABLES`, `REFERENCE_TABLES`, `RUNTIME_TABLES`), wrapper `scripts/sync_db_to_parquet.py`, state table `parquet_sync_state` (migration 0008). Lihat `pustaka/95-sync-db-to-parquet.md`.
 - Migrasi SQLite → PostgreSQL: `docs/domino_effect_schema.sql` (DDL), `scripts/migrate_sqlite_to_pg.py` (migrasi), `scripts/backfill_broker_transactions.py` (backfill), `src/market/db/raw.py` (multi-DB helper). Lihat `pustaka/98-migrasi-sqlite-ke-postgresql.md`. Set `DATABASE_URL` di `.env` untuk switch backend.
-- Modul analisis baru: `src/market/analysis/` — `astronacci.py`, `macro_correlation.py`, `strategy_selector.py`, `pairs_trading.py`, `volume_features.py`, `policy_event_scorer.py`, `sector_rotation.py`, `signal_enhancer.py`, `meta_labeling.py`, `news_sentiment.py`, `cross_market_timezone.py`, `execution_analyzer.py`
+- Modul analisis baru: `src/market/analysis/` — `astronacci.py`, `macro_correlation.py`, `strategy_selector.py`, `pairs_trading.py`, `volume_features.py`, `policy_event_scorer.py`, `sector_rotation.py`, `signal_enhancer.py`, `meta_labeling.py`, `news_sentiment.py`, `cross_market_timezone.py`, `execution_analyzer.py`, `alpha_signals.py` (4 alpha signal engines: mean_reversion, reversal, ewma_momentum, regime_switch)
 - Modul data baru: `src/market/data/` — `macro_data_fetcher.py`, `satellite_fetcher.py`, `refresh_stale.py`, `timestamp_validation.py`
 - API routes baru: `src/market/api/routes_notifications.py`, `src/market/api/routes_recompute.py`
 - Migrations: 0001-0019 (alembic head = 0019). Lihat `alembic/versions/`.
-- Engine ablation framework: `src/market/ablation/` — `engine_registry.py` (15 engine: 8 SignalEnhancer + 7 MarketContext), `isolated_backtest.py` (isolasi per-engine, paired t-test), `scorecard.py` (KEEP/MARGINAL/REMOVE verdict), `ablation_report.py` (JSON report + recommendations). Runner: `scripts/engine_ablation/run_ablation.py`. Tests: `tests/ablation/` (30 tests). Lihat `pustaka/96-ai-ml-audit-framework.md` (Pilar 2).
+- Engine ablation framework: `src/market/ablation/` — `engine_registry.py` (29 engine: 22 SignalEnhancer + 7 MarketContext), `isolated_backtest.py` (isolasi per-engine, paired t-test), `scorecard.py` (KEEP/MARGINAL/REMOVE verdict, Bonferroni correction), `ablation_report.py` (JSON report + recommendations), `data_checker.py` (pre-flight data validation). Runner: `scripts/engine_ablation/run_ablation.py`. Tests: `tests/ablation/` (30 tests). Lihat `pustaka/96-ai-ml-audit-framework.md` (Pilar 2), `pustaka/101-global-idx-advanced-models.md`, `pustaka/102-sector-global-link-engine.md`.
 - MEGAPLAN: `MEGAPLAN.md` — eksekusi multi-fase, gunakan skill `/megaplan-executor`.
 
 ## 7. Cross-Platform OS Awareness (Wajib)

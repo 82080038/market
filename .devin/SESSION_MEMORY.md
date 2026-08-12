@@ -622,3 +622,59 @@ ENV=research uv run pytest tests/test_macro_correlation.py -v --no-cov
   - Backfill news data (lebih dari 2 hari)
   - Per-ticker evaluation sebagai alternatif aggregate
 
+---
+
+## Checkpoint Sesi 2026-08-13 — Ablation Framework 29 Engine + Pustaka 101-102
+
+- **Topik:** Pengembangan ablation framework dari 15 → 29 engine, termasuk 4 advanced global-IDX models dan 1 sector-global link engine.
+- **Pemicu:** User menanyakan gap model global market → IDX, kemudian menanyakan apakah ada engine yang menghubungkan sektor spesifik IDX dengan pasar global berdasarkan timezone bursa.
+
+### Yang Ditambahkan:
+
+**Engine baru (14 engine):**
+- 4 alpha signal: mean_reversion, reversal, ewma_momentum, regime_switch (pustaka/97)
+- 5 v2 alternative: commodity_v2, sector_v2, volume_v2, event_v2, ml_v2
+- 4 advanced global-IDX: dcc_garch, spillover_dy, foreign_flow, overnight_idx (pustaka/101)
+- 1 sector-global link: sector_global_link (pustaka/102)
+
+**Pustaka baru:**
+- `pustaka/101-global-idx-advanced-models.md` — DCC-GARCH, Diebold-Yilmaz, Foreign Flow, Overnight IDX
+- `pustaka/102-sector-global-link-engine.md` — Sector-specific global driver dengan timezone lag
+
+**Framework improvements:**
+- Bonferroni correction di scorecard (α = 0.05 / n_engines)
+- Pre-flight data checker dengan per-engine min_data_days
+- Signal generation fidelity: semua 29 engine ter-hook ke modul aktual
+- `data_duration_notes` field di EngineEntry
+
+### Hasil Ablation (29 engines, 8 tickers, 2024-01-01 to 2026-08-12):
+- Bonferroni α = 0.001724
+- Semua 29 engine verdict REMOVE
+- Top performers (positive ΔSharpe + ΔAlpha): reversal (+0.2146/+0.0674), mean_reversion (+0.1835/+0.0058), governance (+0.0935/+0.1062), dcc_garch (+0.0517/+0.0853)
+- sector_global_link: ΔSharpe=-1.4659, Score=22.81 (rank #7/29) — real signals tapi negatif
+- Data issue: overnight_idx, pairs, fundamental, macro menghasilkan signal identik (-0.0609) — likely no signal generated
+
+### Files:
+- `src/market/ablation/engine_registry.py` — 29 engine (22 SE + 7 MC)
+- `src/market/ablation/data_checker.py` — ENGINE_MIN_DAYS untuk 29 engine
+- `src/market/ablation/scorecard.py` — Bonferroni correction
+- `scripts/engine_ablation/run_ablation.py` — signal generation untuk 29 engine
+- `tests/ablation/test_engine_registry.py` — updated 15→29
+- `src/market/analysis/alpha_signals.py` — 4 alpha signal engine classes
+- `pustaka/101-global-idx-advanced-models.md` — BARU
+- `pustaka/102-sector-global-link-engine.md` — BARU
+- `docs/ablation-deep-analysis.md` — updated summary
+- `docs/ablation-follow-up-plan.md` — BARU: rencana tindak lanjut 5 phase
+- `scripts/engine_ablation/README.md` — updated 15→29 engine
+- `AGENTS.md` — updated: 103 pustaka, 29 engine, pustaka 101-102 references
+- `pustaka/00-README.md` — updated: count 103, entry 101 & 102
+
+### Test: 30/30 passed
+
+### Pending (lihat docs/ablation-follow-up-plan.md):
+- Phase 1: Fix overnight_idx data alignment + pairs/fundamental/macro no-signal issue
+- Phase 2: Refine sector_global_link (threshold dinamis, rolling correlation, weighted drivers)
+- Phase 3: Walk-forward validation + expand ticker universe + longer test period
+- Phase 4: Deflated Sharpe Ratio + data quality checks
+- Phase 5: Apply to production (butuh user approval)
+

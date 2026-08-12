@@ -509,19 +509,36 @@ def deflated_sharpe_ratio(sharpe, n_trials, n_obs, skew, kurtosis):
 - Paired t-test untuk statistical significance
 - Transaction cost modeling (0.3% round-trip)
 - No-look-ahead bias dalam engine implementations
-- Engine registry dengan metadata lengkap
+- Engine registry dengan metadata lengkap (29 engine: 22 SignalEnhancer + 7 MarketContext)
+- Bonferroni correction untuk multiple testing (α = 0.05 / n_engines)
+- Signal generation fidelity: semua 29 engine ter-hook ke modul aktual
+- Data duration awareness: ENGINE_MIN_DAYS berbasis riset per engine
+- 4 alpha signal engine baru (mean_reversion, reversal, ewma_momentum, regime_switch)
+- 5 v2 alternative engine (commodity_v2, sector_v2, volume_v2, event_v2, ml_v2)
+- 4 advanced global-IDX model (dcc_garch, spillover_dy, foreign_flow, overnight_idx)
+- 1 sector-global link engine (sector_global_link) — sektor-specific global driver dengan timezone lag
 
 ### Yang PERLU DIPERBAIKI:
-1. **ENGINE_MIN_DAYS**: 9 dari 15 engine punya nilai terlalu rendah
-2. **Multiple testing correction**: Tidak ada Bonferroni/FDR correction
-3. **Signal generation fidelity**: 6 engine punya simplifikasi berlebihan
-4. **Data quality checks**: Hanya cek existence, tidak cek quality
-5. **Walk-forward validation**: Tidak ada rolling window support
-6. **Deflated Sharpe Ratio**: Tidak ada selection bias correction
+1. **Threshold dinamis per sektor** — sector_global_link gunakan fixed 0.5%, perlu ATR-based atau vol-adjusted threshold
+2. **Rolling correlation direction** — sector_global_link gunakan static direction assumption, perlu rolling 60d correlation
+3. **Data gap overnight_idx** — engine menghasilkan signal identik dengan pairs/fundamental/macro (semua -0.0609), kemungkinan global ticker data tidak ter-align dengan ticker index
+4. **Walk-forward validation** — tidak ada rolling window support untuk walk-forward ablation
+5. **Deflated Sharpe Ratio** — tidak ada selection bias correction (Bailey & López de Prado 2014)
+6. **Data quality checks** — hanya cek existence, tidak cek quality (stale data, outlier, missing bars)
+7. **CPO=F data terbatas** — hanya dari Aug 2024, plantation subsector belum ter-cover
+8. **Coal futures tidak tersedia** — CL=F (crude oil) sebagai proxy untuk coal sector kurang ideal
+
+### Hasil Ablation Terbaru (29 engines, 8 tickers, 2024-01-01 to 2026-08-12):
+- Bonferroni α = 0.001724 (29 engines)
+- Semua 29 engine verdict REMOVE — tidak ada yang signifikan setelah Bonferroni correction
+- Top performers (positive ΔSharpe): governance (+0.0935), dcc_garch (+0.0517), astronacci (+0.0788), mean_reversion (+0.1835), reversal (+0.2146)
+- sector_global_link: ΔSharpe=-1.4659, Score=22.81 (rank #7/29) — engine menghasilkan real signals tapi negatif
+- Engine yang menghasilkan signal identik (likely no signal): pairs, fundamental, macro, overnight_idx (semua -0.0609)
 
 ### Prioritas Implementasi:
-1. Update `ENGINE_MIN_DAYS` + `data_duration_notes` (HIGH, immediate)
-2. Bonferroni correction di scorecard (HIGH, immediate)
-3. Improve signal generation untuk top 4 engine (MEDIUM, next)
-4. Data quality checks (MEDIUM, next)
-5. Walk-forward + DSR (LOW, future)
+1. **Fix overnight_idx data alignment** — verify global ticker index alignment dengan ticker OHLCV (HIGH, immediate)
+2. **Refine sector_global_link** — threshold dinamis + rolling correlation direction (HIGH, next)
+3. **Walk-forward validation** — rolling window support untuk ablation (MEDIUM, next)
+4. **Deflated Sharpe Ratio** — selection bias correction (MEDIUM, future)
+5. **Data quality checks** — stale data, outlier detection (LOW, future)
+6. **CPO=F backfill** — extend plantation data coverage (LOW, future)
