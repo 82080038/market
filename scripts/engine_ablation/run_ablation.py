@@ -1779,6 +1779,13 @@ def run_ablation(
     output_path = output_dir / f"ablation_report_{timestamp_str}.json"
     report.save_json(output_path)
 
+    # Save to database
+    try:
+        run_id = report.save_to_db()
+        logger.info("Report saved to DB (run_id=%s)", run_id)
+    except Exception as e:
+        logger.warning("Failed to save ablation run to DB: %s", e)
+
     # Print summary
     report.print_summary()
 

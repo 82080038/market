@@ -198,3 +198,67 @@ class CircuitBreaker:
         """Reset the circuit breaker (manual override)."""
         self._triggered = False
         self._peak_equity = 0.0
+
+
+class DailyLossTracker:
+    """Daily loss limit tracker — blocks trading when daily loss exceeds threshold.
+
+    Tracks realized P&L for the current trading day. When cumulative daily loss
+    exceeds daily_loss_limit_pct of trading capital, is_halted() returns True
+    and new orders should be blocked.
+
+    Call reset_day() at the start of each trading day (or it auto-resets when
+    the date changes via update()).
+    """
+
+    def __init__(
+        self,
+        trading_capital: float,
+        daily_loss_limit_pct: float = 2.0,
+    ) -> None:
+        self.trading_capital = trading_capital
+        self.daily_loss_limit_pct = daily_loss_limit_pct
+        self._current_date: str | None = None
+        self._realized_pnl: float = 0.0
+
+    @property
+    def loss_limit_amount(self) -> float:
+        """Absolute loss limit in currency units."""
+        return self.trading_capital * (self.daily_loss_limit_pct / 100.0)
+
+    @property
+    def current_loss(self) -> float:
+        """Current daily loss (positive number = loss)."""
+        return abs(min(0.0, self._realized_pnl))
+
+    @property
+    def is_halted(self) -> bool:
+        """True if daily loss limit has been breached."""
+        return self._realized_pnl <= -self.loss_limit_amount
+
+    def update(self, realized_pnl: float, date_str: str | None = None) -> bool:
+        """Record a realized P&L for the current day.
+
+        Args:
+            realized_pnl: Realized profit/loss for a closed trade (positive = profit).
+            date_str: Optional date string (YYYY-MM-DD). If date changes,
+                      tracker auto-resets for the new day.
+
+        Returns:
+            True if trading is still allowed, False if halted.
+        """
+        from datetime import UTC, datetime
+
+        today = date_str or datetime.now(UTC).strftime("%Y-%m-%d")
+
+        if self._current_date != today:
+            self._current_date = today
+            self._realized_pnl = 0.0
+
+        self._realized_pnl += realized_pnl
+        return not self.is_halted
+
+    def reset_day(self) -> None:
+        """Manual reset for a new trading day."""
+        self._current_date = None
+        self._realized_pnl = 0.0

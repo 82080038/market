@@ -426,7 +426,7 @@ def get_asset_class_leverage_max(asset_class: str) -> float:
     Returns:
         Maximum leverage for that asset class.
     """
-    from market.multi_asset import INSTRUMENT_SPECS, AssetClass
+    from market.data.asset_types import INSTRUMENT_SPECS, AssetClass
 
     try:
         ac = AssetClass(asset_class)

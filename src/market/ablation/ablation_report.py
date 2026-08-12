@@ -111,6 +111,98 @@ class AblationReport:
         logger.info("Report saved to %s", path)
         return path
 
+    def save_to_db(self) -> int:
+        """Persist this ablation run + scorecards to the database.
+
+        Inserts one row into ``ablation_runs`` and N rows into
+        ``ablation_scorecards`` (one per engine).
+
+        Returns:
+            The run_id (primary key of ablation_runs).
+        """
+        import json as _json
+
+        from market.config import settings
+        from market.db.raw import get_raw_connection
+
+        n = len(self.scorecards)
+        bonferroni_alpha = 0.05 / max(n, 1)
+        is_pg = settings.db_backend == "postgresql"
+
+        with get_raw_connection() as conn:
+            if is_pg:
+                cur = conn.execute(
+                    "INSERT INTO ablation_runs "
+                    "(run_timestamp, tickers, period, total_engines, "
+                    " keep_count, marginal_count, remove_count, "
+                    " bonferroni_alpha, multiple_testing_correction) "
+                    "VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s) RETURNING id",
+                    (
+                        self.timestamp,
+                        _json.dumps(self.tickers),
+                        self.period,
+                        n,
+                        len(self.keep_engines),
+                        len(self.marginal_engines),
+                        len(self.remove_engines),
+                        round(bonferroni_alpha, 6),
+                        "Bonferroni",
+                    ),
+                )
+                run_id = cur.fetchone()[0]
+            else:
+                cur = conn.execute(
+                    "INSERT INTO ablation_runs "
+                    "(run_timestamp, tickers, period, total_engines, "
+                    " keep_count, marginal_count, remove_count, "
+                    " bonferroni_alpha, multiple_testing_correction) "
+                    "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
+                    (
+                        self.timestamp,
+                        _json.dumps(self.tickers),
+                        self.period,
+                        n,
+                        len(self.keep_engines),
+                        len(self.marginal_engines),
+                        len(self.remove_engines),
+                        round(bonferroni_alpha, 6),
+                        "Bonferroni",
+                    ),
+                )
+                run_id = cur.lastrowid
+            conn.commit()
+
+            ph = "%s" if is_pg else "?"
+            for sc in self.ranked():
+                conn.execute(
+                    f"INSERT INTO ablation_scorecards "
+                    f"(run_id, engine_name, verdict, composite_score, "
+                    f" delta_sharpe, delta_alpha, delta_win_rate, "
+                    f" p_value, is_significant, n_observations, "
+                    f" isolated_sharpe, baseline_sharpe, reasons) "
+                    f"VALUES ({ph}, {ph}, {ph}, {ph}, {ph}, {ph}, {ph}, "
+                    f" {ph}, {ph}, {ph}, {ph}, {ph}, {ph})",
+                    (
+                        run_id,
+                        sc.engine_name,
+                        sc.verdict.value,
+                        round(sc.composite_score, 2),
+                        round(sc.delta_sharpe, 4),
+                        round(sc.delta_alpha, 4),
+                        round(sc.delta_win_rate, 2),
+                        round(sc.p_value, 6),
+                        sc.is_significant,
+                        sc.n_observations,
+                        round(sc.isolated_sharpe, 4),
+                        round(sc.baseline_sharpe, 4),
+                        _json.dumps(sc.reasons),
+                    ),
+                )
+            conn.commit()
+
+        logger.info("Ablation run saved to DB (run_id=%s)", run_id)
+        return run_id
+
     def print_summary(self) -> None:
         sc_list = self.ranked()
         n = len(sc_list)
@@ -167,3 +259,82 @@ def generate_report(
         results=results,
         scorecards=scorecards,
     )
+
+
+def load_latest_verdicts() -> list[dict]:
+    """Load the most recent ablation run's scorecards from DB.
+
+    Returns:
+        List of dicts with keys: engine_name, verdict, composite_score,
+        delta_sharpe, delta_alpha, p_value, is_significant, reasons.
+        Empty list if no runs exist.
+    """
+    from market.db.raw import execute_query
+
+    rows = execute_query(
+        "SELECT id FROM ablation_runs ORDER BY run_timestamp DESC LIMIT 1"
+    )
+    if not rows:
+        return []
+
+    run_id = rows[0][0]
+    rows = execute_query(
+        "SELECT engine_name, verdict, composite_score, "
+        " delta_sharpe, delta_alpha, delta_win_rate, "
+        " p_value, is_significant, n_observations, "
+        " isolated_sharpe, baseline_sharpe, reasons "
+        "FROM ablation_scorecards WHERE run_id = ? "
+        "ORDER BY composite_score DESC",
+        (run_id,),
+    )
+    import json as _json
+
+    return [
+        {
+            "engine_name": r[0],
+            "verdict": r[1],
+            "composite_score": r[2],
+            "delta_sharpe": r[3],
+            "delta_alpha": r[4],
+            "delta_win_rate": r[5],
+            "p_value": r[6],
+            "is_significant": bool(r[7]),
+            "n_observations": r[8],
+            "isolated_sharpe": r[9],
+            "baseline_sharpe": r[10],
+            "reasons": _json.loads(r[11]) if r[11] else [],
+        }
+        for r in rows
+    ]
+
+
+def list_ablation_runs(limit: int = 20) -> list[dict]:
+    """List recent ablation runs from DB.
+
+    Args:
+        limit: Maximum number of runs to return.
+
+    Returns:
+        List of dicts with run metadata.
+    """
+    from market.db.raw import execute_query
+
+    rows = execute_query(
+        "SELECT id, run_timestamp, period, total_engines, "
+        " keep_count, marginal_count, remove_count, bonferroni_alpha "
+        "FROM ablation_runs ORDER BY run_timestamp DESC LIMIT ?",
+        (limit,),
+    )
+    return [
+        {
+            "run_id": r[0],
+            "timestamp": str(r[1]),
+            "period": r[2],
+            "total_engines": r[3],
+            "keep": r[4],
+            "marginal": r[5],
+            "remove": r[6],
+            "bonferroni_alpha": r[7],
+        }
+        for r in rows
+    ]

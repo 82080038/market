@@ -38,10 +38,12 @@ def load_ohlcv_from_db(conn: object, ticker: str) -> pd.DataFrame:
     """Load OHLCV data for a ticker from DB."""
     from market.config import settings as _settings
     _ph = "%s" if _settings.db_backend == "postgresql" else "?"
+    # Unwrap _PgConnWrapper for pd.read_sql_query compatibility
+    raw_conn = getattr(conn, "_conn", conn)
     df = pd.read_sql_query(
         f"SELECT timestamp, open, high, low, close, volume, adjusted_close "
         f"FROM ohlcv WHERE ticker={_ph} AND timeframe='1d' ORDER BY timestamp",
-        conn, params=(ticker,), parse_dates=["timestamp"],
+        raw_conn, params=(ticker,), parse_dates=["timestamp"],
     )
     if df.empty:
         return df
@@ -259,8 +261,12 @@ def main() -> None:
     db_path = args.db
     from market.config import settings as _settings
     if _settings.db_backend == "postgresql":
-        from market.db.raw import get_raw_connection
-        conn_ro = get_raw_connection().__enter__()
+        import psycopg2
+        from market.db.raw import _PgConnWrapper
+        _dsn = _settings.database_url
+        if _dsn.startswith("postgresql+psycopg2://"):
+            _dsn = _dsn.replace("postgresql+psycopg2://", "postgresql://", 1)
+        conn_ro = _PgConnWrapper(psycopg2.connect(_dsn))
     else:
         import sqlite3
         conn_ro = sqlite3.connect(f"file:{db_path}?mode=ro", uri=True)
@@ -272,12 +278,20 @@ def main() -> None:
         # Segment-aware: only process EQUITY_INDIVIDUAL tickers for ML training.
         # Indices (^JKSE, ^GSPC) and commodities (CL=F, GC=F) are exogenous
         # features only — they must never enter the prediction target matrix.
-        rows = conn_ro.execute(
-            "SELECT sp.ticker FROM stock_personality sp "
-            "JOIN instrument_master im ON sp.ticker = im.ticker "
-            "WHERE im.asset_class = 'EQUITY_INDIVIDUAL' "
-            "ORDER BY sp.ticker"
-        ).fetchall()
+        if _settings.db_backend == "postgresql":
+            rows = conn_ro.execute(
+                "SELECT sp.ticker FROM stock_personality sp "
+                "JOIN instruments im ON sp.ticker = im.ticker "
+                "WHERE im.asset_class = 'EQUITY_INDIVIDUAL' "
+                "ORDER BY sp.ticker"
+            ).fetchall()
+        else:
+            rows = conn_ro.execute(
+                "SELECT sp.ticker FROM stock_personality sp "
+                "JOIN instrument_master im ON sp.ticker = im.ticker "
+                "WHERE im.asset_class = 'EQUITY_INDIVIDUAL' "
+                "ORDER BY sp.ticker"
+            ).fetchall()
         tickers = [r[0] for r in rows]
 
     if args.limit > 0:
@@ -303,7 +317,12 @@ def main() -> None:
 
     # Writable connection
     if _settings.db_backend == "postgresql":
-        conn_rw = get_raw_connection().__enter__()
+        import psycopg2
+        from market.db.raw import _PgConnWrapper
+        _dsn = _settings.database_url
+        if _dsn.startswith("postgresql+psycopg2://"):
+            _dsn = _dsn.replace("postgresql+psycopg2://", "postgresql://", 1)
+        conn_rw = _PgConnWrapper(psycopg2.connect(_dsn))
     else:
         import sqlite3
         conn_rw = sqlite3.connect(db_path)
@@ -379,7 +398,7 @@ def main() -> None:
 
         except Exception as e:
             n_err += 1
-            logger.debug("  ERROR %s: %s", ticker, e)
+            logger.warning("  ERROR %s: %s", ticker, e, exc_info=True)
 
     conn_rw.close()
     conn_ro.close()

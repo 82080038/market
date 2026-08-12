@@ -712,7 +712,7 @@ class FactorRelevanceMapper:
 
         # 8. Asset class adjustments (non-equity)
         if asset_class != "equity":
-            from market.multi_asset import AssetClass
+            from market.data.asset_types import AssetClass
             from market.multi_asset.fundamental_scorer import DECISION_WEIGHTS
 
             ac_map = {e.value: e for e in AssetClass}

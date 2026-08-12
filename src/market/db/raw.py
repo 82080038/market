@@ -16,6 +16,53 @@ if TYPE_CHECKING:
     from collections.abc import Generator
 
 
+class _PgConnWrapper:
+    """Wrapper around psycopg2 connection that adds sqlite3-like .execute().
+
+    sqlite3.Connection has a direct .execute() method that returns a cursor.
+    psycopg2 connections do not — they require an explicit cursor() call.
+    This wrapper bridges the gap so callers can use ``conn.execute(sql, params)``
+    uniformly regardless of backend.
+    """
+
+    def __init__(self, conn) -> None:
+        self._conn = conn
+
+    def execute(self, sql, params=None):
+        cur = self._conn.cursor()
+        if params is not None:
+            cur.execute(sql, params)
+        else:
+            cur.execute(sql)
+        return cur
+
+    def cursor(self):
+        return self._conn.cursor()
+
+    def commit(self):
+        return self._conn.commit()
+
+    def rollback(self):
+        return self._conn.rollback()
+
+    def close(self):
+        return self._conn.close()
+
+    @property
+    def row_factory(self):
+        return self._conn.row_factory
+
+    @row_factory.setter
+    def row_factory(self, value):
+        self._conn.row_factory = value
+
+    def __enter__(self):
+        return self
+
+    def __exit__(self, *args):
+        self._conn.__exit__(*args)
+
+
 @contextmanager
 def get_raw_connection() -> Generator[object, None, None]:
     """Yield a raw DBAPI connection (sqlite3 or psycopg2).
@@ -25,13 +72,16 @@ def get_raw_connection() -> Generator[object, None, None]:
             rows = conn.execute("SELECT ...").fetchall()
 
     Note: For SQLite, returns sqlite3.Connection.
-    For PostgreSQL, returns psycopg2 connection.
+    For PostgreSQL, returns _PgConnWrapper (sqlite3-compatible interface).
     """
     if settings.db_backend == "postgresql":
         import psycopg2
-        conn = psycopg2.connect(settings.database_url)
+        dsn = settings.database_url
+        if dsn.startswith("postgresql+psycopg2://"):
+            dsn = dsn.replace("postgresql+psycopg2://", "postgresql://", 1)
+        conn = psycopg2.connect(dsn)
         try:
-            yield conn
+            yield _PgConnWrapper(conn)
         finally:
             conn.close()
     else:

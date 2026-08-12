@@ -289,3 +289,122 @@ class CrossMarketEngine:
             spillovers=spillovers,
             heatmap_data=heatmap,
         )
+
+
+CROSS_MARKET_PAIRS = [
+    ("^N225", "XTSE"),
+    ("^HSI", "XHKG"),
+    ("^GSPC", "XNYS"),
+    ("^IXIC", "XNAS"),
+    ("^FTSE", "XLON"),
+    ("^GDAXI", "XFRA"),
+    ("GC=F", "XCEC"),
+    ("CL=F", "XCEC"),
+    ("CPO=F", "XKLSE"),
+    ("IDR=X", "XFXS"),
+    ("^VIX", "XNYS"),
+    ("^TNX", "XNYS"),
+    ("000001.SS", "XSHG"),
+]
+
+
+def recompute_cross_market(
+    session, dry_run: bool = False, progress_cb=None,
+    incremental: bool = False,
+) -> int:
+    """Compute cross-market lead-lag and volatility spillover.
+
+    Uses ``CrossMarketEngine`` to analyze lead-lag relationships and
+    spillover between global markets and IDX (IHSG). Results are saved
+    to ``relationship_matrix`` with ``window=0`` (cross-market marker)
+    and ``lag`` storing the optimal lead-lag in days.
+
+    Anti look-ahead: all returns computed from close prices only,
+    no future data used. Lead-lag is computed on historical returns.
+
+    Always full recompute — snapshot table.
+    """
+    import logging
+    from sqlalchemy import text
+    from market.data.recompute_internal import _load_ohlcv_df
+    from market.db.models import RelationshipMatrix
+
+    logger = logging.getLogger(__name__)
+
+    ihsg_ticker = "^JKSE"
+    total_pairs = len(CROSS_MARKET_PAIRS)
+    logger.info("Recomputing cross_market lead-lag for %d pairs", total_pairs)
+    if progress_cb:
+        progress_cb("cross_market", 0, total_pairs, "Starting")
+
+    if dry_run:
+        return total_pairs
+
+    session.execute(text("DELETE FROM relationship_matrix WHERE window = 0"))
+    session.commit()
+
+    engine = CrossMarketEngine(min_samples=30)
+    count = 0
+
+    ihsg_df = _load_ohlcv_df(session, ihsg_ticker)
+    if ihsg_df.empty or len(ihsg_df) < 60:
+        logger.warning("cross_market: IHSG data insufficient (%d rows)", len(ihsg_df))
+        return 0
+
+    if not ihsg_df.index.is_unique:
+        ihsg_df = ihsg_df[~ihsg_df.index.duplicated(keep="last")]
+    ihsg_returns = ihsg_df["close"].astype(float).pct_change(fill_method=None).dropna()
+    ihsg_vol = ihsg_returns.rolling(20).std().dropna()
+
+    for idx, (ticker, mic) in enumerate(CROSS_MARKET_PAIRS):
+        try:
+            gdf = _load_ohlcv_df(session, ticker)
+            if gdf.empty or len(gdf) < 60:
+                continue
+            if not gdf.index.is_unique:
+                gdf = gdf[~gdf.index.duplicated(keep="last")]
+            g_returns = gdf["close"].astype(float).pct_change(fill_method=None).dropna()
+            g_vol = g_returns.rolling(20).std().dropna()
+
+            ll = engine.compute_lead_lag(
+                g_returns, ihsg_returns, ticker, ihsg_ticker, max_lag=5,
+            )
+            if ll:
+                session.add(RelationshipMatrix(
+                    asset_a=ticker,
+                    asset_b=ihsg_ticker,
+                    window=0,
+                    correlation=float(ll.correlation_at_lag),
+                    lag=int(ll.optimal_lag),
+                ))
+                count += 1
+                logger.info(
+                    "  cross_market: %s → %s: lag=%dd, corr=%.4f, leader=%s",
+                    ticker, ihsg_ticker, ll.optimal_lag,
+                    ll.correlation_at_lag, ll.leader,
+                )
+
+            sp = engine.compute_spillover(g_vol, ihsg_vol, ticker, ihsg_ticker)
+            if sp:
+                session.add(RelationshipMatrix(
+                    asset_a=sp.source,
+                    asset_b=sp.target,
+                    window=-1,
+                    correlation=float(sp.spillover_pct) / 100.0,
+                    lag=-1,
+                ))
+                count += 1
+                logger.info(
+                    "  cross_market spillover: %s → %s: %.1f%% (%s)",
+                    sp.source, sp.target, sp.spillover_pct, sp.direction,
+                )
+
+            if progress_cb:
+                progress_cb("cross_market", idx + 1, total_pairs, f"{count} rows")
+        except Exception as exc:
+            logger.warning("  cross_market: skipping %s: %s", ticker, exc)
+
+    session.commit()
+    if progress_cb:
+        progress_cb("cross_market", total_pairs, total_pairs, f"Done: {count} rows")
+    return count

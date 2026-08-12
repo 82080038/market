@@ -6,7 +6,7 @@
 - Basis pengetahuan berada di `<PROJECT_DIR>/pustaka/` — 103 dokumen Markdown bernomor `00-README.md` sampai `102-*.md`. Lihat §7 untuk padanan path per-OS.
 - Pustaka ini mendukung pengembangan aplikasi **single-user (personal)**; fitur multi-user, KYC, RBAC, deployment publik, dan enterprise security adalah **tidak relevan** kecuali secara eksplisit diminta.
 - Sumber implementasi referensi: `trading-system` v0.1.11 (asalnya `/home/petrick/projects/global/`; di Windows backup ada di `E:\trading_data\` — baca saja, jangan tulis/modifikasi).
-- Path aplikasi: `<PROJECT_DIR>/` — database utama: `data/market_research.db` (~6 GB, dirakit dari part backup di external drive).
+- Path aplikasi: `<PROJECT_DIR>/` — database utama: PostgreSQL 16 (`postgresql://petrick:market_dev@localhost:5432/market`), ~9 GB. Backup SQLite: `data/market_research.db` (~6 GB). Set `DATABASE_URL` di `.env` untuk switch backend.
 
 ## 2. Keputusan Desain Tetap
 
@@ -64,8 +64,8 @@
 - Modul analisis baru: `src/market/analysis/` — `astronacci.py`, `macro_correlation.py`, `strategy_selector.py`, `pairs_trading.py`, `volume_features.py`, `policy_event_scorer.py`, `sector_rotation.py`, `signal_enhancer.py`, `meta_labeling.py`, `news_sentiment.py`, `cross_market_timezone.py`, `execution_analyzer.py`, `alpha_signals.py` (4 alpha signal engines: mean_reversion, reversal, ewma_momentum, regime_switch)
 - Modul data baru: `src/market/data/` — `macro_data_fetcher.py`, `satellite_fetcher.py`, `refresh_stale.py`, `timestamp_validation.py`
 - API routes baru: `src/market/api/routes_notifications.py`, `src/market/api/routes_recompute.py`
-- Migrations: 0001-0019 (alembic head = 0019). Lihat `alembic/versions/`.
-- Engine ablation framework: `src/market/ablation/` — `engine_registry.py` (29 engine: 22 SignalEnhancer + 7 MarketContext), `isolated_backtest.py` (isolasi per-engine, paired t-test), `scorecard.py` (KEEP/MARGINAL/REMOVE verdict, Bonferroni correction), `ablation_report.py` (JSON report + recommendations), `data_checker.py` (pre-flight data validation). Runner: `scripts/engine_ablation/run_ablation.py`. Tests: `tests/ablation/` (30 tests). Lihat `pustaka/96-ai-ml-audit-framework.md` (Pilar 2), `pustaka/101-global-idx-advanced-models.md`, `pustaka/102-sector-global-link-engine.md`.
+- Migrations: 0001-0020 (alembic head = 0020). Lihat `alembic/versions/`.
+- Engine ablation framework: `src/market/ablation/` — `engine_registry.py` (29 engine: 22 SignalEnhancer + 7 MarketContext), `isolated_backtest.py` (isolasi per-engine, paired t-test), `scorecard.py` (KEEP/MARGINAL/REMOVE verdict, Bonferroni correction), `ablation_report.py` (JSON report + DB persistence: `save_to_db()`, `load_latest_verdicts()`, `list_ablation_runs()`), `data_checker.py` (pre-flight data validation). Runner: `scripts/engine_ablation/run_ablation.py`. Tests: `tests/ablation/` (30 tests). DB tables: `ablation_runs` + `ablation_scorecards` (migration 0020). Lihat `pustaka/96-ai-ml-audit-framework.md` (Pilar 2), `pustaka/101-global-idx-advanced-models.md`, `pustaka/102-sector-global-link-engine.md`.
 - MEGAPLAN: `MEGAPLAN.md` — eksekusi multi-fase, gunakan skill `/megaplan-executor`.
 
 ## 7. Cross-Platform OS Awareness (Wajib)

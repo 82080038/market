@@ -42,7 +42,7 @@ class RecomputePipeline:
         (fear_greed, ml_labels, market_regimes) only append new dates.
         Snapshot tables always do full recompute (they store latest only).
         """
-        from market.data.recompute_internal import run_all_recompute
+        from market.analysis.recompute import run_all_recompute
         from market.db.engine import get_sessionmaker
         from market.core.events import broker
 

@@ -28,6 +28,77 @@ import pandas as pd
 
 logger = logging.getLogger(__name__)
 
+# Module-level cache for global asset data (loaded once per process)
+_global_data_cache: dict[str, pd.DataFrame] | None = None
+_cpi_series_cache: pd.Series | None = None
+
+
+def _load_global_data_cache() -> dict[str, pd.DataFrame]:
+    """Load all global asset OHLCV data once and cache for the process lifetime."""
+    global _global_data_cache
+    if _global_data_cache is not None:
+        return _global_data_cache
+
+    from market.db.raw import get_raw_connection, _PgConnWrapper
+
+    def _raw_conn(c):
+        return c._conn if isinstance(c, _PgConnWrapper) else c
+
+    from market.analysis.multi_factor import GLOBAL_ASSETS
+
+    cache: dict[str, pd.DataFrame] = {}
+    try:
+        with get_raw_connection() as conn:
+            rc = _raw_conn(conn)
+            for gticker in GLOBAL_ASSETS:
+                try:
+                    gdf = pd.read_sql(
+                        f"SELECT timestamp as date, close FROM ohlcv WHERE ticker='{gticker}' ORDER BY timestamp",
+                        rc,
+                    )
+                    if not gdf.empty:
+                        gdf["date"] = pd.to_datetime(gdf["date"])
+                        gdf = gdf.set_index("date").sort_index()
+                        if not gdf.index.is_unique:
+                            gdf = gdf[~gdf.index.duplicated(keep="last")]
+                        cache[gticker] = gdf
+                except Exception:
+                    pass
+    except Exception as e:
+        logger.debug("global data cache load failed: %s", e)
+
+    _global_data_cache = cache
+    logger.info("Global data cache loaded: %d/%d assets", len(cache), len(GLOBAL_ASSETS))
+    return cache
+
+
+def _load_cpi_series_cache() -> pd.Series | None:
+    """Load Indonesia CPI series once and cache for the process lifetime."""
+    global _cpi_series_cache
+    if _cpi_series_cache is not None:
+        return _cpi_series_cache
+
+    from market.db.raw import get_raw_connection, _PgConnWrapper
+
+    def _raw_conn(c):
+        return c._conn if isinstance(c, _PgConnWrapper) else c
+
+    try:
+        with get_raw_connection() as conn:
+            rc = _raw_conn(conn)
+            cpi_df = pd.read_sql(
+                "SELECT date, value FROM macro_data WHERE series_name='ID_CPI' ORDER BY date",
+                rc,
+            )
+            if not cpi_df.empty:
+                cpi_df["date"] = pd.to_datetime(cpi_df["date"])
+                cpi_df = cpi_df.set_index("date").sort_index()
+                _cpi_series_cache = cpi_df["value"]
+    except Exception:
+        pass
+
+    return _cpi_series_cache
+
 
 @dataclass
 class MLSignal:
@@ -346,29 +417,11 @@ class MLSignalProvider:
         - Indonesia CPI (inflation, monthly → forward-filled)
         - Corporate action event flags (dividend/split within ±5 days)
         """
-        from market.db.raw import get_raw_connection
-
-        # ── Global market features with timezone-aware lag ────────────────
+        # ── Global market features (cached at module level) ────────────
         try:
-            from market.analysis.multi_factor import GLOBAL_ASSETS, compute_exogenous_features
+            from market.analysis.multi_factor import compute_exogenous_features
 
-            global_data: dict[str, pd.DataFrame] = {}
-            with get_raw_connection() as conn:
-                for gticker in GLOBAL_ASSETS:
-                    try:
-                        gdf = pd.read_sql(
-                            f"SELECT timestamp as date, close FROM ohlcv WHERE ticker='{gticker}' ORDER BY timestamp",
-                            conn,
-                        )
-                        if not gdf.empty:
-                            gdf["date"] = pd.to_datetime(gdf["date"])
-                            gdf = gdf.set_index("date").sort_index()
-                            if not gdf.index.is_unique:
-                                gdf = gdf[~gdf.index.duplicated(keep="last")]
-                            global_data[gticker] = gdf
-                    except Exception:
-                        pass
-
+            global_data = _load_global_data_cache()
             if global_data:
                 exog_df = compute_exogenous_features(
                     data, global_data, as_of=None, lookback=5, corr_window=60,
@@ -378,30 +431,32 @@ class MLSignalProvider:
         except Exception as e:
             logger.debug("compute_exogenous_features failed: %s", e)
 
-        # ── CPI and corporate actions (non-market features) ──────────────
+        # ── CPI (cached at module level) ────────────────────────────────
         try:
-            with get_raw_connection() as conn:
-                # Indonesia CPI from macro_data (monthly → forward-fill to daily)
-                try:
-                    cpi_df = pd.read_sql(
-                        "SELECT date, value FROM macro_data WHERE series_name='ID_CPI' ORDER BY date",
-                        conn,
-                    )
-                    if not cpi_df.empty:
-                        cpi_df["date"] = pd.to_datetime(cpi_df["date"])
-                        cpi_df = cpi_df.set_index("date").sort_index()
-                        cpi_series = cpi_df["value"].reindex(data.index, method="ffill")
-                        cpi_change = cpi_series.pct_change(60)
-                        data["id_inflation_3m"] = cpi_change.values
-                except Exception:
-                    pass
+            cpi_series_raw = _load_cpi_series_cache()
+            if cpi_series_raw is not None and not cpi_series_raw.empty:
+                cpi_series = cpi_series_raw.reindex(data.index, method="ffill")
+                cpi_change = cpi_series.pct_change(60)
+                data["id_inflation_3m"] = cpi_change.values
+            else:
+                data["id_inflation_3m"] = 0.0
+        except Exception:
+            data["id_inflation_3m"] = 0.0
 
-                # Corporate action event flags (dividend/split within ±5 days)
-                if ticker:
+        # ── Corporate action event flags (per-ticker, not cached) ────────
+        if ticker:
+            from market.db.raw import get_raw_connection, _PgConnWrapper
+
+            def _raw_conn(c):
+                return c._conn if isinstance(c, _PgConnWrapper) else c
+
+            try:
+                with get_raw_connection() as conn:
+                    rc = _raw_conn(conn)
                     try:
                         ca_df = pd.read_sql(
                             f"SELECT ex_date, action_type FROM corporate_actions WHERE ticker='{ticker}' AND ex_date IS NOT NULL",
-                            conn,
+                            rc,
                         )
                         if not ca_df.empty:
                             ca_df["ex_date"] = pd.to_datetime(ca_df["ex_date"])
@@ -418,7 +473,7 @@ class MLSignalProvider:
                     try:
                         div_df = pd.read_sql(
                             f"SELECT ex_date FROM dividends WHERE ticker='{ticker}' AND ex_date IS NOT NULL",
-                            conn,
+                            rc,
                         )
                         if not div_df.empty:
                             div_df["ex_date"] = pd.to_datetime(div_df["ex_date"])
@@ -430,11 +485,12 @@ class MLSignalProvider:
                             data["has_dividend"] = 0
                     except Exception:
                         data["has_dividend"] = 0
-                else:
-                    data["has_corp_action"] = 0
-                    data["has_dividend"] = 0
-        except Exception:
-            pass
+            except Exception:
+                data["has_corp_action"] = 0
+                data["has_dividend"] = 0
+        else:
+            data["has_corp_action"] = 0
+            data["has_dividend"] = 0
 
         # Fill NaN for all exogenous features
         exog_cols = [
@@ -471,9 +527,8 @@ class MLSignalProvider:
             "nikkei_lag1_ret", "nikkei_lag5_ret", "nikkei_corr",
             "hangseng_lag1_ret", "hangseng_lag5_ret", "hangseng_corr",
             "gold_lag1_ret", "gold_lag5_ret", "gold_corr",
-            "oil_lag1_ret", "oil_lag5_ret", "oil_corr",
+            "oil_wti_lag1_ret", "oil_wti_lag5_ret", "oil_wti_corr",
             "copper_lag1_ret", "copper_lag5_ret", "copper_corr",
-            "coal_lag1_ret", "coal_lag5_ret", "coal_corr",
             "cpo_lag1_ret", "cpo_lag5_ret", "cpo_corr",
             "id_inflation_3m",
             "has_corp_action", "has_dividend",
@@ -513,6 +568,8 @@ class MLSignalProvider:
         self.horizon = original_horizon  # restore
         
         feature_cols = self._get_feature_cols()
+        # Only keep features that exist in the prepared data (some global assets may be missing)
+        feature_cols = [c for c in feature_cols if c in data.columns]
 
         # Filter to training data (up to as_of, drop NaN rows)
         train_data = data.loc[:cutoff].copy()

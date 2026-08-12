@@ -132,8 +132,10 @@ def load_ticker_strategies_from_db(
         "WHERE best_pattern IS NOT NULL ORDER BY ticker"
     )
     if limit > 0:
-        sql += f" LIMIT {limit}"
-    rows = conn.execute(sql).fetchall()
+        sql += " LIMIT ?"
+        rows = conn.execute(sql, (limit,)).fetchall()
+    else:
+        rows = conn.execute(sql).fetchall()
     return {r[0]: r[1] for r in rows}
 
 

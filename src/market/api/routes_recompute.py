@@ -24,7 +24,7 @@ from sqlalchemy import inspect, text
 
 from market.api._shared import to_jakarta
 from market.db.engine import get_engine, get_sessionmaker
-from market.data.recompute_internal import run_all_recompute
+from market.analysis.recompute import run_all_recompute
 
 router = APIRouter(tags=["recompute"])
 

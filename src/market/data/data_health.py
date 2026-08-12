@@ -81,10 +81,10 @@ def check_stale_data(con: object) -> list[HealthIssue]:
             JOIN instrument_master im ON (
                 im.ticker = REPLACE(o.ticker, '.JK', '')
                 AND im.market_mic = 'XIDX'
-                AND im.is_active = 1
+                AND im.is_active::text IN ('1', 'true', 't')
                 AND im.asset_class = 'equity'
             )
-            WHERE o.ticker LIKE '%.JK'
+            WHERE o.ticker LIKE '%%.JK'
             GROUP BY o.ticker
             HAVING EXTRACT(EPOCH FROM (NOW() - MAX(o.timestamp)))/86400 > {_ph}
             ORDER BY days_old DESC
@@ -198,14 +198,105 @@ def check_disk_space(parquet_path: Path) -> list[HealthIssue]:
     return issues
 
 
+def check_pg_health(issues: list[HealthIssue]) -> list[HealthIssue]:
+    """PostgreSQL-specific health checks."""
+    from market.db.raw import get_raw_connection
+
+    try:
+        with get_raw_connection() as con:
+            # Connection test
+            ver = con.execute("SELECT version()").fetchone()[0]
+            issues.append(HealthIssue(
+                severity="info",
+                category="db",
+                message=f"PostgreSQL connected: {ver.split(',')[0]}",
+            ))
+
+            # Database size
+            db_size = con.execute(
+                "SELECT pg_size_pretty(pg_database_size(current_database()))"
+            ).fetchone()[0]
+            issues.append(HealthIssue(
+                severity="info",
+                category="db",
+                message=f"Database size: {db_size}",
+            ))
+
+            # Long-running transactions (>5 min)
+            long_txns = con.execute("""
+                SELECT count(*) FROM pg_stat_activity
+                WHERE state = 'idle in transaction'
+                  AND xact_start < NOW() - INTERVAL '5 minutes'
+            """).fetchone()[0]
+            if long_txns > 0:
+                issues.append(HealthIssue(
+                    severity="warning",
+                    category="db",
+                    message=f"{long_txns} long-running idle transactions (>5 min)",
+                    detail="May cause bloat. Consider terminating stale sessions.",
+                ))
+
+            # Table bloat (approximate via pg_stat_user_tables)
+            bloated = con.execute("""
+                SELECT relname, n_live_tup, n_dead_tup,
+                       CASE WHEN n_live_tup > 0
+                            THEN round(n_dead_tup::numeric / n_live_tup * 100, 1)
+                            ELSE 0 END as dead_pct
+                FROM pg_stat_user_tables
+                WHERE n_live_tup > 1000 AND n_dead_tup > 100
+                ORDER BY dead_pct DESC LIMIT 5
+            """).fetchall()
+            for r in bloated:
+                if r[3] and r[3] > 10:
+                    issues.append(HealthIssue(
+                        severity="warning",
+                        category="db",
+                        message=f"Table {r[0]} has {r[3]}% dead tuples ({r[2]} dead / {r[1]} live)",
+                        detail="Consider VACUUM ANALYZE to reclaim space.",
+                    ))
+
+            # Check critical tables exist and have data
+            critical_tables = [
+                "stock_prices", "instruments", "technical_indicators",
+                "scores", "fear_greed", "stock_personality",
+            ]
+            for tbl in critical_tables:
+                try:
+                    cnt = con.execute(f"SELECT count(*) FROM {tbl}").fetchone()[0]
+                    if cnt == 0:
+                        issues.append(HealthIssue(
+                            severity="critical",
+                            category="db",
+                            message=f"Critical table '{tbl}' is empty",
+                        ))
+                except Exception:
+                    issues.append(HealthIssue(
+                        severity="critical",
+                        category="db",
+                        message=f"Critical table '{tbl}' missing or inaccessible",
+                    ))
+
+    except Exception as e:
+        issues.append(HealthIssue(
+            severity="critical",
+            category="db",
+            message=f"PostgreSQL connection failed: {e}",
+        ))
+
+    return issues
+
+
 def check_db_health(db_path: Path) -> list[HealthIssue]:
-    """Check DB integrity, WAL size, and foreign keys (SQLite-only checks)."""
+    """Check DB integrity, WAL size, and foreign keys.
+
+    For PostgreSQL, checks connection status, bloat, and long-running transactions.
+    For SQLite, checks WAL size, integrity, and foreign keys.
+    """
     from market.config import settings
     issues: list[HealthIssue] = []
 
     if settings.db_backend == "postgresql":
-        # PostgreSQL has its own health tools; skip SQLite-specific PRAGMA checks
-        return issues
+        return check_pg_health(issues)
 
     import sqlite3
 

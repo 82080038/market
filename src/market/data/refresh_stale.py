@@ -151,7 +151,7 @@ def _refresh_stock_personality(
     excluded_tickers: list[str],
 ) -> tuple[int, str]:
     """Refresh stale rows in stock_personality by recomputing from OHLCV."""
-    from market.data.recompute_internal import recompute_technical_indicators
+    from market.analysis.recompute import recompute_technical_indicators
 
     from market.config import settings
     _ph = "%s" if settings.db_backend == "postgresql" else "?"
@@ -226,7 +226,7 @@ def _refresh_technical_indicators(
     excluded_tickers: list[str],
 ) -> tuple[int, str]:
     """Refresh stale technical indicators by recomputing from OHLCV."""
-    from market.data.recompute_internal import recompute_technical_indicators
+    from market.analysis.recompute import recompute_technical_indicators
 
     # Find tickers with stale technical indicators
     latest_ohlcv = conn.execute(
@@ -290,18 +290,10 @@ def refresh_stale_data(
 
     report = RefreshReport()
 
-    if db_path and db_path != str(settings.resolved_db_path):
-        import sqlite3
-        path = Path(db_path).resolve()
-        if not path.exists():
-            raise FileNotFoundError(f"Database not found: {path}")
-        conn = sqlite3.connect(str(path))
-        _owns_conn = True
-    else:
-        from market.db.raw import get_raw_connection
-        conn_ctx = get_raw_connection()
-        conn = conn_ctx.__enter__()
-        _owns_conn = True
+    from market.db.raw import get_raw_connection
+    conn_ctx = get_raw_connection()
+    conn = conn_ctx.__enter__()
+    _owns_conn = True
 
     if settings.db_backend == "sqlite":
         try:

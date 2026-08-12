@@ -137,16 +137,16 @@ def select_best_strategy(close: pd.Series, train_end: str) -> tuple[str, pd.Seri
 
 def load_ohlcv(ticker: str, db_path: str) -> pd.DataFrame:
     """Load OHLCV from DB with adjusted prices."""
-    import sqlite3
     from market.analysis.market_factors import ensure_adjusted
+    from market.db.raw import get_raw_connection
+    from sqlalchemy import text
 
-    conn = sqlite3.connect(f"file:{db_path}?mode=ro", uri=True)
-    df = pd.read_sql_query(
-        "SELECT timestamp, open, high, low, close, volume, adjusted_close "
-        "FROM ohlcv WHERE ticker=? AND timeframe='1d' ORDER BY timestamp",
-        conn, params=(ticker,), parse_dates=["timestamp"],
-    )
-    conn.close()
+    with get_raw_connection() as conn:
+        df = pd.read_sql_query(
+            text("SELECT timestamp, open, high, low, close, volume, adjusted_close "
+                 "FROM ohlcv WHERE ticker=:ticker AND timeframe='1d' ORDER BY timestamp"),
+            conn, params={"ticker": ticker}, parse_dates=["timestamp"],
+        )
     if df.empty:
         return df
     df = df.set_index("timestamp")

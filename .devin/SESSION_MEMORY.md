@@ -678,3 +678,60 @@ ENV=research uv run pytest tests/test_macro_correlation.py -v --no-cov
 - Phase 4: Deflated Sharpe Ratio + data quality checks
 - Phase 5: Apply to production (butuh user approval)
 
+## Checkpoint Sesi 2026-08-13 (2) — Ablation DB Integration + System Update
+
+- **Topik:** Integrate ablation framework ke database (migration 0020) + update sistem & dependencies.
+- **Pemicu:** User minta "kenalkan ablation ke database aplikasi ini" lalu "update komputer dan devin ini; update segala sesuatunya yang dibutuhkan aplikasi ini."
+
+### Ablation DB Integration (COMPLETED):
+- **Migration 0020:** `alembic/versions/0020_add_ablation_tables.py` — `ablation_runs` + `ablation_scorecards` tables
+  - `ablation_runs`: run metadata (timestamp, tickers, period, counts, bonferroni_alpha)
+  - `ablation_scorecards`: per-engine metrics (verdict, delta_sharpe, delta_alpha, p_value, reasons)
+  - Indexes: run_timestamp, run_id, engine_name, verdict
+- **DB Persistence:** `ablation_report.py` — `save_to_db()`, `load_latest_verdicts()`, `list_ablation_runs()`
+  - Cross-DB compatible (PostgreSQL `%s` + `RETURNING id`, SQLite `?` + `lastrowid`)
+- **Runner wired:** `run_ablation.py` calls `report.save_to_db()` after JSON save
+- **Exports:** `__init__.py` exports `load_latest_verdicts`, `list_ablation_runs`
+- **Migration applied:** `alembic upgrade head` → 0020, tables verified di PostgreSQL
+- **E2E test:** Mock report saved & loaded successfully from PostgreSQL
+
+### System & Dependency Updates (COMPLETED):
+- **Python packages upgraded:**
+  - numpy 1.26.4 → 2.5.2 (pyproject.toml updated: `numpy>=1.26` removed `<2` cap)
+  - scipy 1.17.1 → 1.18.0
+  - pandas 3.0.5 (already latest)
+  - sqlalchemy 2.0.52 (already latest)
+  - alembic 1.19.1 (already latest)
+  - skfolio 0.7.0 → 0.20.1
+  - cvxpy 1.7.5 → 1.9.2
+  - starlette 1.3.1 → 1.6.0
+  - rasterio 1.4.4 → 1.5.1
+  - torch: tried 2.13.0 but GTX 1050 Ti (CC 6.1) not supported → rolled back to 2.5.1+cu121
+  - sympy: 1.14.0 → 1.13.1 (torch 2.5.1 constraint)
+- **pypfopt fix:** Patched `hierarchical_portfolio.py` line 152 — replaced `sch._LINKAGE_METHODS` (removed in scipy 1.18) with hardcoded set
+- **System packages:** `sudo apt update` — all packages up to date
+- **Test results:** 1642 passed, 42 failed (pre-existing: PG schema issues, test data conflicts, cross_market DB-dependent)
+
+### Config Audit & Updates (COMPLETED):
+- `AGENTS.md`: DB path SQLite→PostgreSQL, migration head 0019→0020, ablation DB persistence info
+- `.devin/skills/context-checkpoint/SKILL.md`: pustaka count 101→103, doc range 00-100→00-102
+- `.devin/skills/megaplan-executor/SKILL.md`: migration head 0019→0020, pustaka count 101→103
+- `pustaka/00-README.md`: added docs 101 & 102 to index table
+- `.devin/skills/knowledge-base-curator/SKILL.md`: already up to date (103 docs, 00-102 range)
+
+### Files Changed This Session:
+- `alembic/versions/0020_add_ablation_tables.py` (NEW)
+- `src/market/ablation/ablation_report.py` (MODIFIED — save_to_db, load helpers)
+- `src/market/ablation/__init__.py` (MODIFIED — exports)
+- `scripts/engine_ablation/run_ablation.py` (MODIFIED — DB save call)
+- `pyproject.toml` (MODIFIED — numpy constraint)
+- `AGENTS.md` (MODIFIED — §1 DB, §6 migrations + ablation)
+- `.devin/skills/context-checkpoint/SKILL.md` (MODIFIED)
+- `.devin/skills/megaplan-executor/SKILL.md` (MODIFIED)
+- `pustaka/00-README.md` (MODIFIED — docs 101, 102 added)
+- `.devin/SESSION_MEMORY.md` (MODIFIED — this checkpoint)
+
+### Pending:
+- Git commit & push semua perubahan
+- 42 pre-existing test failures (PG schema: watchlist id auto-increment, intraday column names, refresh_stale SQL placeholder)
+

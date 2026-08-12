@@ -1,0 +1,10 @@
+[
+  {
+    "table": "stock_prices",
+    "action": "filled",
+    "tickers_processed": 1032,
+    "rows_inserted": 925,
+    "errors": 0,
+    "date_range": "2026-08-08 to 2026-08-11"
+  }
+]

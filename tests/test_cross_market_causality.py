@@ -373,12 +373,12 @@ class TestRecomputeCrossMarket:
 
     def test_function_exists(self):
         """recompute_cross_market should be importable."""
-        from market.data.recompute_internal import recompute_cross_market
+        from market.multi_asset.cross_market import recompute_cross_market
         assert callable(recompute_cross_market)
 
     def test_cross_market_pairs_defined(self):
         """CROSS_MARKET_PAIRS should include all major markets."""
-        from market.data.recompute_internal import CROSS_MARKET_PAIRS
+        from market.multi_asset.cross_market import CROSS_MARKET_PAIRS
 
         tickers = [t for t, _ in CROSS_MARKET_PAIRS]
         assert "^N225" in tickers  # Tokyo
@@ -394,7 +394,7 @@ class TestRecomputeCrossMarket:
     def test_in_run_all_recompute(self):
         """cross_market should be in run_all_recompute function list."""
         import inspect
-        from market.data.recompute_internal import run_all_recompute
+        from market.analysis.recompute import run_all_recompute
 
         source = inspect.getsource(run_all_recompute)
         assert "cross_market" in source

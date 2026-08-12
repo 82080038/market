@@ -34,6 +34,58 @@ import pandas as pd
 
 from market.analysis.pattern_detector import PatternDetection, PatternDetector
 
+# Module-level cache for exogenous data (FX, Shanghai) loaded once per process
+_fx_cache: pd.DataFrame | None = None
+_shanghai_cache: pd.DataFrame | None = None
+
+
+def _load_fx_cache() -> pd.DataFrame | None:
+    """Load USD/IDR FX data once and cache."""
+    global _fx_cache
+    if _fx_cache is not None:
+        return _fx_cache
+    try:
+        from market.db.raw import get_raw_connection, _PgConnWrapper
+
+        def _rc(c):
+            return c._conn if isinstance(c, _PgConnWrapper) else c
+
+        with get_raw_connection() as conn:
+            _fx_cache = pd.read_sql(
+                "SELECT timestamp as date, close FROM ohlcv WHERE ticker='IDR=X' ORDER BY timestamp",
+                _rc(conn),
+            )
+            if not _fx_cache.empty:
+                _fx_cache["date"] = pd.to_datetime(_fx_cache["date"])
+                _fx_cache = _fx_cache.set_index("date")
+    except Exception:
+        _fx_cache = pd.DataFrame()
+    return _fx_cache
+
+
+def _load_shanghai_cache() -> pd.DataFrame | None:
+    """Load Shanghai Composite data once and cache."""
+    global _shanghai_cache
+    if _shanghai_cache is not None:
+        return _shanghai_cache
+    try:
+        from market.db.raw import get_raw_connection, _PgConnWrapper
+
+        def _rc(c):
+            return c._conn if isinstance(c, _PgConnWrapper) else c
+
+        with get_raw_connection() as conn:
+            _shanghai_cache = pd.read_sql(
+                "SELECT timestamp as date, close FROM ohlcv WHERE ticker='000001.SS' ORDER BY timestamp",
+                _rc(conn),
+            )
+            if not _shanghai_cache.empty:
+                _shanghai_cache["date"] = pd.to_datetime(_shanghai_cache["date"])
+                _shanghai_cache = _shanghai_cache.set_index("date")
+    except Exception:
+        _shanghai_cache = pd.DataFrame()
+    return _shanghai_cache
+
 if TYPE_CHECKING:
     from market.analysis.delisting_memory import DelistingMemory
     from market.analysis.market_context import MarketContext, MarketContextProvider
@@ -250,6 +302,24 @@ class PredictionEngine:
 
         close = df["close"].astype(float)
         current_price = float(close.iloc[-1])
+
+        # Guard: zero or negative price → safe fallback (prevents ZeroDivisionError)
+        if current_price <= 0:
+            self._log_entry(
+                "warn", ticker,
+                f"Invalid price ({current_price}) — prediction refused",
+            )
+            return Prediction(
+                ticker=ticker,
+                as_of=str(as_of) if as_of else str(df.index[-1]),
+                method=method,
+                predicted_price=0.0,
+                predicted_direction="flat",
+                predicted_return_pct=0.0,
+                confidence=0.0,
+                horizon_days=self.horizon,
+                rationale=f"Invalid current price ({current_price}) — prediction refused",
+            )
 
         # Run pattern detection (no look-ahead)
         patterns = self.pattern_detector.detect(ticker, df, as_of)
@@ -966,22 +1036,13 @@ class PredictionEngine:
         # based on sector sensitivity
         exog_rationale = ""
         try:
-            from market.config import settings as _settings
-            from market.db.raw import get_raw_connection
-
             _as_of_dt = pd.Timestamp(as_of)
-            _param_style = "%s" if _settings.db_backend == "postgresql" else "?"
 
-            with get_raw_connection() as _conn:
-                # USD/IDR 5-day return as of prediction date (no look-ahead)
-                _fx_sql = (
-                    "SELECT timestamp as date, close FROM ohlcv "
-                    "WHERE ticker='IDR=X' AND timestamp <= " + _param_style + " ORDER BY timestamp"
-                )
-                _fx = pd.read_sql(_fx_sql, _conn, params=(_as_of_dt.strftime("%Y-%m-%d"),))
-                if not _fx.empty and len(_fx) > 5:
-                    _fx["date"] = pd.to_datetime(_fx["date"])
-                    _fx = _fx.set_index("date")
+            # USD/IDR 5-day return (cached, filter by as_of in pandas)
+            _fx_full = _load_fx_cache()
+            if _fx_full is not None and not _fx_full.empty:
+                _fx = _fx_full[_fx_full.index <= _as_of_dt]
+                if len(_fx) > 5:
                     _fx_ret5 = _fx["close"].pct_change(5).iloc[-1]
                     exog_adjust = 0.0
                     if ticker in ("ANTM.JK", "MDKA.JK", "INCO.JK", "KRAS.JK", "APLI.JK", "UNTR.JK"):
@@ -996,15 +1057,11 @@ class PredictionEngine:
                         direction = "up" if ret_pct > direction_threshold else "down" if ret_pct < -direction_threshold else "flat"
                         exog_rationale = f" FX5d={_fx_ret5:.2%}→adj={exog_adjust:+.2f}%"
 
-                # Shanghai Composite 5-day return as of prediction date — China demand proxy
-                _sh_sql = (
-                    "SELECT timestamp as date, close FROM ohlcv "
-                    "WHERE ticker='000001.SS' AND timestamp <= " + _param_style + " ORDER BY timestamp"
-                )
-                _sh = pd.read_sql(_sh_sql, _conn, params=(_as_of_dt.strftime("%Y-%m-%d"),))
-                if not _sh.empty and len(_sh) > 5 and ticker in ("ANTM.JK", "MDKA.JK", "INCO.JK", "KRAS.JK", "APLI.JK"):
-                    _sh["date"] = pd.to_datetime(_sh["date"])
-                    _sh = _sh.set_index("date")
+            # Shanghai Composite 5-day return (cached, filter by as_of in pandas)
+            _sh_full = _load_shanghai_cache()
+            if _sh_full is not None and not _sh_full.empty:
+                _sh = _sh_full[_sh_full.index <= _as_of_dt]
+                if len(_sh) > 5 and ticker in ("ANTM.JK", "MDKA.JK", "INCO.JK", "KRAS.JK", "APLI.JK"):
                     _sh_ret5 = _sh["close"].pct_change(5).iloc[-1]
                     sh_adjust = _sh_ret5 * 1.5
                     if abs(sh_adjust) > 0.01:

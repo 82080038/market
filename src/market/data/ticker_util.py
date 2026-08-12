@@ -67,6 +67,10 @@ def get_suffix(market_mic: str, session: Session | None = None) -> str | None:
             if result is not None:
                 return result
         except Exception:
+            try:
+                session.rollback()
+            except Exception:
+                pass
             logger.debug("Could not query market_registry for %s, using fallback", market_mic)
 
     return _get_suffix(market_mic)
@@ -234,29 +238,29 @@ def resolve_ticker(
     if conn is None:
         return ticker
 
-    import sqlite3 as _sqlite3
-
     try:
-        if isinstance(conn, _sqlite3.Connection):
-            # Check if ticker exists as current ticker
-            row = conn.execute(
-                "SELECT ticker FROM instrument_master WHERE ticker = ? AND former_ticker IS NOT NULL",
+        # DBAPI2 connection (sqlite3 or psycopg2) — use cursor
+        if hasattr(conn, 'cursor'):
+            cur = conn.cursor()
+            cur.execute(
+                "SELECT ticker FROM instrument_master WHERE ticker = %s AND former_ticker IS NOT NULL",
                 (ticker,),
-            ).fetchone()
+            )
+            row = cur.fetchone()
             if row:
-                return row[0]  # Already current, has a former_ticker
-
-            # Check if ticker is a former_ticker of another row
-            row = conn.execute(
-                "SELECT ticker FROM instrument_master WHERE former_ticker = ?",
+                cur.close()
+                return row[0]
+            cur.execute(
+                "SELECT ticker FROM instrument_master WHERE former_ticker = %s",
                 (ticker,),
-            ).fetchone()
+            )
+            row = cur.fetchone()
+            cur.close()
             if row:
-                return row[0]  # Return the current ticker
-
+                return row[0]
             return ticker
+        # SQLAlchemy session
         else:
-            # SQLAlchemy session
             from market.db.models import InstrumentMaster
 
             result = conn.execute(
@@ -289,15 +293,15 @@ def resolve_ticker_batch(
     if conn is None:
         return {}
 
-    import sqlite3 as _sqlite3
-
     result: dict[str, str] = {}
     try:
-        if isinstance(conn, _sqlite3.Connection):
-            # Build former_ticker → current ticker map
-            rows = conn.execute(
+        if hasattr(conn, 'cursor'):
+            cur = conn.cursor()
+            cur.execute(
                 "SELECT ticker, former_ticker FROM instrument_master WHERE former_ticker IS NOT NULL"
-            ).fetchall()
+            )
+            rows = cur.fetchall()
+            cur.close()
             former_map = {r[1]: r[0] for r in rows}
             for t in tickers:
                 if t in former_map:

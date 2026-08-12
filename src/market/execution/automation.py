@@ -18,8 +18,10 @@ from dataclasses import dataclass, field
 from datetime import UTC, datetime
 from enum import Enum
 from typing import Any
+from uuid import uuid4
 
 from market.config import settings
+from market.risk.engine import CircuitBreaker, DailyLossTracker
 from market.risk.leverage import LeverageConfig
 
 # ---------------------------------------------------------------------------
@@ -196,6 +198,7 @@ class AutomationGate:
         market_open: bool = True,
         model_degraded: bool = False,
         paper_trading_days: int = 0,
+        daily_loss_halted: bool = False,
     ) -> None:
         self.env = env or settings.env
         self.live_approved = live_approved if live_approved is not None else settings.live_approved
@@ -203,6 +206,64 @@ class AutomationGate:
         self.market_open = market_open
         self.model_degraded = model_degraded
         self.paper_trading_days = paper_trading_days
+        self.daily_loss_halted = daily_loss_halted
+
+    @classmethod
+    def from_circuit_breaker(
+        cls,
+        cb: CircuitBreaker,
+        env: str | None = None,
+        live_approved: bool | None = None,
+        market_open: bool = True,
+        model_degraded: bool = False,
+        paper_trading_days: int = 0,
+        daily_loss_tracker: DailyLossTracker | None = None,
+    ) -> AutomationGate:
+        """Construct gate with circuit breaker and daily loss state auto-wired.
+
+        Args:
+            cb: CircuitBreaker instance (from risk.engine).
+            env: Environment override.
+            live_approved: Live approval override.
+            market_open: Market open status.
+            model_degraded: Model degradation flag.
+            paper_trading_days: Days of paper trading completed.
+            daily_loss_tracker: Optional DailyLossTracker for daily loss limit.
+
+        Returns:
+            AutomationGate with circuit_breaker_triggered and daily_loss_halted set.
+        """
+        return cls(
+            env=env,
+            live_approved=live_approved,
+            circuit_breaker_triggered=cb.is_triggered,
+            market_open=market_open,
+            model_degraded=model_degraded,
+            paper_trading_days=paper_trading_days,
+            daily_loss_halted=daily_loss_tracker.is_halted if daily_loss_tracker else False,
+        )
+
+    def update_circuit_breaker(self, cb: CircuitBreaker) -> None:
+        """Live-update circuit breaker state from a CircuitBreaker instance.
+
+        Call this before check_config() or execute() to ensure the gate
+        reflects the latest drawdown state.
+
+        Args:
+            cb: CircuitBreaker instance with current state.
+        """
+        self.circuit_breaker_triggered = cb.is_triggered
+
+    def update_daily_loss(self, tracker: DailyLossTracker) -> None:
+        """Live-update daily loss halt state from a DailyLossTracker instance.
+
+        Call this before check_config() or execute() to ensure the gate
+        reflects the latest daily P&L state.
+
+        Args:
+            tracker: DailyLossTracker instance with current state.
+        """
+        self.daily_loss_halted = tracker.is_halted
 
     def check_config(self, config: AutomationConfig) -> GateResult:
         """Periksa apakah konfigurasi otomatisasi boleh diaktifkan.
@@ -319,6 +380,21 @@ class AutomationGate:
             rules.append(GateRule(
                 rule_id="R5_CIRCUIT_BREAKER",
                 description="Circuit breaker tidak triggered",
+                status=GateCheckStatus.PASS,
+            ))
+
+        # R12: Daily loss limit
+        if self.daily_loss_halted:
+            rules.append(GateRule(
+                rule_id="R12_DAILY_LOSS",
+                description="Daily loss limit tidak boleh tercapai",
+                status=GateCheckStatus.FAIL,
+                detail="Daily loss limit tercapai — semua auto-eksekusi dihentikan untuk hari ini.",
+            ))
+        else:
+            rules.append(GateRule(
+                rule_id="R12_DAILY_LOSS",
+                description="Daily loss limit belum tercapai",
                 status=GateCheckStatus.PASS,
             ))
 
@@ -525,6 +601,9 @@ class AutomationGate:
         if self.circuit_breaker_triggered:
             return False, "Circuit breaker aktif — semua otomatisasi diblokir."
 
+        if self.daily_loss_halted:
+            return False, "Daily loss limit tercapai — otomatisasi diblokir untuk hari ini."
+
         if self.env == "live" and not self.live_approved:
             return False, "Live approval token belum disetujui."
 
@@ -590,8 +669,6 @@ class PlanBuilder:
     6. Buat ExecutionPlan dengan PlanOrders
     """
 
-    _plan_counter = 0
-
     def __init__(
         self,
         min_confidence: float = 65.0,
@@ -603,6 +680,12 @@ class PlanBuilder:
         self.max_orders = max_orders
         self.max_value = max_value
         self.lot_size = lot_size
+
+    @staticmethod
+    def _generate_plan_id() -> str:
+        """Generate a unique, sortable plan ID (timestamp + uuid4 suffix)."""
+        ts = datetime.now(UTC).strftime("%Y%m%d%H%M%S")
+        return f"PLAN-{ts}-{uuid4().hex[:6]}"
 
     def build(
         self,
@@ -623,8 +706,7 @@ class PlanBuilder:
         Returns:
             ExecutionPlan dengan orders yang lolos filter.
         """
-        PlanBuilder._plan_counter += 1
-        plan_id = f"PLAN-{PlanBuilder._plan_counter:05d}"
+        plan_id = self._generate_plan_id()
 
         orders: list[PlanOrder] = []
         rejections: list[str] = []
@@ -810,11 +892,15 @@ class AutoExecutor:
     """Eksekutor otomatis yang menjalankan ExecutionPlan via broker.
 
     Menggunakan BrokerAdapter (Mock/Paper/Real) untuk submit order.
+    Holds a persistent OMS instance to preserve order history across calls.
     """
 
-    def __init__(self, broker: Any | None = None) -> None:
+    def __init__(self, broker: Any | None = None, oms: Any | None = None) -> None:
         from market.execution.brokers import MockBroker
+        from market.execution.oms import OMS
+
         self.broker = broker or MockBroker()
+        self.oms = oms or OMS()
 
     def execute_plan(self, plan: ExecutionPlan) -> ExecutionBatchResult:
         """Eksekusi semua order dalam plan.
@@ -825,9 +911,8 @@ class AutoExecutor:
         Returns:
             ExecutionBatchResult dengan hasil per order.
         """
-        from market.execution.oms import OMS, OrderSide, OrderType
+        from market.execution.oms import OrderSide, OrderStatus, OrderType
 
-        oms = OMS()
         results: list[ExecutionResult] = []
         filled = 0
         rejected = 0
@@ -838,7 +923,7 @@ class AutoExecutor:
         for plan_order in plan.orders:
             side = OrderSide.BUY if plan_order.side == "buy" else OrderSide.SELL
 
-            order = oms.create_order(
+            order = self.oms.create_order(
                 ticker=plan_order.ticker,
                 side=side,
                 shares=plan_order.shares,
@@ -846,14 +931,12 @@ class AutoExecutor:
                 price=plan_order.price,
             )
 
-            oms.transition(order.id, __import__(
-                "market.execution.oms", fromlist=["OrderStatus"],
-            ).OrderStatus.PENDING)
+            self.oms.transition(order.id, OrderStatus.PENDING)
 
             fill = self.broker.submit(order)
 
             if fill is not None:
-                oms.add_fill(order.id, fill.shares, fill.price)
+                self.oms.add_fill(order.id, fill.shares, fill.price)
                 results.append(ExecutionResult(
                     ticker=plan_order.ticker,
                     side=plan_order.side,

@@ -387,19 +387,9 @@ class PolicyEventScorer:
         Returns:
             Number of events loaded.
         """
-        path = str(db_path or self.db_path or "")
-
-        if path:
-            import sqlite3
-            conn = sqlite3.connect(path)
-            try:
-                return self._load_events(conn)
-            finally:
-                conn.close()
-        else:
-            from market.db.raw import get_raw_connection
-            with get_raw_connection() as conn:
-                return self._load_events(conn)
+        from market.db.raw import get_raw_connection
+        with get_raw_connection() as conn:
+            return self._load_events(conn)
 
     def _load_events(self, conn: object) -> int:
         """Load events from an open DBAPI connection."""
