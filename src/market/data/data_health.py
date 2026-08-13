@@ -18,7 +18,7 @@ from __future__ import annotations
 import logging
 import os
 from dataclasses import dataclass, field
-from datetime import UTC, datetime, timedelta
+from datetime import UTC, datetime
 from pathlib import Path
 
 logger = logging.getLogger(__name__)
@@ -382,7 +382,6 @@ def check_all(db_path: Path | str, parquet_path: Path | str) -> HealthReport:
     Returns:
         HealthReport with all issues found.
     """
-    from market.config import settings
 
     db_path = Path(db_path)
     parquet_path = Path(parquet_path)

@@ -28,10 +28,6 @@ from sqlalchemy import text
 
 from market.config import settings
 from market.db.engine import get_sessionmaker
-from market.db.models import (
-    CorporateGovernance,
-    ESGScore,
-)
 
 if TYPE_CHECKING:
     from sqlalchemy.orm import Session
@@ -248,7 +244,7 @@ def fix_04_timestamp_normalize(session: Session, dry_run: bool = False) -> dict:
     ).fetchall()
 
     for row in bad_ts:
-        (id_, ticker, d, tf, o, h, l, c, v, ac, dqs, src) = row
+        (id_, ticker, d, tf, o, h, l, c, v, ac, dqs, _src) = row
         new_ts = f"{d} 00:00:00"
         # Check if a row with normalized timestamp already exists
         existing = session.execute(

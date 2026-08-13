@@ -25,7 +25,6 @@ from __future__ import annotations
 
 import logging
 from dataclasses import dataclass, field
-from decimal import Decimal
 from typing import TYPE_CHECKING
 
 import numpy as np

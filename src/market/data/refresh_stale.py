@@ -15,7 +15,6 @@ from __future__ import annotations
 import logging
 from dataclasses import dataclass, field
 from datetime import datetime, timedelta
-from pathlib import Path
 
 logger = logging.getLogger(__name__)
 
@@ -361,7 +360,6 @@ def refresh_stale_data(
 
 if __name__ == "__main__":
     import argparse
-    import json
     import sys
 
     parser = argparse.ArgumentParser(description="Detect and refresh stale data")

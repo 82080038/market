@@ -150,7 +150,7 @@ async def prices_movers(
     Query params:
         limit: Number of gainers/losers to return (default 10).
     """
-    from sqlalchemy import func, literal_column, text
+    from sqlalchemy import text
 
     # Use raw SQL for efficient LAG window function
     sql = text("""

@@ -12,11 +12,10 @@ from __future__ import annotations
 
 import logging
 from datetime import UTC, datetime, timedelta
-from decimal import Decimal
 from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
-    from sqlalchemy.orm import Session
+    pass
 
 logger = logging.getLogger(__name__)
 

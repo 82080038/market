@@ -400,7 +400,7 @@ class PolicyEventScorer:
             "FROM policy_events ORDER BY tanggal"
         ).fetchall()
         for row in rows:
-            tanggal, kategori, judul, instansi, dampak, sektor, deskripsi = row
+            tanggal, kategori, judul, instansi, dampak, _sektor, _deskripsi = row
             etype = _KATEGORI_TO_EVENT_TYPE.get(kategori or "", EventType.OTHER)
             direction = _DAMPAK_TO_DIRECTION.get(dampak or "", EventDirection.NEUTRAL)
             base_impact = _DAMPAK_TO_BASE_IMPACT.get(dampak or "", 0.0)
@@ -435,7 +435,7 @@ class PolicyEventScorer:
             "FROM external_events ORDER BY tanggal"
         ).fetchall()
         for row in ext_rows:
-            tanggal, kategori, judul, lokasi, dampak_market, sektor, deskripsi = row
+            tanggal, kategori, judul, lokasi, dampak_market, _sektor, _deskripsi = row
             etype = _EXT_KATEGORI_TO_EVENT_TYPE.get(kategori or "", EventType.OTHER)
             base_impact = _EXT_DAMPAK_TO_IMPACT.get(dampak_market or "", -15.0)
 

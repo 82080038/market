@@ -19,7 +19,6 @@ from pathlib import Path
 from typing import TYPE_CHECKING
 
 import pandas as pd
-from sqlalchemy import text
 
 from market.config import settings
 from market.db.engine import get_sessionmaker

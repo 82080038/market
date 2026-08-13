@@ -12,7 +12,7 @@ from __future__ import annotations
 
 import json
 import logging
-from datetime import UTC, date, datetime, timedelta
+from datetime import UTC, datetime, timedelta
 from typing import TYPE_CHECKING, cast
 
 import numpy as np
@@ -38,7 +38,6 @@ from market.db.engine import get_sessionmaker
 from market.db.models import (
     FearGreed,
     FundamentalData,
-    MarketRegime,
     RelationshipMatrix,
     Score,
     StockPersonality,

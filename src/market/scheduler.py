@@ -16,7 +16,6 @@ from datetime import UTC, datetime, timedelta
 from enum import Enum
 from typing import Any
 
-from sqlalchemy import text
 
 logger = logging.getLogger(__name__)
 

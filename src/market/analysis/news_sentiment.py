@@ -19,7 +19,7 @@ import logging
 import math
 import re
 from dataclasses import dataclass, field
-from datetime import UTC, date, datetime, timedelta
+from datetime import date, datetime
 
 import numpy as np
 
@@ -344,7 +344,6 @@ class NewsSentimentAnalyzer:
         Returns:
             List of NewsSentimentResult (same order as input).
         """
-        ref = reference_date or date.today()
         results = []
         for item in items:
             title = item.get("title", item.get("headline", ""))
@@ -508,13 +507,6 @@ class NewsSentimentAnalyzer:
 
         # News volume z-score (vs lookback period)
         # If we have enough history, compute z-score; otherwise 0
-        lookback_cutoff = ref - timedelta(days=volume_lookback_days)
-        recent_count = sum(
-            1 for item in items
-            if self._parse_date(item.get("date", ""), ref) >= lookback_cutoff
-        )
-        # Approximate daily average
-        daily_avg = recent_count / max(1, volume_lookback_days)
         # Z-score: (today_count - avg) / std — simplified
         news_volume_zscore = 0.0  # Would need historical daily counts
 

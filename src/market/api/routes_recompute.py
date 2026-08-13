@@ -16,7 +16,6 @@ from __future__ import annotations
 
 import asyncio
 from datetime import UTC, datetime
-from typing import Any
 
 from fastapi import APIRouter, WebSocket, WebSocketDisconnect
 from fastapi.responses import HTMLResponse, JSONResponse

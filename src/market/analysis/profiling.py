@@ -940,7 +940,6 @@ class ModelPerformanceTracker:
 
     def _persist_to_db(self, record: ModelPerformanceRecord) -> None:
         """Persist a single record to model_performance_history table."""
-        import json as _json
 
         from market.db.models import ModelPerformanceHistory
 

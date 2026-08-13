@@ -26,7 +26,6 @@ from fastapi import APIRouter, Depends, Query
 from sqlalchemy.orm import Session
 
 from market.analysis.astronacci import (
-    PLANETARY_BODIES,
     ZODIAC_SIGNS,
     AstronacciEngine,
     _geocentric_ecliptic_lon,
@@ -740,7 +739,7 @@ async def cosmos_exchanges(
             ORDER BY ticker, timestamp DESC
         """), {"tickers": list(commodity_tickers.keys())}).fetchall()
         for row in c_rows:
-            ticker, ts, close, open_price = row
+            ticker, _ts, close, open_price = row
             change_pct = (
                 round((float(close) - float(open_price)) / float(open_price) * 100, 2)
                 if open_price and float(open_price) != 0 else None
@@ -830,9 +829,7 @@ def cosmos_kurs(session: Session = Depends(get_session)) -> list[dict[str, Any]]
 def cosmos_id_stocks(session: Session = Depends(get_session)) -> list[dict[str, Any]]:
     """Saham Indonesia paling likuid (LQ45/top volume) dengan harga terbaru."""
     from sqlalchemy import text as sql_text
-    from market.api._shared import to_jakarta
 
-    now = datetime.now(UTC)
     # Preferensi LQ45 + saham likuid lain
     lq45_tickers = [
         "BBCA.JK", "BBRI.JK", "BMRI.JK", "TLKM.JK", "ASII.JK",

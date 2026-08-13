@@ -19,7 +19,6 @@ from __future__ import annotations
 
 import json
 import logging
-from datetime import UTC, date, datetime
 from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
@@ -163,7 +162,6 @@ class AlertPipeline:
         """Check VIX for high volatility regime."""
         from sqlalchemy import desc, select
 
-        from market.config import settings
         from market.db.models import MacroData
 
         alerts: list[dict[str, object]] = []
@@ -282,7 +280,7 @@ class AlertPipeline:
                 if len(rows) < 2:
                     continue
 
-                latest_close, latest_ts = rows[0]
+                latest_close, _latest_ts = rows[0]
                 prev_close, _ = rows[1]
                 if prev_close is None or float(prev_close) == 0:
                     continue

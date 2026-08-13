@@ -5,7 +5,6 @@ from __future__ import annotations
 from typing import Annotated, Any
 
 from fastapi import APIRouter, Depends, HTTPException, Query
-from sqlalchemy import text
 from sqlalchemy.orm import Session
 
 from market.api._engines import engines

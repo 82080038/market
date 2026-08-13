@@ -44,19 +44,11 @@ import numpy as np
 import pandas as pd
 
 if TYPE_CHECKING:
-    from market.analysis.meta_labeling import MetaLabeler, MetaLabelResult
+    from market.analysis.meta_labeling import MetaLabeler
     from market.analysis.pairs_trading import PairsTradingEngine
     from market.analysis.policy_event_scorer import PolicyEventScorer
     from market.analysis.prediction import Prediction
     from market.analysis.sector_rotation import SectorRotationEngine
-    from market.analysis.volume_features import (
-        RetailAbsorptionResult,
-        calculate_retail_absorption,
-        compute_foreign_flow_signal,
-        compute_ofi_proxy,
-        compute_vwap,
-        detect_obv_divergence,
-    )
 
 logger = logging.getLogger(__name__)
 
@@ -668,8 +660,6 @@ class SignalEnhancer:
 
             # Fallback: compute from OHLCV data in df
             # Use T-0 for Asian markets (close before IDX), T-1 for others
-            from market.analysis.cross_market_timezone import get_ticker_lag
-
             asian_tickers = {
                 "^N225": ("nikkei", 0.35),
                 "^HSI": ("hangseng", 0.35),
@@ -683,7 +673,6 @@ class SignalEnhancer:
             parts = []
 
             for gticker, (name, weight) in asian_tickers.items():
-                lag = get_ticker_lag(gticker)
                 col_1 = f"{name}_lag1_ret"
                 if col_1 in df.columns:
                     val = float(df[col_1].iloc[-1]) if not df[col_1].empty else 0.0
@@ -730,7 +719,6 @@ class SignalEnhancer:
 
             cutoff = pd.Timestamp(as_of)
             if cutoff.tzinfo is None:
-                from datetime import timezone
                 cutoff = cutoff.tz_localize("UTC")
             as_of_dt = cutoff.to_pydatetime()
 

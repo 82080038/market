@@ -157,7 +157,7 @@ def _task_feature_store() -> None:
                 df = df.set_index("timestamp").sort_index()
 
                 feature_set = fs.compute(df)
-                cache_key = fs.cache(feature_set, key=f"{ticker}@1.0.0")
+                fs.cache(feature_set, key=f"{ticker}@1.0.0")
                 computed += 1
             except Exception as exc:
                 logger.debug("Feature store: %s failed — %s", ticker, exc)
@@ -292,7 +292,6 @@ def _task_weekly_hrp_recompute() -> None:
     Saturday (previously a standalone cron with no catch-up).
     """
     import subprocess
-    import sys
     from pathlib import Path
 
     project_dir = Path(__file__).resolve().parents[2]
@@ -389,7 +388,7 @@ def _task_generate_reports() -> None:
         # Build universe dict: ticker → {engine_name: score}
         universe: dict[str, dict[str, float | None]] = {}
         for r in rows:
-            ticker, engine, score, breakdown, as_of = r
+            ticker, engine, score, _breakdown, _as_of = r
             if ticker not in universe:
                 universe[ticker] = {}
             try:
@@ -616,7 +615,7 @@ def _task_fetch_fundamental() -> None:
                 select(Instrument.ticker).where(
                     Instrument.exchange_mic == "XIDX",
                     Instrument.asset_class == "EQUITY",
-                    Instrument.is_active == True,
+                    Instrument.is_active == True,  # noqa: E712
                 ).order_by(Instrument.ticker)
             ).fetchall()
         except Exception:
@@ -625,7 +624,7 @@ def _task_fetch_fundamental() -> None:
                 select(InstrumentMaster.ticker).where(
                     InstrumentMaster.market_mic == "XIDX",
                     InstrumentMaster.asset_class == "equity",
-                    InstrumentMaster.is_active == True,
+                    InstrumentMaster.is_active == True,  # noqa: E712
                 ).order_by(InstrumentMaster.ticker)
             ).fetchall()
         tickers = [to_yf_ticker(r[0], "XIDX", session) for r in rows]

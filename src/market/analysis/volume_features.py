@@ -671,7 +671,6 @@ def calculate_retail_absorption(
         close = float(day_ohlcv["close"].iloc[0])
         high = float(day_ohlcv["high"].iloc[0]) if "high" in day_ohlcv.columns else close
         low = float(day_ohlcv["low"].iloc[0]) if "low" in day_ohlcv.columns else close
-        vol = float(day_ohlcv["volume"].iloc[0]) if "volume" in day_ohlcv.columns else 0.0
 
         typical_price = (high + low + close) / 3.0
         vwap = typical_price  # Single-bar VWAP approximation

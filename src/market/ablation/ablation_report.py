@@ -14,9 +14,7 @@ from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from pathlib import Path
 
-import pandas as pd
 
-from market.ablation.engine_registry import EngineCategory, EngineRegistry
 from market.ablation.isolated_backtest import IsolationResult
 from market.ablation.scorecard import ScoreCard, Verdict, score_engine
 
@@ -87,13 +85,13 @@ class AblationReport:
         for sc in self.ranked():
             if sc.verdict == Verdict.KEEP:
                 action = "maintain_or_increase_weight"
-                suggestion = f"Increase weight by up to 50% (current contribution is significant)"
+                suggestion = "Increase weight by up to 50% (current contribution is significant)"
             elif sc.verdict == Verdict.MARGINAL:
                 action = "monitor"
-                suggestion = f"Keep but monitor — consider reducing weight if no improvement in next audit"
+                suggestion = "Keep but monitor — consider reducing weight if no improvement in next audit"
             else:
                 action = "reduce_or_remove"
-                suggestion = f"Reduce weight to 0 or remove from production pipeline"
+                suggestion = "Reduce weight to 0 or remove from production pipeline"
             recs.append({
                 "engine": sc.engine_name,
                 "verdict": sc.verdict.value,

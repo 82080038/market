@@ -67,7 +67,6 @@ class NewsFeatureProvider:
         Returns:
             Dict of feature_name → float, ready for ML pipeline.
         """
-        from sqlalchemy import select
 
         lookback = as_of - timedelta(days=self.lookback_days)
         prev_start = as_of - timedelta(days=self.lookback_days + previous_period_days)

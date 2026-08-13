@@ -35,12 +35,10 @@ They identify WHEN market behavior may change, not WHICH direction.
 from __future__ import annotations
 
 import math
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from datetime import datetime, timedelta, timezone
-from typing import Iterator, Sequence
 
 import ephem
-import numpy as np
 import pandas as pd
 
 

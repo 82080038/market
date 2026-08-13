@@ -120,8 +120,8 @@ class AuditReport:
             "",
             "## Summary",
             "",
-            f"| Source Type | Count |",
-            f"|-------------|-------|",
+            "| Source Type | Count |",
+            "|-------------|-------|",
         ]
         for k, v in self.summary.items():
             lines.append(f"| {k} | {v} |")

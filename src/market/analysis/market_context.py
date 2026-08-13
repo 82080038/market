@@ -953,7 +953,6 @@ class MarketContextProvider:
         Ingresses) within a 3-day forward window and derives a directional
         signal + volatility expectation.
         """
-        from datetime import timezone
 
         from market.analysis.astronacci import compute_astronacci_signal
 
