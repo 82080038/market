@@ -98,8 +98,74 @@ def _task_recompute() -> None:
 
 
 def _task_feature_store() -> None:
-    """Refresh feature store (stub — connect to FeatureStore when ready)."""
-    logger.info("Feature store refresh: stub")
+    """Refresh feature store — compute ML features from latest OHLCV.
+
+    Loads watchlist tickers from DB, fetches latest 200 bars of daily OHLCV,
+    computes features via FeatureStore (RSI, SMA, BB width, ATR, volume ratio,
+    forward returns), and caches results in-memory for downstream ML pipelines.
+    """
+    import pandas as pd
+    from sqlalchemy import text
+
+    from market.db.engine import get_sessionmaker
+    from market.mlops.feature_store import FeatureStore
+
+    logger.info("Feature store refresh: starting...")
+
+    session = get_sessionmaker()()
+    try:
+        # Get active watchlist tickers
+        rows = session.execute(text("""
+            SELECT ticker FROM watchlist
+            WHERE is_favorite = '1'
+            ORDER BY ticker
+            LIMIT 50
+        """)).fetchall()
+        tickers = [r[0] for r in rows]
+        if not tickers:
+            # Fallback: top tickers by volume from stock_prices
+            rows = session.execute(text("""
+                SELECT ticker FROM stock_prices
+                WHERE timeframe = '1d' AND ticker LIKE '%.JK'
+                GROUP BY ticker ORDER BY count(*) DESC LIMIT 20
+            """)).fetchall()
+            tickers = [r[0] for r in rows]
+
+        if not tickers:
+            logger.warning("Feature store: no tickers found")
+            return
+
+        fs = FeatureStore()
+        fs.register_default_features()
+
+        computed = 0
+        for ticker in tickers:
+            try:
+                df = pd.read_sql(
+                    text("""
+                        SELECT timestamp, open, high, low, close, volume
+                        FROM stock_prices
+                        WHERE ticker = :t AND timeframe = '1d'
+                        ORDER BY timestamp DESC LIMIT 200
+                    """),
+                    session.connection(),
+                    params={"t": ticker},
+                    parse_dates=["timestamp"],
+                )
+                if df.empty or len(df) < 50:
+                    continue
+                df = df.set_index("timestamp").sort_index()
+
+                feature_set = fs.compute(df)
+                cache_key = fs.cache(feature_set, key=f"{ticker}@1.0.0")
+                computed += 1
+            except Exception as exc:
+                logger.debug("Feature store: %s failed — %s", ticker, exc)
+
+        logger.info("Feature store refresh: %d/%d tickers computed, %d features registered",
+                    computed, len(tickers), len(fs.registered_features))
+    finally:
+        session.close()
 
 
 def _task_generate_signals() -> None:
@@ -115,13 +181,239 @@ def _task_generate_signals() -> None:
 
 
 def _task_drift_detection() -> None:
-    """Check model drift (stub — connect to PredictionEngine when ready)."""
-    logger.info("Drift detection: stub")
+    """Check model drift — compare recent predictions vs baseline.
+
+    Loads stock_prediction table (latest predictions) and compares against
+    a historical baseline using DriftDetector (PSI on predicted returns +
+    metric drift on confidence). If drift is detected, persists a warning
+    notification to app_notifications.
+    """
+    import json
+
+    import numpy as np
+    from sqlalchemy import text
+
+    from market.db.engine import get_sessionmaker
+    from market.db.models import AppNotification
+    from market.mlops.drift import DriftDetector
+
+    logger.info("Drift detection: starting...")
+
+    session = get_sessionmaker()()
+    try:
+        # Load recent predictions (last 30 days)
+        recent = session.execute(text("""
+            SELECT ticker, predicted_return_pct, prediction_confidence,
+                   predicted_direction, prediction_updated_at
+            FROM stock_prediction
+            WHERE prediction_updated_at >= now() - interval '30 days'
+            ORDER BY prediction_updated_at DESC
+        """)).fetchall()
+
+        if len(recent) < 20:
+            logger.info("Drift detection: insufficient recent predictions (%d), skipping", len(recent))
+            return
+
+        # Load baseline predictions (30-90 days ago)
+        baseline = session.execute(text("""
+            SELECT ticker, predicted_return_pct, prediction_confidence,
+                   predicted_direction, prediction_updated_at
+            FROM stock_prediction
+            WHERE prediction_updated_at >= now() - interval '90 days'
+              AND prediction_updated_at < now() - interval '30 days'
+            ORDER BY prediction_updated_at DESC
+        """)).fetchall()
+
+        if len(baseline) < 20:
+            logger.info("Drift detection: insufficient baseline predictions (%d), skipping", len(baseline))
+            return
+
+        # Prepare arrays
+        recent_returns = np.array([float(r[1] or 0) for r in recent])
+        baseline_returns = np.array([float(r[1] or 0) for r in baseline])
+        recent_conf = np.array([float(r[2] or 0) for r in recent])
+        baseline_conf = np.array([float(r[2] or 0) for r in baseline])
+
+        detector = DriftDetector(metric_threshold=0.20, psi_threshold=0.25)
+        detector.set_baseline_predictions(baseline_returns)
+        detector.set_baseline_metrics({
+            "mean_confidence": float(np.mean(baseline_conf)),
+            "std_confidence": float(np.std(baseline_conf)),
+            "mean_return": float(np.mean(baseline_returns)),
+        })
+
+        report = detector.assess(
+            current_predictions=recent_returns,
+            current_metrics={
+                "mean_confidence": float(np.mean(recent_conf)),
+                "std_confidence": float(np.std(recent_conf)),
+                "mean_return": float(np.mean(recent_returns)),
+            },
+        )
+
+        if report.is_drifted:
+            drifted_names = [r.metric_name for r in report.drifted_metrics]
+            logger.warning("Drift detected: %s", drifted_names)
+
+            # Persist warning notification
+            session2 = get_sessionmaker()()
+            try:
+                session2.add(AppNotification(
+                    title="[WARNING] model_drift",
+                    body_json=json.dumps({
+                        "type": "model_drift",
+                        "severity": "warning",
+                        "drifted_metrics": drifted_names,
+                        "psi_scores": report.psi_scores,
+                        "n_recent": len(recent),
+                        "n_baseline": len(baseline),
+                        "message": f"Model drift detected in {len(drifted_names)} metrics: {drifted_names}",
+                    }, default=str),
+                    status="UNREAD",
+                ))
+                session2.commit()
+            finally:
+                session2.close()
+        else:
+            logger.info("Drift detection: no significant drift (PSI=%s)",
+                        {k: round(v, 4) for k, v in report.psi_scores.items()} or "N/A")
+    except Exception as exc:
+        logger.error("Drift detection failed: %s", exc)
+    finally:
+        session.close()
 
 
 def _task_generate_reports() -> None:
-    """Generate daily reports (stub — connect to AdvisoryEngine when ready)."""
-    logger.info("Report generation: stub")
+    """Generate daily advisory report — run AdvisoryEngine screening.
+
+    Loads factor scores from the scores table, builds a universe dict,
+    runs the AdvisoryEngine.generate_report() method with readiness gate,
+    and persists the report summary to app_notifications.
+    """
+    import json
+
+    from sqlalchemy import text
+
+    from market.analysis.advisory import AdvisoryEngine
+    from market.db.engine import get_sessionmaker
+    from market.db.models import AppNotification
+
+    logger.info("Report generation: starting...")
+
+    session = get_sessionmaker()()
+    try:
+        # Load latest factor scores per ticker
+        rows = session.execute(text("""
+            SELECT DISTINCT ON (s.ticker, s.engine)
+                s.ticker, s.engine, s.score, s.breakdown, s.as_of
+            FROM scores s
+            WHERE s.as_of >= now() - interval '7 days'
+            ORDER BY s.ticker, s.engine, s.as_of DESC
+        """)).fetchall()
+
+        if not rows:
+            logger.warning("Report generation: no recent scores found")
+            return
+
+        # Build universe dict: ticker → {engine_name: score}
+        universe: dict[str, dict[str, float | None]] = {}
+        for r in rows:
+            ticker, engine, score, breakdown, as_of = r
+            if ticker not in universe:
+                universe[ticker] = {}
+            try:
+                universe[ticker][engine] = float(score) if score is not None else None
+            except (TypeError, ValueError):
+                universe[ticker][engine] = None
+
+        # Map engine names to factor categories
+        factor_map = {
+            "technical": "technical",
+            "fundamental": "fundamental",
+            "sentiment": "sentiment",
+            "macro": "macro",
+            "global": "global",
+            "relationship": "relationship",
+        }
+
+        # Normalize universe for AdvisoryEngine
+        # Missing factor scores default to 0.0 so filters don't auto-reject
+        normalized: dict[str, dict[str, float | None]] = {}
+        for ticker, scores in universe.items():
+            normalized[ticker] = {}
+            for key, val in scores.items():
+                mapped = factor_map.get(key, key)
+                normalized[ticker][mapped] = val
+            # Fill missing factors with 0.0
+            for factor in ("technical", "fundamental", "sentiment", "macro", "global", "relationship"):
+                if factor not in normalized[ticker] or normalized[ticker][factor] is None:
+                    normalized[ticker][factor] = 0.0
+
+        # Determine market regime from latest fear_greed
+        regime = "Neutral"
+        try:
+            fg_row = session.execute(text("""
+                SELECT value FROM fear_greed
+                ORDER BY date DESC LIMIT 1
+            """)).fetchone()
+            if fg_row:
+                fg_val = float(fg_row[0])
+                if fg_val < 25:
+                    regime = "Extreme Fear"
+                elif fg_val < 45:
+                    regime = "Fear"
+                elif fg_val < 55:
+                    regime = "Neutral"
+                elif fg_val < 75:
+                    regime = "Greed"
+                else:
+                    regime = "Extreme Greed"
+        except Exception:
+            pass
+
+        # Generate report
+        engine = AdvisoryEngine()
+        report = engine.generate_report(
+            market_regime=regime,
+            universe=normalized,
+            min_composite=50.0,
+            top_n=10,
+        )
+
+        logger.info("Report generation: %s", report.summary)
+
+        # Persist report notification
+        session2 = get_sessionmaker()()
+        try:
+            top_picks_data = [
+                {
+                    "ticker": d.ticker,
+                    "recommendation": d.recommendation,
+                    "composite_score": round(d.composite_score, 2),
+                }
+                for d in report.top_picks[:10]
+            ]
+            session2.add(AppNotification(
+                title=f"[INFO] advisory_report_{report.date}",
+                body_json=json.dumps({
+                    "type": "advisory_report",
+                    "date": report.date,
+                    "market_regime": report.market_regime,
+                    "screened": report.screened,
+                    "passed": report.passed,
+                    "top_picks": top_picks_data,
+                    "summary": report.summary,
+                }, default=str),
+                status="UNREAD",
+            ))
+            session2.commit()
+            logger.info("Report generation: advisory report persisted to app_notifications")
+        finally:
+            session2.close()
+    except Exception as exc:
+        logger.error("Report generation failed: %s", exc)
+    finally:
+        session.close()
 
 
 def _task_export_parquet() -> None:
