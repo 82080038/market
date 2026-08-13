@@ -56,7 +56,6 @@
 }
 
 /* Sembunyikan scrollbar tapi tetap scrollable di cosmos */
-.cosmos-no-scrollbar,
 .cosmos-no-scrollbar::-webkit-scrollbar,
 .cosmos-no-scrollbar *::-webkit-scrollbar {
   display: none;
