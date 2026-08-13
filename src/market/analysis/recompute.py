@@ -486,6 +486,7 @@ def recompute_relationship_matrix(
                 progress_cb("relationship_matrix", processed, len(tickers), f"{count} rows")
         except Exception as exc:
             logger.warning("  relationship_matrix: skipping %s: %s", ticker, exc)
+            session.rollback()
             if progress_cb:
                 progress_cb("relationship_matrix", 0, len(tickers), f"ERROR {ticker}: {exc}")
             continue
@@ -651,7 +652,7 @@ def recompute_stock_personality(
             labels = [lbl.value for lbl in profile.personality_labels]
             primary_label = labels[0] if labels else "unknown"
 
-            session.add(
+            session.merge(
                 StockPersonality(
                     ticker=ticker,
                     volatility_regime=profile.volatility_regime.value,
@@ -670,6 +671,7 @@ def recompute_stock_personality(
                 progress_cb("stock_personality", count, len(tickers), f"{count} profiles")
         except Exception as exc:
             logger.warning("  stock_personality: skipping %s: %s", ticker, exc)
+            session.rollback()
             if progress_cb:
                 progress_cb("stock_personality", 0, len(tickers), f"ERROR {ticker}: {exc}")
             continue
