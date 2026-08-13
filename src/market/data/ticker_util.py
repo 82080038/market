@@ -181,13 +181,13 @@ def from_yf_ticker(yf_ticker: str) -> tuple[str, str]:
             return yf_ticker, "XIDX"
         return yf_ticker, "XNYS"
 
-    # FX pair
-    if "=" in yf_ticker:
-        return yf_ticker, "XFXS"
-
-    # Futures
+    # Futures (e.g. GC=F, CL=F) — must check before FX pair ("=" in)
     if yf_ticker.endswith("=F"):
         return yf_ticker, "XCEC"
+
+    # FX pair (e.g. IDR=X, EURUSD=X)
+    if "=" in yf_ticker:
+        return yf_ticker, "XFXS"
 
     # Check known suffixes
     _SUFFIX_TO_MIC = {

@@ -151,9 +151,24 @@ class TickerScreener:
                 )
             ).scalars().all()
             if active_tickers:
-                # PG instruments table doesn't have delisting_date/underlying_ticker
-                delisted: set[str] = set()
-                merged: set[str] = set()
+                # PG instruments table doesn't have delisting_date/underlying_ticker.
+                # Query InstrumentMaster (which exists in PG too) for those filters.
+                delisted = set(
+                    session.execute(
+                        select(InstrumentMaster.ticker).where(
+                            InstrumentMaster.ticker.in_(active_tickers),
+                            InstrumentMaster.delisting_date.is_not(None),
+                        )
+                    ).scalars().all()
+                )
+                merged = set(
+                    session.execute(
+                        select(InstrumentMaster.ticker).where(
+                            InstrumentMaster.ticker.in_(active_tickers),
+                            InstrumentMaster.underlying_ticker.is_not(None),
+                        )
+                    ).scalars().all()
+                )
             else:
                 raise Exception("No rows in PG instruments, trying SQLite")
         except Exception:

@@ -729,6 +729,7 @@ class StockPrice(Base):
     close: Mapped[float] = mapped_column(Numeric(20, 6), nullable=False)
     volume: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
     vwap: Mapped[float | None] = mapped_column(Numeric(20, 6), nullable=True)
+    adjusted_close: Mapped[float | None] = mapped_column(Numeric(20, 6), nullable=True)
     source: Mapped[str] = mapped_column(String(50), default="yahoo_finance")
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_utcnow)
 

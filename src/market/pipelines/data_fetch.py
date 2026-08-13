@@ -122,12 +122,17 @@ class DataFetchPipeline:
         """
         from sqlalchemy import func, select
 
+        from market.config import settings
         from market.core.events import broker
         from market.data.acquisition import DataAcquisitionEngine
         from market.data.screener import TickerScreener
         from market.data.storage import DataRepository
+        from market.data.ticker_util import to_yf_ticker
         from market.db.engine import get_sessionmaker
-        from market.db.models import OHLCV
+        from market.db.models import OHLCV, StockPrice
+
+        is_pg = settings.db_backend == "postgresql"
+        price_model = StockPrice if is_pg else OHLCV
 
         session = get_sessionmaker()()
         try:
@@ -150,7 +155,7 @@ class DataFetchPipeline:
                 yf_ticker = to_yf_ticker(ticker, "XIDX", session)
 
                 latest = session.execute(
-                    select(func.max(OHLCV.timestamp)).where(OHLCV.ticker == yf_ticker)
+                    select(func.max(price_model.timestamp)).where(price_model.ticker == yf_ticker)
                 ).scalar()
                 if latest and (datetime.now(UTC) - latest).days <= 1:
                     skipped += 1
@@ -338,22 +343,26 @@ class DataFetchPipeline:
         """Handle data.fetch.intraday.requested — poll yfinance for latest prices.
 
         Fetches latest 15-min interval data for key tickers (indices,
-        commodities). Stores to OHLCV with timeframe='15m'.
+        commodities). Stores to stock_prices (PG) or ohlcv (SQLite) with timeframe='15m'.
         Does NOT trigger full recompute — only updates latest prices.
 
         Emits data.fetch.intraday.completed with price snapshot for FE.
         """
         from sqlalchemy import select
 
+        from market.config import settings
         from market.core.events import broker
         from market.data.yahoo_adapter import YahooFinanceAdapter
         from market.db.engine import get_sessionmaker
-        from market.db.models import OHLCV
+        from market.db.models import OHLCV, StockPrice
 
         tickers = event.payload.get("tickers", [])
         if not tickers:
             logger.warning("Intraday fetch: no tickers in event payload")
             return
+
+        is_pg = settings.db_backend == "postgresql"
+        model = StockPrice if is_pg else OHLCV
 
         session = get_sessionmaker()()
         try:
@@ -376,25 +385,40 @@ class DataFetchPipeline:
                     currency = "IDR" if ticker == "^JKSE" else "USD"
 
                     existing = session.execute(
-                        select(OHLCV).where(
-                            OHLCV.ticker == ticker,
-                            OHLCV.timestamp == latest.timestamp,
-                            OHLCV.timeframe == "15m",
+                        select(model).where(
+                            model.ticker == ticker,
+                            model.timestamp == latest.timestamp,
+                            model.timeframe == "15m",
                         )
                     ).scalar_one_or_none()
 
                     if existing is None:
-                        session.add(OHLCV(
-                            ticker=ticker,
-                            timestamp=latest.timestamp,
-                            timeframe="15m",
-                            open=latest.open,
-                            high=latest.high,
-                            low=latest.low,
-                            close=latest.close,
-                            volume=int(latest.volume) if latest.volume else 0,
-                            source="yahoo_finance_intraday",
-                        ))
+                        if is_pg:
+                            session.add(StockPrice(
+                                ticker=ticker,
+                                exchange_mic=market_mic,
+                                timestamp=latest.timestamp,
+                                timeframe="15m",
+                                open=latest.open,
+                                high=latest.high,
+                                low=latest.low,
+                                close=latest.close,
+                                volume=int(latest.volume) if latest.volume else 0,
+                                adjusted_close=latest.adjusted_close,
+                                source="yahoo_finance_intraday",
+                            ))
+                        else:
+                            session.add(OHLCV(
+                                ticker=ticker,
+                                timestamp=latest.timestamp,
+                                timeframe="15m",
+                                open=latest.open,
+                                high=latest.high,
+                                low=latest.low,
+                                close=latest.close,
+                                volume=int(latest.volume) if latest.volume else 0,
+                                source="yahoo_finance_intraday",
+                            ))
 
                     prices[ticker] = {
                         "price": float(latest.close),

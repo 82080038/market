@@ -36,3 +36,33 @@
     color: hsl(var(--foreground));
   }
 }
+
+@keyframes blink {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.3; }
+}
+
+.animate-blink {
+  animation: blink 1s ease-in-out infinite;
+}
+
+@keyframes ticker {
+  0% { transform: translateX(0); }
+  100% { transform: translateX(-50%); }
+}
+
+.animate-ticker {
+  animation: ticker 30s linear infinite;
+}
+
+/* Sembunyikan scrollbar tapi tetap scrollable di cosmos */
+.cosmos-no-scrollbar,
+.cosmos-no-scrollbar::-webkit-scrollbar,
+.cosmos-no-scrollbar *::-webkit-scrollbar {
+  display: none;
+}
+.cosmos-no-scrollbar,
+.cosmos-no-scrollbar * {
+  -ms-overflow-style: none;
+  scrollbar-width: none;
+}

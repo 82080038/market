@@ -11,6 +11,7 @@ import {
   TrendingUp,
   Activity,
   Globe2,
+  Minus,
 } from "lucide-react";
 
 // ── Tipe data dari /api/cosmos ────────────────────────────────────────────────
@@ -106,11 +107,68 @@ interface Exchange {
   };
 }
 
+interface SolarPosition {
+  lat: number;
+  lon: number;
+  utc_time: string;
+}
+
+interface DominoEntry {
+  mic: string;
+  city: string;
+  local_open: string;
+  is_open: boolean;
+  index_change_pct: number | null;
+}
+
+interface SectorCount {
+  name: string;
+  count: number;
+}
+
+interface FearGreed {
+  value: number;
+  label: string;
+  date: string;
+}
+
+interface Commodity {
+  ticker: string;
+  name: string;
+  close: number;
+  change_pct: number | null;
+}
+
+interface Kurs {
+  ticker: string;
+  pair: string;
+  close: number | null;
+  change_pct: number | null;
+  as_of: string;
+}
+
+interface IdStock {
+  ticker: string;
+  name: string;
+  close: number;
+  change_pct: number | null;
+}
+
 interface ExchangesResponse {
   as_of: string;
   open_count: number;
   total_count: number;
   exchanges: Exchange[];
+  solar_position: SolarPosition | null;
+  domino: {
+    chain: DominoEntry[];
+    last_closed: DominoEntry | null;
+    next_to_open: DominoEntry | null;
+  };
+  sectors: SectorCount[];
+  fear_greed: FearGreed | null;
+  commodities: Commodity[];
+  ihsg_sparkline: number[];
 }
 
 // ── Konstanta visual ──────────────────────────────────────────────────────────
@@ -175,11 +233,24 @@ export default function CosmosPage() {
     astro: AstronacciResponse | null;
     sats: SatelliteItem[];
     exchanges: Exchange[];
-  }>({ astro: null, sats: [], exchanges: [] });
+    solar: SolarPosition | null;
+  }>({ astro: null, sats: [], exchanges: [], solar: null });
+
+  // Bottom strip data
+  const [domino, setDomino] = useState<ExchangesResponse["domino"] | null>(null);
+  const [sectors, setSectors] = useState<SectorCount[]>([]);
+  const [fearGreed, setFearGreed] = useState<FearGreed | null>(null);
+  const [commodities, setCommodities] = useState<Commodity[]>([]);
+  const [ihsgSparkline, setIhsgSparkline] = useState<number[]>([]);
+  const [kurs, setKurs] = useState<Kurs[]>([]);
+  const [idStocks, setIdStocks] = useState<IdStock[]>([]);
+  const [topTab, setTopTab] = useState<"zodiak" | "komoditas" | "jam" | "ihsg">("zodiak");
+  const [rotateTab, setRotateTab] = useState<"sinyal" | "siklus" | "bulan">("sinyal");
 
   const [astro, setAstro] = useState<AstronacciResponse | null>(null);
   const [sats, setSats] = useState<SatelliteItem[]>([]);
   const [exchanges, setExchanges] = useState<Exchange[]>([]);
+  const [solarPos, setSolarPos] = useState<SolarPosition | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [lastUpdate, setLastUpdate] = useState<string>("");
@@ -188,20 +259,32 @@ export default function CosmosPage() {
   // ── Fetch data ──
   const fetchData = useCallback(async () => {
     try {
-      const [aRes, sRes, eRes] = await Promise.all([
+      const [aRes, sRes, eRes, kRes, idRes] = await Promise.all([
         fetch("/api/cosmos/astronacci?days=7"),
         fetch("/api/cosmos/satellites?limit=80"),
         fetch("/api/cosmos/exchanges"),
+        fetch("/api/cosmos/kurs"),
+        fetch("/api/cosmos/id_stocks"),
       ]);
-      if (!aRes.ok || !sRes.ok || !eRes.ok)
-        throw new Error(`HTTP ${aRes.status}/${sRes.status}/${eRes.status}`);
+      if (!aRes.ok || !sRes.ok || !eRes.ok || !kRes.ok || !idRes.ok)
+        throw new Error(`HTTP ${aRes.status}/${sRes.status}/${eRes.status}/${kRes.status}/${idRes.status}`);
       const a: AstronacciResponse = await aRes.json();
       const s: SatellitesResponse = await sRes.json();
       const e: ExchangesResponse = await eRes.json();
+      const k: Kurs[] = await kRes.json();
+      const i: IdStock[] = await idRes.json();
       setAstro(a);
       setSats(s.satellites);
       setExchanges(e.exchanges);
-      dataRef.current = { astro: a, sats: s.satellites, exchanges: e.exchanges };
+      setSolarPos(e.solar_position);
+      setDomino(e.domino);
+      setSectors(e.sectors);
+      setFearGreed(e.fear_greed);
+      setCommodities(e.commodities);
+      setIhsgSparkline(e.ihsg_sparkline);
+      setKurs(k);
+      setIdStocks(i);
+      dataRef.current = { astro: a, sats: s.satellites, exchanges: e.exchanges, solar: e.solar_position };
       setLastUpdate(new Date().toLocaleTimeString("id-ID", { hour12: false }));
       setError(null);
     } catch (e) {
@@ -232,6 +315,45 @@ export default function CosmosPage() {
       cancelled = true;
     };
   }, []);
+
+// ── Helper: format jam lokal bursa ────────────────────────────────────────────
+
+/** Format ISO timestamp ke "HH:MM" dalam timezone bursa. */
+/** Component untuk menampilkan % change dengan simbol segitiga ▲ ▼ */
+function ChangeBadge({
+  value,
+  decimals = 2,
+  className = "",
+}: {
+  value: number | null | undefined;
+  decimals?: number;
+  className?: string;
+}) {
+  if (value == null) return <span className={`text-white/30 ${className}`}>—</span>;
+  const sign = value > 0 ? "+" : "";
+  const color = value > 0 ? "text-emerald-400" : value < 0 ? "text-red-400" : "text-white/50";
+  const arrow = value > 0 ? "▲" : value < 0 ? "▼" : "—";
+  return (
+    <span className={`inline-flex items-center gap-0.5 font-mono ${color} ${className}`}>
+      {arrow} {sign}{value.toFixed(decimals)}%
+    </span>
+  );
+}
+
+function formatLocalTime(iso: string, timezone: string): string {
+  try {
+    const d = new Date(iso);
+    if (isNaN(d.getTime())) return "—";
+    return d.toLocaleTimeString("en-GB", {
+      timeZone: timezone,
+      hour: "2-digit",
+      minute: "2-digit",
+      hour12: false,
+    });
+  } catch {
+    return "—";
+  }
+}
 
   // ── Generate starfield sekali ──
   useEffect(() => {
@@ -461,10 +583,11 @@ export default function CosmosPage() {
         ctx.lineWidth = 0.8;
         ctx.stroke();
 
-        // Label: city name + index value
+        // Label: city name + index value + local time
         const idx = ex.index;
+        const arrow = idx?.change_pct != null ? (idx.change_pct > 0 ? "▲" : idx.change_pct < 0 ? "▼" : "—") : "";
         const changeStr = idx?.change_pct != null
-          ? `${idx.change_pct > 0 ? "+" : ""}${idx.change_pct}%`
+          ? `${arrow} ${idx.change_pct > 0 ? "+" : ""}${idx.change_pct.toFixed(2)}%`
           : "";
         const changeColor = idx?.change_pct != null
           ? idx.change_pct > 0
@@ -474,16 +597,24 @@ export default function CosmosPage() {
               : "#94a3b8"
           : "#94a3b8";
 
-        // Label background
+        // Label background — 3 baris: kota, jam lokal, indeks+change
         const label1 = ex.city;
-        const label2 = idx ? `${idx.close.toLocaleString("en-US", { maximumFractionDigits: 0 })} ${changeStr}` : "—";
-        ctx.font = "11px monospace";
-        const labelW = Math.max(ctx.measureText(label1).width, ctx.measureText(label2).width) + 8;
-        const labelH = 28;
+        const localTimeStr = ex.market_status.local_time
+          ? formatLocalTime(ex.market_status.local_time, ex.timezone)
+          : "—";
+        const label2 = `${localTimeStr}${isOpen ? " ●" : ""}`;
+        const label3 = idx ? `${idx.close.toLocaleString("en-US", { maximumFractionDigits: 0 })} ${changeStr}` : "—";
+        ctx.font = "bold 10px monospace";
+        const w1 = ctx.measureText(label1).width;
+        ctx.font = "9px monospace";
+        const w2 = ctx.measureText(label2).width;
+        const w3 = ctx.measureText(label3).width;
+        const labelW = Math.max(w1, w2, w3) + 8;
+        const labelH = 40;
         const labelX = p.x + 8;
         const labelY = p.y - labelH / 2;
 
-        ctx.fillStyle = "rgba(0,0,0,0.6)";
+        ctx.fillStyle = "rgba(0,0,0,0.55)";
         ctx.fillRect(labelX, labelY, labelW, labelH);
         ctx.strokeStyle = `${markerColor}66`;
         ctx.lineWidth = 0.5;
@@ -494,9 +625,12 @@ export default function CosmosPage() {
         ctx.fillStyle = "rgba(255,255,255,0.9)";
         ctx.font = "bold 10px monospace";
         ctx.fillText(label1, labelX + 4, labelY + 3);
-        ctx.fillStyle = changeColor;
+        ctx.fillStyle = isOpen ? "#4ade80" : "rgba(180,180,200,0.6)";
         ctx.font = "9px monospace";
         ctx.fillText(label2, labelX + 4, labelY + 15);
+        ctx.fillStyle = changeColor;
+        ctx.font = "9px monospace";
+        ctx.fillText(label3, labelX + 4, labelY + 27);
       }
 
       // ── Satellite markers (small dots) ──
@@ -515,24 +649,37 @@ export default function CosmosPage() {
 
       ctx.restore(); // end clip
 
-      // Day/night terminator — sun from right side
+      // ── Day/night terminator + Sun marker ──
+      // Matahari di depan viewer (tidak mengelilingi Bumi).
+      // Sisi globe yang terlihat user = siang, sisi belakang = malam.
+      const sunGlow = ctx.createRadialGradient(cx, cy, 0, cx, cy, earthR * 1.4);
+      sunGlow.addColorStop(0, "rgba(255,220,100,0)");
+      sunGlow.addColorStop(0.55, "rgba(255,220,100,0.05)");
+      sunGlow.addColorStop(0.8, "rgba(255,220,80,0.12)");
+      sunGlow.addColorStop(1, "rgba(255,180,40,0)");
+      ctx.fillStyle = sunGlow;
+      ctx.beginPath();
+      ctx.arc(cx, cy, earthR * 1.4, 0, Math.PI * 2);
+      ctx.fill();
+
+      // Night gradient: sisi depan (tengah) terang, menuju rim semakin gelap (senja/malam)
       ctx.save();
       ctx.beginPath();
       ctx.arc(cx, cy, earthR, 0, Math.PI * 2);
       ctx.clip();
-      const nightGrad = ctx.createLinearGradient(cx - earthR, cy, cx + earthR * 0.35, cy);
-      nightGrad.addColorStop(0, "rgba(0,0,20,0.55)");
-      nightGrad.addColorStop(0.5, "rgba(0,0,20,0.2)");
-      nightGrad.addColorStop(1, "rgba(0,0,20,0)");
+      const nightGrad = ctx.createRadialGradient(cx, cy, 0, cx, cy, earthR);
+      nightGrad.addColorStop(0, "rgba(0,0,20,0)");
+      nightGrad.addColorStop(0.65, "rgba(0,0,20,0)");
+      nightGrad.addColorStop(0.85, "rgba(0,0,20,0.15)");
+      nightGrad.addColorStop(1, "rgba(0,0,20,0.45)");
       ctx.fillStyle = nightGrad;
       ctx.fillRect(cx - earthR, cy - earthR, earthR * 2, earthR * 2);
 
-      // City lights on night side (small yellow dots at exchange locations)
+      // City lights: titik-titik kuning di area senja (depth rendah) dan malam
       for (const ex of exchanges) {
         const p = project(ex.lon, ex.lat, rotation, cx, cy, earthR);
         if (!p.visible) continue;
-        // Check if on night side (x < cx + earthR*0.1)
-        if (p.x > cx + earthR * 0.1) continue;
+        if (p.depth > 0.25) continue; // day side
         const flicker = 0.6 + 0.4 * Math.sin(t * 3 + ex.lon * 0.1);
         ctx.fillStyle = `rgba(255,220,100,${flicker * 0.5})`;
         ctx.beginPath();
@@ -540,6 +687,33 @@ export default function CosmosPage() {
         ctx.fill();
       }
       ctx.restore();
+
+      // Sun marker di depan viewer (pojok kanan atas, tidak mengorbit)
+      const sunX = cx + earthR * 0.9;
+      const sunY = cy - earthR * 0.7;
+      const sunGlow2 = ctx.createRadialGradient(sunX, sunY, 4, sunX, sunY, 35);
+      sunGlow2.addColorStop(0, "rgba(255,220,80,0.5)");
+      sunGlow2.addColorStop(0.5, "rgba(255,180,40,0.2)");
+      sunGlow2.addColorStop(1, "rgba(255,180,40,0)");
+      ctx.fillStyle = sunGlow2;
+      ctx.beginPath();
+      ctx.arc(sunX, sunY, 35, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.fillStyle = "rgba(255,235,100,0.9)";
+      ctx.beginPath();
+      ctx.arc(sunX, sunY, 5, 0, Math.PI * 2);
+      ctx.fill();
+      // Sun rays (statis, tidak berputar)
+      for (let a = 0; a < 8; a++) {
+        const ang = (a / 8) * Math.PI * 2 + t * 0.1;
+        const r1 = 7, r2 = 12;
+        ctx.strokeStyle = "rgba(255,220,80,0.3)";
+        ctx.lineWidth = 1;
+        ctx.beginPath();
+        ctx.moveTo(sunX + Math.cos(ang) * r1, sunY + Math.sin(ang) * r1);
+        ctx.lineTo(sunX + Math.cos(ang) * r2, sunY + Math.sin(ang) * r2);
+        ctx.stroke();
+      }
 
       // Rim light
       ctx.strokeStyle = "rgba(120,200,255,0.35)";
@@ -583,6 +757,87 @@ export default function CosmosPage() {
         }
       }
 
+      // ── Capital flow arcs (domino effect) ──
+      // Arc antar bursa + arc penutup New York → Sydney (siklus)
+      const exchangesData = dataRef.current.exchanges;
+      const dominoChain = exchangesData
+        .slice()
+        .sort((a, b) => b.lon - a.lon); // east first
+      const arcPairs: [number, number][] = [];
+      for (let i = 0; i < dominoChain.length - 1; i++) {
+        arcPairs.push([i, i + 1]);
+      }
+      if (dominoChain.length > 2) {
+        arcPairs.push([dominoChain.length - 1, 0]); // New York → Sydney
+      }
+      for (const [fromIdx, toIdx] of arcPairs) {
+        const i = fromIdx;
+        const from = dominoChain[fromIdx];
+        const to = dominoChain[toIdx];
+        const pFrom = project(from.lon, from.lat, rotation, cx, cy, earthR);
+        const pTo = project(to.lon, to.lat, rotation, cx, cy, earthR);
+        if (!pFrom.visible || !pTo.visible) continue;
+
+        const midX = (pFrom.x + pTo.x) / 2;
+        const midY = (pFrom.y + pTo.y) / 2;
+        const dist = Math.hypot(pTo.x - pFrom.x, pTo.y - pFrom.y);
+        const arcHeight = Math.min(dist * 0.2, 25);
+        const apexX = midX;
+        const apexY = midY - arcHeight;
+
+        const fromChg = from.index?.change_pct;
+        const arcColor = fromChg != null
+          ? fromChg > 0 ? "rgba(74,222,128," : fromChg < 0 ? "rgba(248,113,113," : "rgba(148,163,184,"
+          : "rgba(100,200,255,";
+
+        ctx.strokeStyle = arcColor + "0.25)";
+        ctx.lineWidth = 1;
+        ctx.beginPath();
+        ctx.moveTo(pFrom.x, pFrom.y);
+        ctx.quadraticCurveTo(apexX, apexY, pTo.x, pTo.y);
+        ctx.stroke();
+
+        // Animated arrow
+        const progress = ((t * 0.25 + i * 0.12) % 1);
+        const px = pFrom.x * (1 - progress) * (1 - progress) + 2 * apexX * progress * (1 - progress) + pTo.x * progress * progress;
+        const py = pFrom.y * (1 - progress) * (1 - progress) + 2 * apexY * progress * (1 - progress) + pTo.y * progress * progress;
+        const dt = 0.01;
+        const p2x = pFrom.x * (1 - progress - dt) * (1 - progress - dt) + 2 * apexX * (progress + dt) * (1 - progress - dt) + pTo.x * (progress + dt) * (progress + dt);
+        const p2y = pFrom.y * (1 - progress - dt) * (1 - progress - dt) + 2 * apexY * (progress + dt) * (1 - progress - dt) + pTo.y * (progress + dt) * (progress + dt);
+        const angle = Math.atan2(p2y - py, p2x - px);
+        ctx.save();
+        ctx.translate(px, py);
+        ctx.rotate(angle);
+        ctx.fillStyle = arcColor + "0.9)";
+        ctx.beginPath();
+        ctx.moveTo(4, 0);
+        ctx.lineTo(-3, -2.5);
+        ctx.lineTo(-3, 2.5);
+        ctx.closePath();
+        ctx.fill();
+        ctx.restore();
+
+        // Label % change mengikuti panah (bergerak bersama)
+        if (fromChg != null) {
+          const arrow = fromChg > 0 ? "▲" : fromChg < 0 ? "▼" : "—";
+          const label = `${arrow} ${fromChg > 0 ? "+" : ""}${fromChg.toFixed(2)}%`;
+          ctx.font = "bold 8px monospace";
+          const labelW = ctx.measureText(label).width + 4;
+          const labelH = 10;
+          const labelX = px - labelW / 2;
+          const labelY = py - 16;
+          ctx.fillStyle = "rgba(0,0,0,0.5)";
+          ctx.fillRect(labelX, labelY, labelW, labelH);
+          ctx.strokeStyle = arcColor + "0.4)";
+          ctx.lineWidth = 0.5;
+          ctx.strokeRect(labelX, labelY, labelW, labelH);
+          ctx.fillStyle = fromChg > 0 ? "#4ade80" : fromChg < 0 ? "#f87171" : "#94a3b8";
+          ctx.textAlign = "center";
+          ctx.textBaseline = "middle";
+          ctx.fillText(label, px, labelY + labelH / 2);
+        }
+      }
+
       animRef.current = requestAnimationFrame(draw);
     };
 
@@ -609,241 +864,375 @@ export default function CosmosPage() {
         : "neutral";
 
   return (
-    <div className="fixed inset-0 z-50 bg-[#05060f] overflow-hidden">
+    <div className="fixed inset-0 z-50 bg-[#05060f] overflow-hidden cosmos-no-scrollbar">
       <canvas ref={canvasRef} className="absolute inset-0" />
 
-      {/* ── Tombol kembali ── */}
-      <Link
-        href="/"
-        className="absolute top-4 left-4 z-10 flex items-center gap-2 px-3 py-2 rounded-md bg-white/5 hover:bg-white/10 border border-white/10 text-white/80 text-sm backdrop-blur-sm transition-colors"
-      >
-        <ArrowLeft className="w-4 h-4" />
-        Dashboard
-      </Link>
-
-      {/* ── Judul ── */}
-      <div className="absolute top-4 left-1/2 -translate-x-1/2 z-10 text-center pointer-events-none">
-        <h1 className="text-white text-lg font-semibold tracking-wide flex items-center justify-center gap-2">
-          <Globe2 className="w-5 h-5 text-sky-300" />
+      {/* ── Tombol kembali + Judul + Pause (top, minimal) ── */}
+      <div className="absolute top-3 left-4 z-10 flex items-center gap-3">
+        <Link
+          href="/"
+          className="flex items-center gap-2 px-3 py-1.5 rounded-md bg-white/5 hover:bg-white/10 border border-white/10 text-white/80 text-sm backdrop-blur-sm transition-colors"
+        >
+          <ArrowLeft className="w-4 h-4" />
+          Dashboard
+        </Link>
+        <div className="text-white/60 text-sm flex items-center gap-1.5 pointer-events-none">
+          <Globe2 className="w-4 h-4 text-sky-300" />
           Bursa Global & Alam Semesta
-        </h1>
-        <p className="text-white/40 text-xs mt-0.5">
-          {lastUpdate ? `Update ${lastUpdate} WIB` : "memuat…"} · {openExchanges.length}/{exchanges.length} bursa buka
-        </p>
-      </div>
-
-      {/* ── Tombol pause ── */}
-      <button
-        onClick={() => setPaused((p) => !p)}
-        className="absolute top-4 right-[15rem] z-10 px-3 py-2 rounded-md bg-white/5 hover:bg-white/10 border border-white/10 text-white/80 text-xs backdrop-blur-sm transition-colors"
-      >
-        {paused ? "▶ Lanjut" : "⏸ Jeda"}
-      </button>
-
-      {/* ── Mini Cosmos panel (kanan atas) ── */}
-      <div className="absolute top-4 right-4 z-10 w-56 rounded-lg bg-black/40 border border-white/10 backdrop-blur-md p-3">
-        <div className="flex items-center gap-2 mb-2">
-          <Orbit className="w-4 h-4 text-amber-300" />
-          <h2 className="text-white/90 text-sm font-semibold">Tata Surya</h2>
-        </div>
-        <MiniCosmos astro={astro} paused={paused} />
-        <div className="mt-2 text-[10px] text-white/40">
-          {astro?.active_cycles.length ?? 0} siklus Astronacci aktif
         </div>
       </div>
 
-      {/* ── Panel kiri: Siklus Astronacci aktif ── */}
-      <div className="absolute top-20 left-4 z-10 w-72 max-h-[calc(100vh-7rem)] overflow-y-auto rounded-lg bg-black/40 border border-white/10 backdrop-blur-md p-3">
-        <div className="flex items-center gap-2 mb-2">
-          <Sparkles className="w-4 h-4 text-amber-300" />
-          <h2 className="text-white/90 text-sm font-semibold">Siklus Astronacci Aktif</h2>
-        </div>
-        {loading && <p className="text-white/40 text-xs">memuat…</p>}
-        {error && <p className="text-red-400 text-xs">{error}</p>}
-        {!loading && !error && (astro?.active_cycles.length ?? 0) === 0 && (
-          <p className="text-white/40 text-xs">Tidak ada siklus aktif 7 hari ke depan.</p>
-        )}
-        <div className="space-y-2">
-          {astro?.active_cycles.map((c) => (
-            <div
-              key={c.cycle_type + c.start_at}
-              className="rounded-md bg-white/5 border border-white/5 p-2"
-            >
-              <div className="flex items-center justify-between gap-2">
-                <span className="text-white/90 text-xs font-medium">{c.title}</span>
-                <span
-                  className="text-[10px] px-1.5 py-0.5 rounded font-mono"
-                  style={{
-                    color: IMPACT_COLOR[c.potential_impact] ?? "#888",
-                    background: `${IMPACT_COLOR[c.potential_impact] ?? "#888"}22`,
-                  }}
-                >
-                  {c.potential_impact}
-                </span>
-              </div>
-              <div className="flex items-center gap-1.5 mt-1 text-[10px] text-white/50">
-                <span style={{ color: IMPACT_COLOR[c.potential_impact] ?? "#888" }}>
-                  {REVERSAL_ICON[c.expected_reversal] ?? "●"}
-                </span>
-                <span>{c.expected_reversal.replace(/_/g, " ")}</span>
-                <span className="ml-auto">
-                  {new Date(c.start_at).toLocaleDateString("id-ID", { day: "2-digit", month: "short" })}
-                </span>
-              </div>
-            </div>
-          ))}
-        </div>
+      <div className="absolute top-3 right-4 z-10 flex items-center gap-2">
+        <span className="text-white/40 text-[10px]">
+          {lastUpdate ? `${lastUpdate} WIB` : "memuat…"} · {openExchanges.length}/{exchanges.length} buka
+        </span>
+        <button
+          onClick={() => setPaused((p) => !p)}
+          className="px-2.5 py-1.5 rounded-md bg-white/5 hover:bg-white/10 border border-white/10 text-white/80 text-xs backdrop-blur-sm transition-colors"
+        >
+          {paused ? "▶ Lanjut" : "⏸ Jeda"}
+        </button>
       </div>
 
-      {/* ── Panel kanan (di bawah mini cosmos): Sinyal ── */}
-      <div className="absolute top-[16rem] right-4 z-10 w-56 rounded-lg bg-black/40 border border-white/10 backdrop-blur-md p-3">
-        <div className="flex items-center gap-2 mb-2">
-          <Activity className="w-4 h-4 text-sky-300" />
-          <h2 className="text-white/90 text-sm font-semibold">Sinyal Astronacci</h2>
+      {/* ── Panel kiri: Saham LQ & Likuid (penuh) ── */}
+      <div className="absolute top-20 bottom-40 left-4 z-10 w-60 rounded-lg bg-black/10 border border-white/10 backdrop-blur-md p-3 flex flex-col">
+        <div className="flex items-center gap-1.5 mb-2">
+          <TrendingUp className="w-4 h-4 text-emerald-400" />
+          <h2 className="text-white/90 text-sm font-semibold">Saham LQ & Likuid</h2>
         </div>
-        {signal ? (
-          <div className="space-y-2">
-            <div className="flex items-center justify-between">
-              <span className="text-white/50 text-xs">Time Signal</span>
-              <span
-                className={`text-sm font-mono font-bold flex items-center gap-1 ${
-                  signalTone === "bearish"
-                    ? "text-red-400"
-                    : signalTone === "bullish"
-                      ? "text-emerald-400"
-                      : "text-white/70"
-                }`}
-              >
-                {signalTone === "bearish" ? (
-                  <TrendingDown className="w-3.5 h-3.5" />
-                ) : signalTone === "bullish" ? (
-                  <TrendingUp className="w-3.5 h-3.5" />
-                ) : null}
-                {signal.time_signal.toFixed(3)}
-              </span>
-            </div>
-            <Bar label="Volatilitas" value={signal.volatility_signal} color="#FFD23F" />
-            <Bar label="Confidence" value={signal.confidence} color="#6CB4EE" />
-          </div>
-        ) : (
-          <p className="text-white/40 text-xs">memuat…</p>
-        )}
-      </div>
-
-      {/* ── Panel kanan (di bawah sinyal): Daftar Bursa ── */}
-      <div className="absolute top-[26rem] right-4 z-10 w-56 max-h-[calc(100vh-29rem)] overflow-y-auto rounded-lg bg-black/40 border border-white/10 backdrop-blur-md p-3">
-        <div className="flex items-center gap-2 mb-2">
-          <Globe2 className="w-4 h-4 text-emerald-400" />
-          <h2 className="text-white/90 text-sm font-semibold">Bursa Global</h2>
-        </div>
-        <div className="space-y-1.5">
-          {exchanges.map((ex) => {
-            const idx = ex.index;
-            const isOpen = ex.market_status.is_open;
-            const changeColor =
-              idx?.change_pct != null
-                ? idx.change_pct > 0
-                  ? "text-emerald-400"
-                  : idx.change_pct < 0
-                    ? "text-red-400"
-                    : "text-white/50"
-                : "text-white/50";
-            return (
-              <div
-                key={ex.mic}
-                className="flex items-center justify-between gap-2 rounded bg-white/5 px-2 py-1.5"
-              >
-                <div className="flex items-center gap-1.5 min-w-0">
-                  <span
-                    className={`w-1.5 h-1.5 rounded-full shrink-0 ${
-                      isOpen ? "bg-emerald-400 animate-pulse" : "bg-slate-500"
-                    }`}
-                  />
-                  <div className="min-w-0">
-                    <div className="text-white/80 text-[11px] font-medium truncate">
-                      {ex.city}
-                    </div>
-                    <div className="text-white/30 text-[9px] truncate">
-                      {ex.mic} · {ex.currency}
-                    </div>
-                  </div>
+        {idStocks.length > 0 ? (
+          <div className="flex-1 overflow-y-auto space-y-1">
+            {idStocks.map((s) => (
+              <div key={s.ticker} className="flex items-center justify-between gap-2 text-[10px] py-0.5 border-b border-white/5 last:border-0">
+                <div className="truncate">
+                  <div className="text-white/80 font-medium truncate">{s.name}</div>
+                  <div className="text-white/40 text-[9px] font-mono">{s.ticker.replace(".JK", "")}</div>
                 </div>
                 <div className="text-right shrink-0">
-                  <div className="text-white/70 text-[10px] font-mono">
-                    {idx ? idx.close.toLocaleString("en-US", { maximumFractionDigits: 0 }) : "—"}
-                  </div>
-                  <div className={`text-[9px] font-mono ${changeColor}`}>
-                    {idx?.change_pct != null
-                      ? `${idx.change_pct > 0 ? "+" : ""}${idx.change_pct}%`
-                      : ""}
-                  </div>
+                  <div className="text-white/80 font-mono">{s.close.toLocaleString("en-US", { maximumFractionDigits: 0 })}</div>
+                  <ChangeBadge value={s.change_pct} decimals={2} className="text-[9px]" />
                 </div>
               </div>
-            );
-          })}
+            ))}
+          </div>
+        ) : <p className="text-white/40 text-xs">memuat…</p>}
+      </div>
+
+      {/* ── Panel kanan: Indonesia, Forex, Komoditas (stack) ── */}
+      <div className="absolute top-20 right-4 z-10 w-56 flex flex-col gap-2">
+        {/* Indonesia & IHSG */}
+        <div className="rounded-lg bg-black/10 border border-white/10 backdrop-blur-md p-3">
+          <div className="flex items-center gap-1.5 mb-2">
+            <Globe2 className="w-4 h-4 text-emerald-400" />
+            <h2 className="text-white/90 text-sm font-semibold">Indonesia & IHSG</h2>
+          </div>
+          {(() => {
+            const ihsg = exchanges.find((e) => e.mic === "XIDX");
+            const idx = ihsg?.index;
+            return ihsg ? (
+              <div className="space-y-2">
+                <div className="flex items-center justify-between">
+                  <span className="text-white/70 text-[10px]">IHSG</span>
+                  <div className="flex items-center gap-1 text-xs font-mono font-bold text-white/80">
+                    {idx ? idx.close.toLocaleString("en-US", { maximumFractionDigits: 0 }) : "—"}
+                    <ChangeBadge value={idx?.change_pct} decimals={2} className="text-xs" />
+                  </div>
+                </div>
+                <IhsgSparkline sparkline={ihsgSparkline} exchanges={exchanges} />
+                <div className="text-[10px] text-white/50">
+                  <span className="text-white/70">Bursa:</span> {ihsg.city} · {ihsg.market_status.is_open ? "Buka" : "Tutup"}
+                </div>
+                <div className="text-[10px] text-white/50">
+                  <span className="text-white/70">Waktu lokal:</span> {ihsg.market_status.local_time ? new Date(ihsg.market_status.local_time).toLocaleTimeString("en-GB", { timeZone: ihsg.timezone, hour: "2-digit", minute: "2-digit" }) : "—"}
+                </div>
+              </div>
+            ) : <p className="text-white/40 text-xs">data tidak tersedia</p>;
+          })()}
+        </div>
+
+        {/* Forex */}
+        <div className="rounded-lg bg-black/10 border border-white/10 backdrop-blur-md p-3">
+          <div className="text-[10px] text-white/70 font-semibold mb-1.5">Forex</div>
+          {kurs.length > 0 ? (
+            <div className="grid grid-cols-2 gap-x-2 gap-y-1">
+              {kurs.map((k) => (
+                <div key={k.ticker} className="flex items-center justify-between text-[9px]">
+                  <span className="text-white/60">{k.pair.split("/")[0]}</span>
+                  <div className="text-right">
+                    <div className="text-white/80 font-mono">{k.close != null ? k.close.toLocaleString("en-US", { maximumFractionDigits: 0 }) : "—"}</div>
+                    <ChangeBadge value={k.change_pct} decimals={2} className="text-[8px]" />
+                  </div>
+                </div>
+              ))}
+            </div>
+          ) : <p className="text-white/40 text-[9px]">memuat…</p>}
+        </div>
+
+        {/* Komoditas & VIX */}
+        <div className="rounded-lg bg-black/10 border border-white/10 backdrop-blur-md p-3">
+          <div className="flex items-center gap-1.5 mb-2">
+            <TrendingUp className="w-4 h-4 text-amber-300" />
+            <h2 className="text-white/90 text-sm font-semibold">Komoditas & VIX</h2>
+          </div>
+          <div className="space-y-1">
+            {commodities.length > 0 ? commodities.map((c) => {
+              const chg = c.change_pct;
+              return (
+                <div key={c.ticker} className="flex items-center justify-between text-[11px]">
+                  <span className="text-white/80 font-medium">{c.name}</span>
+                  <div className="text-right">
+                    <div className="text-white/80 font-mono">{c.close.toLocaleString("en-US", { maximumFractionDigits: 2 })}</div>
+                    <ChangeBadge value={chg} decimals={2} className="text-[9px]" />
+                  </div>
+                </div>
+              );
+            }) : <p className="text-white/40 text-xs">memuat…</p>}
+          </div>
         </div>
       </div>
 
-      {/* ── Panel kiri bawah: Bulan + Satelit ── */}
-      <div className="absolute bottom-4 left-4 z-10 w-72 rounded-lg bg-black/40 border border-white/10 backdrop-blur-md p-3">
-        {moonBody && (
-          <>
-            <div className="flex items-center gap-2 mb-1">
-              <span className="text-base">🌙</span>
-              <h2 className="text-white/90 text-sm font-semibold">Fase Bulan</h2>
+      {/* ── Bottom strip: semua panel horizontal ── */}
+      <div className="absolute bottom-7 left-0 right-0 z-10 flex items-stretch gap-2 px-3">
+        {/* Panel 1: Efek Domino Bursa */}
+        {domino && domino.chain.length > 0 && (
+          <div className="rounded-lg bg-black/10 border border-white/10 backdrop-blur-md p-2 flex-shrink-0 w-64 max-h-32 overflow-y-auto">
+            <div className="flex items-center gap-1.5 mb-1.5">
+              <TrendingUp className="w-3 h-3 text-amber-300" />
+              <h2 className="text-white/80 text-[11px] font-semibold">Efek Domino Bursa</h2>
             </div>
-            <div className="text-white/80 text-sm">{moonBody.phase_name}</div>
-            <div className="text-white/50 text-xs">
-              Iluminasi {moonBody.illumination_pct?.toFixed(1)}% · Usia {moonBody.age_days?.toFixed(1)} hari · {moonBody.zodiac}
+            <div className="grid grid-cols-2 gap-0.5">
+              {domino.chain.map((d, i) => {
+                const chg = d.index_change_pct;
+                const chgColor =
+                  chg != null
+                    ? chg > 0 ? "text-emerald-400" : chg < 0 ? "text-red-400" : "text-white/50"
+                    : "text-white/30";
+                const isLast = domino.last_closed?.mic === d.mic;
+                const isNext = domino.next_to_open?.mic === d.mic;
+                const borderColor = d.is_open
+                  ? "border-emerald-500/40"
+                  : isLast ? "border-amber-500/40"
+                  : isNext ? "border-emerald-500/40"
+                  : "border-red-500/30";
+                const bgColor = d.is_open
+                  ? "bg-emerald-500/15"
+                  : isLast ? "bg-amber-500/15"
+                  : isNext ? "bg-emerald-500/10"
+                  : "bg-red-500/10";
+                const blinkClass = d.is_open ? "animate-blink" : "";
+                return (
+                  <div
+                    key={d.mic + i}
+                    className={`flex items-center justify-between gap-1 px-1.5 py-1 rounded border ${borderColor} ${bgColor} ${blinkClass}`}
+                    title={`${d.city} (${d.mic})`}
+                  >
+                    <span className="text-[10px] text-white/80 font-medium truncate">{d.city}</span>
+                    <span className={`flex items-center gap-0.5 text-[10px] font-mono font-bold ${chgColor} shrink-0`}>
+                      {chg != null ? (
+                        `${chg > 0 ? "▲" : chg < 0 ? "▼" : "—"} ${chg > 0 ? "+" : ""}${chg.toFixed(2)}%`
+                      ) : "—"}
+                    </span>
+                  </div>
+                );
+              })}
             </div>
-          </>
+            {domino.last_closed && domino.next_to_open && (
+              <div className="mt-1.5 text-[8px] text-white/50">
+                <span className="text-amber-400">{domino.last_closed.city}</span>
+                {" tutup → "}
+                <span className="text-sky-400">{domino.next_to_open.city}</span>
+                {" buka"}
+              </div>
+            )}
+          </div>
         )}
-        <div className="mt-3 pt-2 border-t border-white/10">
-          <div className="flex items-center gap-2 mb-1">
-            <Satellite className="w-4 h-4 text-sky-300" />
-            <h2 className="text-white/90 text-sm font-semibold">Satelit Observasi</h2>
+
+        {/* Panel 2: Sektor Instrument */}
+        {sectors.length > 0 && (
+          <div className="rounded-lg bg-black/10 border border-white/10 backdrop-blur-md p-2 flex-shrink-0 w-52 max-h-32 overflow-y-auto">
+            <div className="flex items-center gap-1.5 mb-1.5">
+              <Activity className="w-3 h-3 text-sky-300" />
+              <h2 className="text-white/80 text-[11px] font-semibold">Sektor</h2>
+              <span className="text-white/30 text-[9px] ml-auto">{sectors.reduce((s, x) => s + x.count, 0)}</span>
+            </div>
+            <div className="flex flex-wrap gap-0.5">
+              {sectors.slice(0, 12).map((s) => {
+                const maxCount = Math.max(...sectors.map((x) => x.count));
+                const intensity = s.count / maxCount;
+                return (
+                  <span
+                    key={s.name}
+                    className="text-[8px] px-1 py-0.5 rounded font-mono"
+                    style={{
+                      background: `rgba(100,180,255,${0.08 + intensity * 0.15})`,
+                      color: `rgba(180,220,255,${0.5 + intensity * 0.4})`,
+                      border: `1px solid rgba(100,180,255,${0.1 + intensity * 0.1})`,
+                    }}
+                    title={`${s.name}: ${s.count}`}
+                  >
+                    {s.name.slice(0, 12)} <span className="text-white/40">{s.count}</span>
+                  </span>
+                );
+              })}
+            </div>
           </div>
-          <div className="text-white/60 text-xs">
-            {sats.length} lokasi · {sats.filter((s) => s.latest.length > 0).length} dgn observasi
+        )}
+
+        {/* Panel 3: Sinyal / Siklus / Bulan (bergantian) */}
+        <div className="rounded-lg bg-black/10 border border-white/10 backdrop-blur-md p-2 flex-shrink-0 w-48 max-h-32 overflow-y-auto">
+          <div className="flex items-center gap-1 mb-1.5">
+            {(["sinyal", "siklus", "bulan"] as const).map((tab) => (
+              <button
+                key={tab}
+                onClick={() => setRotateTab(tab)}
+                className={`px-1.5 py-0.5 rounded text-[8px] font-medium transition-colors ${
+                  rotateTab === tab ? "bg-white/15 text-white/90" : "text-white/30 hover:text-white/50"
+                }`}
+              >
+                {tab === "sinyal" ? "Sinyal" : tab === "siklus" ? "Siklus" : "Bulan"}
+              </button>
+            ))}
           </div>
+
+          {rotateTab === "sinyal" && (
+            <div className="space-y-1">
+              {signal ? (
+                <>
+                  <div className="flex items-center justify-between">
+                    <span className="text-white/50 text-[10px]">Time Signal</span>
+                    <span className={`text-xs font-mono font-bold flex items-center gap-1 ${
+                      signalTone === "bearish" ? "text-red-400" : signalTone === "bullish" ? "text-emerald-400" : "text-white/70"
+                    }`}>
+                      {signalTone === "bearish" ? <TrendingDown className="w-3 h-3" />
+                       : signalTone === "bullish" ? <TrendingUp className="w-3 h-3" /> : null}
+                      {signal.time_signal.toFixed(3)}
+                    </span>
+                  </div>
+                  <Bar label="Volatilitas" value={signal.volatility_signal} color="#FFD23F" />
+                  <Bar label="Confidence" value={signal.confidence} color="#6CB4EE" />
+                </>
+              ) : <p className="text-white/40 text-[10px]">memuat…</p>}
+            </div>
+          )}
+
+          {rotateTab === "siklus" && (
+            <div className="space-y-1">
+              {astro?.active_cycles.slice(0, 3).map((c) => (
+                <div key={c.cycle_type + c.start_at} className="rounded bg-white/5 border border-white/5 p-1.5">
+                  <div className="flex items-center justify-between gap-1">
+                    <span className="text-white/90 text-[10px] font-medium truncate">{c.title}</span>
+                    <span className="text-[8px] px-1 rounded font-mono shrink-0"
+                      style={{ color: IMPACT_COLOR[c.potential_impact] ?? "#888", background: `${IMPACT_COLOR[c.potential_impact] ?? "#888"}22` }}>
+                      {c.potential_impact}
+                    </span>
+                  </div>
+                  <div className="text-[8px] text-white/40 mt-0.5">
+                    {new Date(c.start_at).toLocaleDateString("id-ID", { day: "2-digit", month: "short" })}
+                  </div>
+                </div>
+              ))}
+              {(!astro || astro.active_cycles.length === 0) && <p className="text-white/40 text-[10px]">Tidak ada siklus aktif.</p>}
+            </div>
+          )}
+
+          {rotateTab === "bulan" && (
+            <div className="space-y-1">
+              {moonBody && (
+                <>
+                  <div className="text-white/80 text-xs">{moonBody.phase_name}</div>
+                  <div className="text-white/50 text-[10px]">Iluminasi {moonBody.illumination_pct?.toFixed(1)}%</div>
+                  <div className="text-white/40 text-[10px]">Zodiak: {moonBody.zodiac}</div>
+                </>
+              )}
+              <div className="pt-1 border-t border-white/10">
+                <div className="flex items-center gap-1 text-white/50 text-[10px]">
+                  <Satellite className="w-3 h-3 text-sky-300" />
+                  {sats.length} satelit · {sats.filter((s) => s.latest.length > 0).length} observasi
+                </div>
+              </div>
+            </div>
+          )}
+        </div>
+
+        {/* Panel 4: Zodiak / Komoditas / Jam / IHSG (bergantian) */}
+        <div className="rounded-lg bg-black/10 border border-white/10 backdrop-blur-md p-2 flex-shrink-0 w-48 max-h-32 overflow-y-auto">
+          <div className="flex items-center gap-1 mb-1.5">
+            {([
+              ["zodiak", "Zodiak"],
+              ["komoditas", "Komoditas"],
+              ["jam", "Jam"],
+              ["ihsg", "IHSG"],
+            ] as const).map(([key, label]) => (
+              <button
+                key={key}
+                onClick={() => setTopTab(key)}
+                className={`px-1.5 py-0.5 rounded text-[8px] font-medium transition-colors ${
+                  topTab === key ? "bg-white/15 text-white/90" : "text-white/30 hover:text-white/50"
+                }`}
+              >
+                {label}
+              </button>
+            ))}
+          </div>
+
+          {topTab === "zodiak" && (
+            <div className="text-[10px] text-white/60">
+              {astro?.bodies.filter(b => b.name !== "SUN" && b.name !== "MOON").slice(0, 5).map(b => (
+                <div key={b.name} className="flex justify-between">
+                  <span style={{ color: PLANET_COLORS[b.name] ?? "#888" }}>{b.name.slice(0, 3)}</span>
+                  <span>{b.lon_deg.toFixed(1)}°{b.retrograde ? " ℞" : ""}</span>
+                </div>
+              ))}
+              <div className="text-white/40 mt-1">{astro?.active_cycles.length ?? 0} siklus aktif</div>
+            </div>
+          )}
+
+          {topTab === "komoditas" && (
+            <div className="space-y-0.5">
+              {commodities.map((c) => {
+                const chg = c.change_pct;
+                const chgColor = chg != null ? (chg > 0 ? "text-emerald-400" : chg < 0 ? "text-red-400" : "text-white/50") : "text-white/30";
+                return (
+                  <div key={c.ticker} className="flex items-center justify-between text-[10px]">
+                    <span className="text-white/70">{c.name.slice(0, 8)}</span>
+                    <span className={`font-mono ${chgColor}`}>
+                      {chg != null ? `${chg > 0 ? "▲" : chg < 0 ? "▼" : "—"} ${chg > 0 ? "+" : ""}${chg.toFixed(1)}%` : ""}
+                    </span>
+                  </div>
+                );
+              })}
+            </div>
+          )}
+
+          {topTab === "jam" && <WorldClock exchanges={exchanges} />}
+
+          {topTab === "ihsg" && <IhsgSparkline sparkline={ihsgSparkline} exchanges={exchanges} />}
+        </div>
+
+        {/* Panel 5: Fear & Greed (compact) */}
+        {fearGreed && (
+          <div className="rounded-lg bg-black/10 border border-white/10 backdrop-blur-md p-2 flex-shrink-0">
+            <div className="flex items-center gap-1 mb-1">
+              <Activity className="w-3 h-3 text-amber-300" />
+              <span className="text-white/60 text-[9px] font-semibold uppercase">F&G</span>
+            </div>
+            <FearGreedGauge value={fearGreed.value} label={fearGreed.label} date={fearGreed.date} />
+          </div>
+        )}
+
+        {/* Panel 6: Legenda */}
+        <div className="rounded-lg bg-black/10 border border-white/10 backdrop-blur-md p-2 flex-shrink-0 flex flex-col justify-center gap-1 text-[8px] text-white/40">
+          <span className="flex items-center gap-1"><span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse" /> Buka</span>
+          <span className="flex items-center gap-1"><span className="w-1.5 h-1.5 rounded-full bg-amber-400" /> Baru tutup</span>
+          <span className="flex items-center gap-1"><span className="w-1.5 h-1.5 rounded-full bg-red-500" /> Tutup</span>
+          <span className="flex items-center gap-1 text-amber-300">☀ Matahari</span>
+          <span className="flex items-center gap-1 text-sky-300">→ Arc aliran</span>
         </div>
       </div>
 
-      {/* ── Legenda ── */}
-      <div className="absolute bottom-4 left-1/2 -translate-x-1/2 z-10 flex items-center gap-4 px-4 py-2 rounded-lg bg-black/40 border border-white/10 backdrop-blur-md text-[10px] text-white/60">
-        <span className="flex items-center gap-1">
-          <span className="w-2 h-2 rounded-full bg-emerald-400 inline-block animate-pulse" /> Bursa buka
-        </span>
-        <span className="flex items-center gap-1">
-          <span className="w-2 h-2 rounded-full bg-slate-500 inline-block" /> Bursa tutup
-        </span>
-        <span className="flex items-center gap-1">
-          <span className="w-2 h-2 rounded-full bg-sky-400 inline-block" /> Satelit dgn observasi
-        </span>
-        <span className="flex items-center gap-1">
-          <span className="text-amber-300">●</span> City lights (malam)
-        </span>
-      </div>
-    </div>
-  );
-}
+      {/* ── Ticker strip berjalan (bottom, full width) ── */}
+      <TickerStrip exchanges={exchanges} />
 
-// ── Sub-komponen: progress bar ────────────────────────────────────────────────
-
-function Bar({ label, value, color }: { label: string; value: number; color: string }) {
-  const pct = Math.round((value ?? 0) * 100);
-  return (
-    <div>
-      <div className="flex items-center justify-between text-[10px] text-white/50 mb-0.5">
-        <span>{label}</span>
-        <span className="font-mono">{pct}%</span>
-      </div>
-      <div className="h-1.5 rounded-full bg-white/10 overflow-hidden">
-        <div
-          className="h-full rounded-full transition-all"
-          style={{ width: `${pct}%`, background: color }}
-        />
-      </div>
     </div>
   );
 }
@@ -959,3 +1348,212 @@ function MiniCosmos({
 
   return <canvas ref={canvasRef} className="mx-auto" />;
 }
+
+// ── Bar component ─────────────────────────────────────────────────────────────
+function Bar({ label, value, color }: { label: string; value: number; color: string }) {
+  const pct = Math.max(0, Math.min(100, (value + 1) * 50));
+  return (
+    <div>
+      <div className="flex justify-between text-[9px] text-white/50 mb-0.5">
+        <span>{label}</span>
+        <span className="font-mono">{value.toFixed(2)}</span>
+      </div>
+      <div className="h-1.5 w-full bg-white/10 rounded overflow-hidden">
+        <div className="h-full rounded" style={{ width: `${pct}%`, background: color }} />
+      </div>
+    </div>
+  );
+}
+
+// ── Fear & Greed Gauge component ─────────────────────────────────────────────
+function FearGreedGauge({ value, label, date }: { value: number; label: string; date: string }) {
+  const color =
+    value < 25 ? "#ef4444" : value < 45 ? "#f97316" : value < 55 ? "#eab308" : value < 75 ? "#84cc16" : "#22c55e";
+  const size = 70;
+  const cx = size / 2;
+  const cy = size * 0.75;
+  const r = size * 0.4;
+  const needleAngle = Math.PI - (value / 100) * Math.PI;
+  const arcSegments = [
+    { from: 0, to: 25, color: "#ef4444" },
+    { from: 25, to: 45, color: "#f97316" },
+    { from: 45, to: 55, color: "#eab308" },
+    { from: 55, to: 75, color: "#84cc16" },
+    { from: 75, to: 100, color: "#22c55e" },
+  ];
+  return (
+    <div>
+      <svg width={size} height={size * 0.65} className="block">
+        {arcSegments.map((seg) => {
+          const a1 = Math.PI - (seg.from / 100) * Math.PI;
+          const a2 = Math.PI - (seg.to / 100) * Math.PI;
+          const x1 = cx + Math.cos(a1) * r;
+          const y1 = cy - Math.sin(a1) * r;
+          const x2 = cx + Math.cos(a2) * r;
+          const y2 = cy - Math.sin(a2) * r;
+          return (
+            <path
+              key={seg.from}
+              d={`M ${x1} ${y1} A ${r} ${r} 0 0 1 ${x2} ${y2}`}
+              fill="none"
+              stroke={seg.color}
+              strokeWidth={4}
+              strokeLinecap="round"
+              opacity={0.7}
+            />
+          );
+        })}
+        <line
+          x1={cx}
+          y1={cy}
+          x2={cx + Math.cos(needleAngle) * r * 0.85}
+          y2={cy - Math.sin(needleAngle) * r * 0.85}
+          stroke={color}
+          strokeWidth={2}
+          strokeLinecap="round"
+        />
+        <circle cx={cx} cy={cy} r={2.5} fill={color} />
+      </svg>
+      <div className="text-center -mt-1">
+        <div className="text-sm font-bold font-mono" style={{ color }}>
+          {value.toFixed(0)}
+        </div>
+        <div className="text-white/50 text-[7px]">{label}</div>
+      </div>
+    </div>
+  );
+}
+
+// ── WorldClock: jam real-time pusat finansial ─────────────────────────────────
+function WorldClock({ exchanges }: { exchanges: Exchange[] }) {
+  const [now, setNow] = useState(new Date());
+  useEffect(() => {
+    const id = setInterval(() => setNow(new Date()), 1000);
+    return () => clearInterval(id);
+  }, []);
+
+  const centers = ["XIDX", "XTSE", "XHKG", "XFRA", "XLON", "XNYS"];
+  const clocks = centers
+    .map((mic) => exchanges.find((e) => e.mic === mic))
+    .filter((e): e is Exchange => e !== undefined);
+
+  return (
+    <div className="space-y-0.5">
+      {clocks.map((ex) => {
+        const isOpen = ex.market_status.is_open;
+        let timeStr = "—";
+        try {
+          timeStr = now.toLocaleTimeString("en-GB", {
+            timeZone: ex.timezone,
+            hour: "2-digit",
+            minute: "2-digit",
+            hour12: false,
+          });
+        } catch {}
+        return (
+          <div key={ex.mic} className="flex items-center justify-between text-[10px]">
+            <div className="flex items-center gap-1">
+              <span className={`w-1 h-1 rounded-full ${isOpen ? "bg-emerald-400 animate-pulse" : "bg-slate-500"}`} />
+              <span className="text-white/70">{ex.city.slice(0, 8)}</span>
+            </div>
+            <span className={`font-mono font-bold ${isOpen ? "text-emerald-400" : "text-white/40"}`}>
+              {timeStr}
+            </span>
+          </div>
+        );
+      })}
+    </div>
+  );
+}
+
+// ── IhsgSparkline: mini chart IHSG 30 hari ───────────────────────────────────
+function IhsgSparkline({ sparkline, exchanges }: { sparkline: number[]; exchanges: Exchange[] }) {
+  if (sparkline.length < 2) return <p className="text-white/40 text-[10px]">data tidak tersedia</p>;
+
+  const w = 160;
+  const h = 50;
+  const padding = 4;
+  const min = Math.min(...sparkline);
+  const max = Math.max(...sparkline);
+  const range = max - min || 1;
+  const step = (w - padding * 2) / (sparkline.length - 1);
+
+  const points = sparkline.map((v, i) => {
+    const x = padding + i * step;
+    const y = h - padding - ((v - min) / range) * (h - padding * 2);
+    return `${x},${y}`;
+  });
+
+  const pathD = `M ${points.join(" L ")}`;
+  const areaD = `${pathD} L ${padding + (sparkline.length - 1) * step},${h - padding} L ${padding},${h - padding} Z`;
+  const lastVal = sparkline[sparkline.length - 1];
+  const firstVal = sparkline[0];
+  const changePct = ((lastVal - firstVal) / firstVal) * 100;
+  const isUp = changePct >= 0;
+  const lineColor = isUp ? "#4ade80" : "#f87171";
+
+  const ihsg = exchanges.find((e) => e.mic === "XIDX");
+  const idxChange = ihsg?.index?.change_pct;
+
+  return (
+    <div>
+      <div className="flex items-center justify-between mb-0.5">
+        <span className="text-[10px] text-white/70 font-medium">IHSG</span>
+        <span className="text-xs font-mono font-bold text-white/90">
+          {lastVal.toLocaleString("en-US", { maximumFractionDigits: 0 })}
+        </span>
+      </div>
+      <svg width={w} height={h} className="block">
+        <defs>
+          <linearGradient id="ihsgGrad" x1="0" y1="0" x2="0" y2="1">
+            <stop offset="0%" stopColor={lineColor} stopOpacity={0.3} />
+            <stop offset="100%" stopColor={lineColor} stopOpacity={0} />
+          </linearGradient>
+        </defs>
+        <path d={areaD} fill="url(#ihsgGrad)" />
+        <path d={pathD} fill="none" stroke={lineColor} strokeWidth={1} />
+        <circle
+          cx={padding + (sparkline.length - 1) * step}
+          cy={h - padding - ((lastVal - min) / range) * (h - padding * 2)}
+          r={2}
+          fill={lineColor}
+        />
+      </svg>
+      <div className="flex items-center justify-between text-[8px] mt-0.5">
+        <span className="text-white/40">30d</span>
+        <span className={isUp ? "text-emerald-400" : "text-red-400"}>
+          {isUp ? "▲" : "▼"} {changePct > 0 ? "+" : ""}{changePct.toFixed(2)}%
+          {idxChange != null && ` (${idxChange > 0 ? "+" : ""}${idxChange.toFixed(2)}%)`}
+        </span>
+      </div>
+    </div>
+  );
+}
+
+// ── Ticker strip component ───────────────────────────────────────────────────
+function TickerStrip({ exchanges }: { exchanges: Exchange[] }) {
+  const pairs = exchanges.map((ex) => {
+    const idx = ex.index;
+    const chg = idx?.change_pct;
+    return { city: ex.city, close: idx?.close ?? 0, chg };
+  });
+
+  return (
+    <div className="absolute bottom-0 left-0 right-0 z-10 overflow-hidden bg-black/10 border-t border-white/10 backdrop-blur-md">
+      <div className="flex items-center gap-8 py-1.5 px-2 animate-ticker whitespace-nowrap text-[11px] font-mono">
+        {[...pairs, ...pairs].map((p, i) => {
+          const color = p.chg == null ? "text-white/50" : p.chg > 0 ? "text-emerald-400" : p.chg < 0 ? "text-red-400" : "text-white/50";
+          const arrow = p.chg == null ? "" : p.chg > 0 ? "▲" : p.chg < 0 ? "▼" : "—";
+          return (
+            <span key={i} className={`flex items-center gap-1 ${color}`}>
+              <span className="text-white/70 font-medium">{p.city}</span>
+              <span className="text-white/60">{p.close.toLocaleString("en-US", { maximumFractionDigits: 0 })}</span>
+              <span>{arrow} {p.chg != null ? `${p.chg > 0 ? "+" : ""}${p.chg.toFixed(2)}%` : "—"}</span>
+            </span>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+

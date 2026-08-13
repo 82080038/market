@@ -228,12 +228,62 @@ async def cosmos_satellites(
 
     Sumber prioritas:
       1. ``satellite_ticker_locations`` (DB, mapping eksplisit ticker→lokasi)
-      2. ``SECTOR_FALLBACK_LOCATIONS`` (default per-sektor dari satellite_fetcher)
+      2. ``satellite_observations`` (DB, lokasi yang punya observasi data)
+      3. ``SECTOR_FALLBACK_LOCATIONS`` — HANYA untuk sektor yang dipakai
+         instrument aplikasi (watchlist + instrument_master), dipetakan via
+         ``SECTOR_NAME_MAP``.
+
+    Bukan semua lokasi fallback global ditampilkan — hanya yang relevan
+    dengan sektor ticker yang benar-benar dipakai aplikasi.
 
     Untuk tiap lokasi, ambil observasi metrik terbaru dari
     ``satellite_observations`` (NDVI, T2M, PRECTOTCORR, RH2M, ALLSKY_SFC_SW_DWN).
     """
-    # ── 1. Lokasi eksplisit dari DB ──
+    import re
+    from sqlalchemy import text as sql_text
+
+    from market.data.satellite_fetcher import SECTOR_NAME_MAP
+
+    # ── 0. Tentukan sektor satelit yang relevan dengan instrument aplikasi ──
+    # Ambil sektor dari instrument_master (prioritaskan ticker watchlist),
+    # petakan ke sektor satelit via SECTOR_NAME_MAP.
+    relevant_sat_sectors: set[str] = set()
+    try:
+        # Sektor dari semua instrument_master
+        rows = session.execute(sql_text(
+            "SELECT DISTINCT sector FROM instrument_master WHERE sector IS NOT NULL"
+        )).fetchall()
+        instrument_sectors = [row[0] for row in rows if row[0]]
+
+        # Sektor dari ticker watchlist (prioritas)
+        wl_rows = session.execute(sql_text("""
+            SELECT im.sector FROM watchlist w
+            JOIN instrument_master im ON w.ticker = im.ticker
+            WHERE im.sector IS NOT NULL
+            GROUP BY im.sector
+        """)).fetchall()
+        wl_sectors = [row[0] for row in wl_rows if row[0]]
+
+        # Prioritaskan sektor watchlist, tapi juga sertakan sektor lain
+        all_sectors = list(dict.fromkeys(wl_sectors + instrument_sectors))
+        for sector in all_sectors:
+            if not sector:
+                continue
+            sector_lower = re.sub(r"[^a-z0-9]+", "_", sector.lower()).strip("_")
+            sat_sector = SECTOR_NAME_MAP.get(sector_lower)
+            if not sat_sector:
+                for k, v in SECTOR_NAME_MAP.items():
+                    if k in sector_lower or sector_lower in k:
+                        sat_sector = v
+                        break
+            if sat_sector:
+                relevant_sat_sectors.add(sat_sector)
+    except Exception:
+        session.rollback()
+        # Fallback: sektor umum IDX
+        relevant_sat_sectors = {"mining", "energy", "agriculture"}
+
+    # ── 1. Lokasi eksplisit dari DB (satellite_ticker_locations) ──
     db_locs: list[SatelliteTickerLocation] = (
         session.query(SatelliteTickerLocation)
         .order_by(SatelliteTickerLocation.ticker, SatelliteTickerLocation.location_name)
@@ -259,9 +309,37 @@ async def cosmos_satellites(
             "latest": _latest_observations(session, row.location_name),
         })
 
-    # ── 2. Fallback per-sektor jika masih kurang dari limit ──
+    # ── 2. Lokasi yang punya observasi data (satellite_observations) ──
     if len(satellites) < limit:
-        for sector, locs in SECTOR_FALLBACK_LOCATIONS.items():
+        try:
+            obs_rows = session.execute(sql_text("""
+                SELECT DISTINCT location_name, MIN(lat) AS lat, MIN(lon) AS lon
+                FROM satellite_observations
+                GROUP BY location_name
+                ORDER BY location_name
+                LIMIT :limit
+            """), {"limit": limit}).fetchall()
+            for loc_name, lat, lon in obs_rows:
+                if loc_name in seen or len(satellites) >= limit:
+                    continue
+                seen.add(loc_name)
+                satellites.append({
+                    "location_name": loc_name,
+                    "lat": float(lat),
+                    "lon": float(lon),
+                    "sector": None,
+                    "ticker": None,
+                    "source": "observation",
+                    "metrics": SIGNIFICANT_METRICS,
+                    "latest": _latest_observations(session, loc_name),
+                })
+        except Exception:
+            session.rollback()
+
+    # ── 3. Fallback per-sektor HANYA untuk sektor yang relevan ──
+    if len(satellites) < limit:
+        for sector in sorted(relevant_sat_sectors):
+            locs = SECTOR_FALLBACK_LOCATIONS.get(sector, [])
             for loc in locs:
                 if len(satellites) >= limit:
                     break
@@ -285,6 +363,7 @@ async def cosmos_satellites(
     return {
         "as_of": to_jakarta(datetime.now(UTC)),
         "count": len(satellites),
+        "relevant_sectors": sorted(relevant_sat_sectors),
         "satellites": satellites,
         "metric_legend": [
             {"code": "NDVI", "label": "Vegetation Index (Sentinel-2)"},
@@ -495,9 +574,308 @@ async def cosmos_exchanges(
 
     open_count = sum(1 for e in exchanges if e["market_status"]["is_open"])
 
+    # ── Domino chain: urutan bursa dari timur ke barat berdasarkan jam buka ──
+    # Bursa yang tutup lebih dulu (timur) mempengaruhi bursa yang buka berikutnya (barat).
+    # Referensi: pustaka/101-global-idx-advanced-models.md (Overnight IDX, domino effect)
+    from zoneinfo import ZoneInfo
+
+    # Jam buka default per bursa (trading_hours di DB kosong untuk semua market)
+    # Format: "HH:MM" dalam waktu lokal bursa
+    DEFAULT_OPEN_TIMES: dict[str, str] = {
+        "XASX": "10:00",  # Sydney
+        "XTSE": "09:00",  # Tokyo
+        "XKRX": "09:00",  # Seoul
+        "XKLSE": "09:00",  # Kuala Lumpur
+        "XSGX": "09:00",  # Singapore
+        "XHKG": "09:30",  # Hong Kong
+        "XSHG": "09:30",  # Shanghai
+        "XIDX": "09:00",  # Jakarta
+        "XBOM": "09:15",  # Mumbai
+        "XFRA": "09:00",  # Frankfurt
+        "XLON": "08:00",  # London
+        "XNYS": "09:30",  # New York
+        "XNAS": "09:30",  # NASDAQ
+    }
+
+    def _utc_offset_minutes(tz_str: str) -> int:
+        """Return current UTC offset in minutes for a timezone."""
+        try:
+            tz = ZoneInfo(tz_str)
+            local_now = now.astimezone(tz)
+            return int(local_now.utcoffset().total_seconds() / 60)
+        except Exception:
+            return 0
+
+    # Build domino chain: sort by actual UTC opening time
+    # Handle wrap-around: Sydney opens at ~23:00 UTC (previous day),
+    # which should sort BEFORE Tokyo (00:00 UTC).
+    # Solution: shift any open_utc_min > 720 (noon UTC) by -1440
+    # so it sorts as a negative number (previous day).
+    domino_entries: list[dict[str, Any]] = []
+    for ex in exchanges:
+        tz = ex["timezone"]
+        hours = ex["trading_hours"] or ""
+        # Use DB trading_hours if available, otherwise default
+        if hours and "-" in hours:
+            open_hh = hours.split(",")[0].strip().split("-")[0].strip()[:5]
+        else:
+            open_hh = DEFAULT_OPEN_TIMES.get(ex["mic"], "09:00")
+        try:
+            h, m = open_hh.split(":")
+            open_local_min = int(h) * 60 + int(m)
+        except Exception:
+            open_local_min = 540  # 09:00 default
+
+        utc_offset = _utc_offset_minutes(tz)
+        open_utc_min = open_local_min - utc_offset
+        # Normalize to [0, 1440) — no wrap-around shift needed
+        # Sydney (10:00 AEST = 00:00 UTC) → 0, NY (09:30 EDT = 13:30 UTC) → 810
+        # Sort ascending: Sydney first, NY last — correct east-to-west order
+        open_utc_min = open_utc_min % (24 * 60)
+
+        # Format local open time for display
+        local_open_str = open_hh
+
+        domino_entries.append({
+            "mic": ex["mic"],
+            "city": ex["city"],
+            "lon": ex["lon"],
+            "open_utc_min": open_utc_min,
+            "local_open": local_open_str,
+            "is_open": ex["market_status"]["is_open"],
+            "index_change_pct": ex["index"]["change_pct"] if ex["index"] else None,
+            "timezone": tz,
+        })
+    # Sort by UTC opening time (ascending), then by longitude (descending = east first)
+    # untuk tie-break: Sydney (151°E) sebelum Tokyo (139°E) sebelum Seoul (126°E)
+    domino_entries.sort(key=lambda d: (d["open_utc_min"], -d["lon"]))
+
+    # Find: last closed and next to open in the chain
+    last_closed: dict | None = None
+    next_to_open: dict | None = None
+    # Find the boundary: last exchange that is NOT open, immediately
+    # followed by another that is NOT open (the next to open)
+    for i, d in enumerate(domino_entries):
+        prev = domino_entries[i - 1] if i > 0 else domino_entries[-1]
+        if not d["is_open"] and not prev["is_open"]:
+            last_closed = prev
+            next_to_open = d
+            break
+    # Fallback: if all closed, find by time proximity
+    if last_closed is None and domino_entries:
+        last_closed = domino_entries[-1]  # last in chain (most recent to close)
+        next_to_open = domino_entries[0]  # first in chain (next day's first)
+
+    domino_chain = [
+        {
+            "mic": d["mic"],
+            "city": d["city"],
+            "local_open": d["local_open"],
+            "is_open": d["is_open"],
+            "index_change_pct": d["index_change_pct"],
+        }
+        for d in domino_entries
+    ]
+
+    # ── Sector counts from instrument_master ──
+    sectors: list[dict[str, Any]] = []
+    try:
+        sector_rows = session.execute(sql_text(
+            "SELECT sector, COUNT(*) as cnt FROM instrument_master "
+            "WHERE sector IS NOT NULL GROUP BY sector ORDER BY cnt DESC"
+        )).fetchall()
+        for sector_name, cnt in sector_rows:
+            sectors.append({
+                "name": sector_name if sector_name else "(unclassified)",
+                "count": cnt,
+            })
+    except Exception:
+        session.rollback()
+
+    # ── Fear & Greed Index (latest) ──
+    fear_greed: dict[str, Any] | None = None
+    try:
+        fg_row = session.execute(sql_text(
+            "SELECT value, label, date FROM fear_greed ORDER BY date DESC LIMIT 1"
+        )).fetchone()
+        if fg_row:
+            fear_greed = {
+                "value": float(fg_row[0]),
+                "label": fg_row[1],
+                "date": str(fg_row[2]),
+            }
+    except Exception:
+        session.rollback()
+
+    # ── Solar position (subsolar point: lat/lon where sun is directly overhead) ──
+    # Based on UTC time — used to position the sun marker on the globe
+    declination = -23.44 * math.cos(math.radians((360 / 365) * (now.timetuple().tm_yday - 10)))
+    # Equation of time approximation (minutes)
+    b = math.radians(360.0 / 365 * (now.timetuple().tm_yday - 81))
+    eot = 9.87 * math.sin(2 * b) - 7.53 * math.cos(b) - 1.5 * math.sin(b)
+    solar_noon_offset = 720 - (now.hour * 60 + now.minute) - eot  # minutes from UTC noon
+    subsolar_lon = -solar_noon_offset / 4.0  # 1 degree = 4 minutes
+    subsolar_lat = declination
+    solar_position = {
+        "lat": round(subsolar_lat, 2),
+        "lon": round(subsolar_lon, 2),
+        "utc_time": now.isoformat(),
+    }
+
+    # ── VIX + Commodities (latest prices) ──
+    commodities: list[dict[str, Any]] = []
+    commodity_tickers = {
+        "^VIX": "VIX",
+        "CL=F": "Crude Oil",
+        "GC=F": "Gold",
+        "NG=F": "Natural Gas",
+        "HG=F": "Copper",
+        "ZC=F": "Corn",
+    }
+    try:
+        c_rows = session.execute(sql_text("""
+            SELECT DISTINCT ON (ticker) ticker, timestamp, close, open
+            FROM stock_prices_default
+            WHERE ticker = ANY(:tickers)
+            ORDER BY ticker, timestamp DESC
+        """), {"tickers": list(commodity_tickers.keys())}).fetchall()
+        for row in c_rows:
+            ticker, ts, close, open_price = row
+            change_pct = (
+                round((float(close) - float(open_price)) / float(open_price) * 100, 2)
+                if open_price and float(open_price) != 0 else None
+            )
+            commodities.append({
+                "ticker": ticker,
+                "name": commodity_tickers.get(ticker, ticker),
+                "close": float(close) if close else None,
+                "change_pct": change_pct,
+            })
+    except Exception:
+        session.rollback()
+
+    # ── IHSG sparkline (30 latest daily closes) ──
+    ihsg_sparkline: list[float] = []
+    try:
+        spark_rows = session.execute(sql_text("""
+            SELECT close FROM stock_prices_default
+            WHERE ticker = '^JKSE' AND timeframe = '1d'
+            ORDER BY timestamp DESC LIMIT 30
+        """)).fetchall()
+        ihsg_sparkline = [float(r[0]) for r in reversed(spark_rows) if r[0]]
+    except Exception:
+        session.rollback()
+
     return {
         "as_of": to_jakarta(now),
         "open_count": open_count,
         "total_count": len(exchanges),
         "exchanges": exchanges,
+        "domino": {
+            "chain": domino_chain,
+            "last_closed": last_closed,
+            "next_to_open": next_to_open,
+        },
+        "sectors": sectors,
+        "fear_greed": fear_greed,
+        "solar_position": solar_position,
+        "commodities": commodities,
+        "ihsg_sparkline": ihsg_sparkline,
     }
+
+
+@router.get("/kurs")
+def cosmos_kurs(session: Session = Depends(get_session)) -> list[dict[str, Any]]:
+    """Nilai tukar rupiah terhadap mata uang utama."""
+    from sqlalchemy import text as sql_text
+    from market.api._shared import to_jakarta
+
+    now = datetime.now(UTC)
+    kurs_tickers = {
+        "IDR=X": "USD/IDR",
+        "EURIDR=X": "EUR/IDR",
+        "JPYIDR=X": "JPY/IDR",
+        "SGDIDR=X": "SGD/IDR",
+        "CNYIDR=X": "CNY/IDR",
+        "GBPIDR=X": "GBP/IDR",
+    }
+    try:
+        rows = session.execute(sql_text("""
+            SELECT DISTINCT ON (ticker) ticker, timestamp, close, open
+            FROM stock_prices_default
+            WHERE ticker = ANY(:tickers)
+            ORDER BY ticker, timestamp DESC
+        """), {"tickers": list(kurs_tickers.keys())}).fetchall()
+
+        results: list[dict[str, Any]] = []
+        for ticker, ts, close, open_price in rows:
+            change_pct = (
+                round((float(close) - float(open_price)) / float(open_price) * 100, 2)
+                if open_price and float(open_price) != 0 else None
+            )
+            results.append({
+                "ticker": ticker,
+                "pair": kurs_tickers.get(ticker, ticker),
+                "close": float(close) if close else None,
+                "change_pct": change_pct,
+                "as_of": to_jakarta(now),
+            })
+        return results
+    except Exception:
+        session.rollback()
+        return []
+
+
+@router.get("/id_stocks")
+def cosmos_id_stocks(session: Session = Depends(get_session)) -> list[dict[str, Any]]:
+    """Saham Indonesia paling likuid (LQ45/top volume) dengan harga terbaru."""
+    from sqlalchemy import text as sql_text
+    from market.api._shared import to_jakarta
+
+    now = datetime.now(UTC)
+    # Preferensi LQ45 + saham likuid lain
+    lq45_tickers = [
+        "BBCA.JK", "BBRI.JK", "BMRI.JK", "TLKM.JK", "ASII.JK",
+        "UNVR.JK", "PGAS.JK", "EXCL.JK", "MNCN.JK", "SMGR.JK",
+        "INDF.JK", "ICBP.JK", "CPIN.JK", "KLBF.JK", "GGRM.JK",
+        "HMSP.JK", "GJTL.JK", "JPFA.JK", "TBIG.JK", "TOWR.JK",
+        "SIDO.JK", "MYOR.JK", "ACES.JK", "AMRT.JK", "MAPI.JK",
+        "MDKA.JK", "ANTM.JK", "INCO.JK", "HRUM.JK", "ADRO.JK",
+        "PTBA.JK", "ITMG.JK", "BRMS.JK", "TINS.JK", "KAEF.JK",
+        "HEAL.JK", "MIKA.JK", "SILO.JK", "SCMA.JK", "EMTK.JK",
+        "BDMN.JK", "BJBR.JK", "PNBN.JK", "BNLI.JK", "ARTO.JK",
+    ]
+    try:
+        # Ambil data terbaru dari LQ45, urutkan volume terbesar
+        rows = session.execute(sql_text("""
+            SELECT DISTINCT ON (t.ticker) t.ticker, im.name, t.close, t.open, t.volume
+            FROM stock_prices_default t
+            JOIN instrument_master im ON t.ticker = im.ticker
+            WHERE t.ticker = ANY(:tickers) AND t.timeframe = '1d'
+            ORDER BY t.ticker, t.timestamp DESC
+        """), {"tickers": lq45_tickers}).fetchall()
+
+        stocks: list[dict[str, Any]] = []
+        for ticker, name, close, open_price, volume in rows:
+            if close is None:
+                continue
+            change_pct = (
+                round((float(close) - float(open_price)) / float(open_price) * 100, 2)
+                if open_price and float(open_price) != 0 else None
+            )
+            stocks.append({
+                "ticker": ticker,
+                "name": name or ticker.replace(".JK", ""),
+                "close": float(close),
+                "change_pct": change_pct,
+                "volume": int(volume) if volume else 0,
+            })
+
+        # Urut volume terbesar, ambil 20 teratas
+        stocks.sort(key=lambda s: s["volume"], reverse=True)
+        for s in stocks:
+            s.pop("volume")
+        return stocks[:20]
+    except Exception:
+        session.rollback()
+        return []

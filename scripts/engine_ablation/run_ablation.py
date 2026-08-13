@@ -2055,17 +2055,21 @@ def build_composite_signal(
     baseline_signals: pd.Series,
     index: pd.Index,
 ) -> pd.Series:
-    """Build a weighted composite signal from multiple engine signals.
+    """Build a hierarchical composite signal from multiple engine signals.
 
-    Mimics the real application pipeline (SignalEnhancer + MarketContextProvider)
-    by blending engine signals using their registry default_weight.
+    Architecture (5-layer hierarchical pipeline):
 
-    Signal type handling:
-    - DIRECTIONAL: weighted vote → contributes to direction
-    - TIMING: modulates confidence (acts as gate)
-    - FILTER: vetoes signals (can zero out directional signals)
-    - CONTEXT: modulates signal strength (scales directional)
-    - SIZING: scales confidence (treated like context)
+        Layer 1: DIRECTIONAL → weighted vote → raw signal [-1, +1]
+        Layer 2: FILTER → veto false signals (zero out where filter says 0)
+        Layer 3: CONTEXT → modulate signal strength (scale by context)
+        Layer 4: TIMING → gate (reduce signal when timing is unfavorable)
+        Layer 5: DISCRETIZE → convert to {-1, 0, +1}
+
+    Key difference from flat blending:
+    - Directional engines ARE the signal (not baseline modification)
+    - Filter runs AFTER directional (veto, not blend)
+    - Context modulates AFTER filter (scale, not vote)
+    - Baseline is used as fallback when no directional engines have weight
 
     Args:
         engine_signals: Dict of engine_name → signal Series.
@@ -2078,70 +2082,88 @@ def build_composite_signal(
     """
     from market.ablation.engine_registry import SignalType
 
-    # Start with baseline as the foundation
-    composite = baseline_signals.copy().astype(float)
-
     # Separate engines by signal type
     directional_signals = {}
     directional_weights = {}
     filter_signals = {}
+    filter_weights = {}
     context_signals = {}
+    context_weights = {}
     timing_signals = {}
+    timing_weights = {}
 
     for entry in engine_entries:
         if entry.name not in engine_signals:
             continue
+        if entry.default_weight <= 0:
+            continue  # skip zero-weight engines (disabled by tuning)
         sig = engine_signals[entry.name]
         if entry.signal_type == SignalType.DIRECTIONAL:
             directional_signals[entry.name] = sig
             directional_weights[entry.name] = entry.default_weight
         elif entry.signal_type == SignalType.FILTER:
             filter_signals[entry.name] = sig
-            directional_weights[entry.name] = entry.default_weight * 0.5  # half weight
+            filter_weights[entry.name] = entry.default_weight
         elif entry.signal_type in (SignalType.CONTEXT, SignalType.SIZING):
             context_signals[entry.name] = sig
-            directional_weights[entry.name] = entry.default_weight * 0.3  # reduced weight
+            context_weights[entry.name] = entry.default_weight
         elif entry.signal_type == SignalType.TIMING:
             timing_signals[entry.name] = sig
-            directional_weights[entry.name] = entry.default_weight * 0.5
+            timing_weights[entry.name] = entry.default_weight
 
-    # Weighted vote from all engines
-    total_weight = sum(directional_weights.values())
-    if total_weight > 0 and directional_signals:
-        weighted_sum = pd.Series(0.0, index=index)
+    # ── Layer 1: Directional weighted vote ──
+    total_dir_weight = sum(directional_weights.values())
+    if total_dir_weight > 0 and directional_signals:
+        raw_signal = pd.Series(0.0, index=index)
         for name, sig in directional_signals.items():
-            w = directional_weights[name] / total_weight
+            w = directional_weights[name] / total_dir_weight
             aligned = sig.reindex(index).fillna(0)
-            weighted_sum += aligned * w
+            raw_signal += aligned * w
+    else:
+        # Fallback to baseline if no directional engines
+        raw_signal = baseline_signals.reindex(index).fillna(0).astype(float)
 
-        # Apply context modulation (scale by context signals)
-        if context_signals:
-            context_scale = pd.Series(1.0, index=index)
-            for sig in context_signals.values():
-                aligned = sig.reindex(index).fillna(0)
-                # Context signals in [-1, 1] → scale [0.5, 1.5]
-                context_scale *= (1.0 + aligned * 0.5)
-            weighted_sum *= context_scale
-
-        # Apply timing gates (reduce signal when timing says inactive)
-        if timing_signals:
-            for sig in timing_signals.values():
-                aligned = sig.reindex(index).fillna(0)
-                # Where timing signal is 0, reduce composite by 50%
-                gate = 1.0 - (aligned.abs() == 0).astype(float) * 0.5
-                weighted_sum *= gate
-
-        # Convert weighted sum to discrete signals
-        composite = pd.Series(0, index=index)
-        composite[weighted_sum > 0.15] = 1
-        composite[weighted_sum < -0.15] = -1
-
-        # Apply filters (veto): where any filter says 0, zero out the signal
-        for sig in filter_signals.values():
-            aligned = sig.reindex(index).fillna(0)
-            # Filter engine outputs 0 → veto
+    # ── Layer 2: Filter veto ──
+    # Filter engines output 1 (pass) or 0 (veto). Where ANY filter says 0,
+    # zero out the signal. Weighted: higher-weight filters have stronger veto.
+    if filter_signals:
+        for name, sig in filter_signals.items():
+            aligned = sig.reindex(index).fillna(1)  # default: pass (1)
+            # Filter signal: 0 = veto, non-zero = pass
             veto_mask = aligned == 0
-            composite[veto_mask] = 0
+            raw_signal[veto_mask] = 0.0
+
+    # ── Layer 3: Context modulation ──
+    # Context signals [-1, +1] scale the signal strength.
+    # Positive context → amplify, negative → attenuate.
+    # Weighted by context engine weights.
+    if context_signals:
+        total_ctx_weight = sum(context_weights.values())
+        if total_ctx_weight > 0:
+            context_scale = pd.Series(1.0, index=index)
+            for name, sig in context_signals.items():
+                w = context_weights[name] / total_ctx_weight
+                aligned = sig.reindex(index).fillna(0)
+                # Context in [-1, +1] → scale factor [1 - 0.3*w, 1 + 0.3*w]
+                context_scale *= (1.0 + aligned * 0.3 * w * len(context_signals))
+            raw_signal *= context_scale
+            # Clip to [-1, 1] range
+            raw_signal = raw_signal.clip(-1.0, 1.0)
+
+    # ── Layer 4: Timing gate ──
+    # Timing signals: non-zero = active window, 0 = inactive.
+    # Where timing says inactive, reduce signal by 70%.
+    if timing_signals:
+        for name, sig in timing_signals.items():
+            aligned = sig.reindex(index).fillna(0)
+            # Where timing signal is 0, attenuate by 70%
+            inactive_mask = aligned.abs() < 0.01
+            raw_signal[inactive_mask] *= 0.3
+
+    # ── Layer 5: Discretize ──
+    composite = pd.Series(0, index=index)
+    composite[raw_signal > 0.15] = 1
+    composite[raw_signal < -0.15] = -1
 
     return composite
 
