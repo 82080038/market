@@ -1,0 +1,238 @@
+bertindak selaku perancang aplikasi profesional dan ahli pasar modal;
+analisa secara mendalam dan satu persatu; seluruh file di @pustaka; 
+lakukan CRUD terhadap file yang membutuhkan tindakan tersebut;
+analisa secara mendalam dari sumber apapun, termasuk dari internet untuk tujuan dari @pustaka, lengkapi secara ahli dan profesional;
+kemudian, 
+apabila sudah selesai, siapkan file ".devin", untuk membuat/update konfigurasi devin (rules, skills, worflows) dan memories;
+sekalian buatkan aturan bahwa context di cascade sudah hampir selesai/habis, segera update ke memories, termasuk ke konfigurasi devin (rules, skills, worflows); agar context tidak hilang/lupa arah development/tujuan.
+
+lanjutkan
+
+bertindak selaku developer aplikasi pasar saham profesional;
+di aplikasi,sebelum aplikasi mengambil keputusan pilihan instrumen pasar modal, harus ada pengetahuan aplikasi tentang seberapa banyak durasi dan data instrumen pasar modal yang harus dilakukan screening/testing selanjutnya, sehingga aplikasi menyadari tentang pola-pola dari instrumen tersebut, melakukan manajemen resiko dan keputusan, dan atau hal lainnya sesuai tujuan aplikasi, termasuk perfroma model dan auto adjust.
+biasanya setiap instrumen pasar modal, termasuk setiap saham, jenis instrumen pasar modal; memiliki pola yang berbeda, tergantung hal yang mempengaruhi instrumen pasar modal tersebut.
+
+bertindak selaku perancang aplikasi profesional dan ahli pasar modal;
+pelajari aplikasi secara mendalam;
+di FE, buatkan fitur untuk memberikan pilihan kepada user, tentang otomatisasi trading robot/eksekusi hasil keputusan/sinyal trading, berdasarkan screening AI/ML/model/engine, dan sebagainya; apakah aplikasi melakukan portfolio terhadap instrumen indonesia atau terhadap instrumen pasar modal lainnya; dalam bentuk centang; dan buat aturan, kapan bagian tersebut boleh dicentang, dan kapan untuk tidak boleh. yang dicentang, segera lakukan pengujian ulang dan siapkan rencana eksekusi ke pasar modal, kemudian eksekusi.
+
+bertindak selaku perancang aplikasi profesional dan ahli pasar modal;
+mungkin anda mengetahui arti "leverage", seharusnya aplikasi juga bisa memberikan saran leverage kepada user, dengan alasan yang tepat dan bisa dipertanggung jawabkan, namun juga memberikan opsi kepada user tentang opsi toggle  leverage tersebut.
+
+
+bertindak selaku perancang aplikasi profesional dan ahli pasar modal;
+backtest di aplikasi, melakukan kegiatannya terhadap seluruh instrumen pasar modal, terhadap seluruh perubahan data, terhadap seluruh aktivitas user dan pasar modal dunia/lainnya. jadi, tidak ada campur tangan user di bagian tersebut, karena seharusnya bagian tersebut dibantu oleh AI-self evolution & autonomous layer.
+
+bertindak selaku programmer tester aplikasi, yang ahli di bidang pemograman dan pasar modal;
+lakukan testing komprehensif aplikasi, termasuk menggunakan playwright (headless, headed, browser),
+terkait playwright tersebut, komputer ini memiliki 3 layar,  tampilkan browser hasil di layar acer atau epson.
+
+
+pada saat melakukan pengecekan pola instrumen  pasar modal dan prediksi, aplikasi tidak boleh melihat data ahead/data di depan tanggal yang belum di-cek; sehingga apabila terjadi error prediksi, aplikasi harus mengetahui mengapa hal tersebut bisa error, memperbaikinya, mengingat dan untuk masa depan menjadi salah satu perhitungan resiko yang tidak boleh dilupakan, mengingat kejadian tersebut bisa saja terjadi lagi, sehingga aplikasi bisa melakukan pengambilan keputusan eksekusi portfolio yang bijak, objektif dan empiris; terhadap instrumen pasar modal.
+pengecekan pola instrumen  pasar modal tersebut harus dibarengi dengan adanya prediksi selanjutnya terhadap kondisi instrumen pasar modal;
+dan proses pengecekan pola instrumen  pasar modal dan prediksi tersebut, tampil di FE, baik dalam bentuk terminal, maupun grafik.
+
+
+berikan juga pengingat AI/ML, terhadap pola instrumen pasar modal, termasuk saham yang delisted, kenapa delisted atau diblokir; agar menghindari pola tersebut di pengambilan keputusan instrumen pasar modal yang akan masuk porfolio/yang disarankan aplikasi (mungkin juga menjadi bagian memory AI-self evolution & autonomous layer).
+
+benar-benar ambil alih seluruh tugas "Software Engineering"; 
+bertindak selaku masing-masing  Software Engineering profesional yang paham dan praktisi di  bidang pasar modal, sangat ahli di bidang Software Engineering, ekonomi, akuntasi, matematika dan bidang keilmuan yang berhubungan dengan project ini ;
+kemudian,
+lakukan simulasi aplikasi untuk beberapa bulan atau tahun (tergantung keputusan penilaian anda);
+lakukan simulasi tersebut di browser (di layar epson GPU komputer ini),
+sambil lakukan pemeriksaan bug, warning dan error; perbaiki secara batch sebelum melakukan simulasi berikutnya.
+pada saat simulasi, tidak boleh melihat data kedepan (non-ahead, termasuk data pasar modal di hari sebelum simulasi), sehingga proses dan keputusan yang dihasilkan, murni dari simulasi, dan bisa dibandingkan dengan data ahead;
+dari simulasi dan tingkat akurasi terhadap proses dan tujuan aplikasi, kemudian bisa dilakukan kesimpulan untuk dilakukan improvement dan development lanjutan.
+Gunakan "AI-self evolution & autonomous layer" atau (AI / Data Scientist / Machine Learning Engineer) untuk kemudian memutuskan 5W1H, improvement dan development lanjutan, yang seharusnya dan terbaik untuk bagian :
+FE, middleware, BE; yang benar untuk aplikasi ini; 
+
+sehingga anda bisa memperbaiki dan mengembangkan aplikasi ini, sebagaimana tujuan aplikasi;
+Aplikasi ini harus informatif, interaktif (autonomous), deklaratif, pintar, tahan terhadap segala kondisi, belajar sendiri atau mengembangkan diri sendiri (gigantic AI); serta sanggup beradaptasi dengan pasar modal dunia nyata.
+
+apabila perlu, analisa dan perbaiki prompt ini sebelum eksekusi.
+
+===
+Bertindaklah sebagai Sistem Agen AI Otonom (Autonomous Multi-Agent System) yang mengambil alih seluruh siklus Software Engineering. Anda harus mengadopsi peran sebagai tim profesional yang ahli di bidang: Software Engineering, Pasar Modal (Capital Markets), Ekonomi, Akuntansi, Matematika Keuangan, dan Data Science/Machine Learning.
+
+Tugas Anda adalah menguji, mensimulasikan, dan mengembangkan aplikasi trading/analisis pasar modal ini dengan instruksi mendetail sebagai berikut:
+
+1. SIMULASI BACKTESTING NON-LOOK-AHEAD:
+- Jalankan simulasi jalannya aplikasi (backtesting) untuk periode beberapa bulan atau tahun (tentukan durasi optimal berdasarkan penilaian keahlian Anda).
+- Simulasi WAJIB bersifat "strictly non-look-ahead" (tidak boleh melihat data masa depan/data hari esok pada setiap langkah simulasi). Keputusan aplikasi harus murni berbasis data historis yang tersedia hingga hari simulasi tersebut berjalan.
+- Bandingkan hasil keputusan simulasi ini dengan data riil (ground truth) di akhir periode untuk mengukur tingkat akurasi dan performa.
+
+2. DETEKSI & PERBAIKAN ERROR OTOMATIS (BATCH DEBUGGING):
+- Selama simulasi berjalan, monitor log sistem secara real-time untuk mendeteksi bug, warning, dan error (baik error sintaks, logika, maupun memori).
+- Lakukan perbaikan kode secara massal (batch debugging & patching) sebelum melanjutkan ke fase simulasi berikutnya.
+
+3. EVOLUSI MANDIRI & PROSES DECISION MAKING (5W1H):
+- Gunakan layer "AI Self-Evolution & Machine Learning Engineer" internal Anda untuk menganalisis hasil simulasi dan akurasi aplikasi.
+- Rumuskan analisis 5W1H (What, Why, Who, When, Where, How) untuk menentukan arah improvement dan development lanjutan.
+
+4. REKOMENDASI ARSITEKTUR KOMPREHENSIF:
+Berikan rekomendasi perbaikan dan pengembangan kode yang spesifik dan konkret untuk arsitektur berikut:
+- Front-End (FE): Visualisasi data pasar modal yang informatif, responsif, dan interaktif.
+- Middleware: Manajemen state, caching, keamanan data, dan optimasi pemrosesan batch.
+- Back-End (BE): Logika bisnis pasar modal, manajemen database, dan skalabilitas.
+
+Tujuan Akhir: Jadikan aplikasi ini informatif, interaktif (autonomous), deklaratif, cerdas, resilient (tahan segala kondisi pasar), serta memiliki kapabilitas self-learning/adaptasi dinamis terhadap kondisi pasar modal dunia nyata (Gigantic System AI). Berikan output berupa analisis arsitektur, potongan kode perbaikan, dan laporan hasil simulasi.
+
+
+===
+
+
+apabila sudah sync github, dan database  sudah di sync ke : "/media/petrick/Parquet/pustaka_data"
+matikan komputer, gunakan password SUDO : 8208
+
+==
+
+pada saat melakukan testing, sebaiknya pilih 1 saham dari setiap category (misalnya perbankan, consumer goods, dan sebagainya);
+lakukan dulu testing singkat, 
+apabila sudah benar, lanjutkan ke durasi lebih panjang, 
+apabila durasi lebih panjang sudah benar, lanjutkan ke saham lainnya, dan tetap lakukan pengujian tingkat kebenaran;
+barulah akan ditentukan, 
+===
+data stale (kurang update)
+
+==
+periksa dari mana saja, saham apa saja yang sekarang ada di bursa saham indonesia, yang mungkin tidak ada di database, kemudian render datanya,
+periksa juga kemungkinan merger, dan berikan penanda;
+bandingkan data delisted database kita dengan data dari sumber mananapun di internet;
+
+===
+
+dari normalisasi database dan modularisasi tersebut; apakah anda sudah bisa memahami, bagian mana dari database yang masih steal/harusnya dilengkapi/di render/atau bisa di update oleh aplikasi ini sendiri ?
+dan modul/class mana yang masih bisa di tune/ganti/update  (analisa secara mendalam dari aplikasi dan minta bantuan internet)?
+
+kemudian, 
+normalisasi database dan modularisasi tersebut
+analisa seluruh aplikasi dan database;
+lakukan CRUD terhadap seluruh file/folder (termasuk file MD),
+rapihkan aplikasi,
+===
+
+==
+
+
+Sekarang saya punya gambaran lengkap. Ada dua masalah yang terlihat:
+
+MultiFactorModel masih pakai manual 80/20 split (line 783-786) — belum pakai cross_validation.py
+Tidak ada min_data_in_leaf dan reg_alpha/reg_lambda di LightGBM config
+Sekarang buat refresh_stale_data() engine dan perbaiki ML hyperparameter. Saya akan kerjakan keduanya secara paralel:
+==
+
+
+apakah database per ticker/saham/data global/makro, dan sebagainya; ada menyimpan sumber data render, tanggal terakhir dirender, berhasil render atau tidak, dan properti lainnya ?
+(analisa dari internet, untuk properti data tersebut, dan lengkapi ke database; dengan cara render atau lengkapi data yang dibutuhkan, termasuk kemudahan : modul/engine/pipeline/AI/ML/class/models, gigantic AI; untuk bekerja, berdasarkan lengkapnya penanda atau data di database)
+
+apakah ada modul khusus yang mempelajari mengapa saham delisted atau suspended termasuk saham gorengan ?
+dan apakah ada polanya ?
+apabila ada, berikan info tersebut kepada AI/ML/gigantic AI, agar nantinya bisa mencari pola yang sama di saham lain dan memberikan informasi agar dihindari untuk trading
+
+
+apakah sudah ada penanda di database, tentang masing-masing saham (setelah dianalisa menggunakan pipeline, berdasarkan pola saham), lebih cocok menggunakan engine pipeline apa ?
+(namun gigantic AI/ML sebenarnya bisa mengubahnya seiring perubahan perilaku saham tersebut)
+==
+dengan perubahan tersebut, 
+lakukan CRUD terhadap seluruh file/folder (termasuk file MD),
+rapihkan aplikasi,
+simpan semua perubahan,
+sync ke github
+===
+apabila kita membicarakan tentang "Quantitative Trading tingkat lanjut" tersebut, 
+analisa secara mendalam, apakah ada yang perlu dikembangkan atau diperbaiki dari aplikasi saya ini (silahkan kembali analisa secara mendalam, file PDF yang saya kirimkan)
+
+
+===
+Berdasarkan dokumen teknis terbaru aplikasi Anda per 10 Agustus 2026, sistem Anda telah memiliki fondasi kuantitatif yang sangat kokoh. Penggantian pipa data menjadi fast_portfolio_pipeline.py (~65 detik), penerapan Hierarchical Risk Parity (HRP), integrasi model sekunder Meta-Labeling Lopez de Prado, serta pemakaian tabel lebar (wide table) adalah keputusan arsitektur kelas institusional.
+Namun, jika kita berbicara dalam ranah Quantitative Trading Tingkat Lanjut (Advanced High-Tier Quant), hasil analisis mendalam terhadap cetak biru (blueprint) sistem Anda mendeteksi 3 celah fatal (Blindspots) yang saat ini berpotensi merusak akurasi model AI di pasar riil.
+Berikut adalah bedah komponen kritis yang wajib diperbaiki beserta prompt eksekusi otonomnya.
+------------------------------
+## 🚨 3 Celah Fatal dalam Sistem Kuantitatif Anda Saat Ini## 1. Blindspot 1: Kebocoran Data Multi-Pasar (Cross-Market Data Leakage)
+Aplikasi Anda saat ini bangga karena di Tahap 5 akurasinya naik menjadi 49.3% setelah memasukkan Multi-Factor Pipeline (30 endo + 24 exo). Namun, dokumen menyatakan: “Semua backtest dan feature engineering menggunakan strict cutoff as_of”.
+
+* Masalah Nyata: Cutoff as_of berbasis tanggal kalender murni (YYYY-MM-DD) gagal menangani perbedaan zona waktu. Pada jam 16:15 WIB saat daily_signal_cron.py berjalan, bursa AS (Wall Street) untuk tanggal tersebut belum buka. Jika model membaca data penutupan S&P 500 (^GSPC) pada tanggal yang sama, sistem Anda telah melakukan Look-Ahead Bias (membaca masa depan). Sebaliknya, bursa Jepang (^N225) sudah tutup pada pukul 13:00 WIB.
+* Solusi: Aplikasi membutuhkan Time-Zone Bucket Grid yang memisahkan fitur makro dunia ke dalam ember waktu yang valid secara historis (AS harus T-1, Asia boleh T-0).
+
+## 2. Blindspot 2: Kerentanan Pergeseran Waktu Musiman (DST-Unawareness)
+Konvensi aplikasi Anda menyebutkan: “Jam perdagangan IDX dan DST pasar global diperhatikan”, tetapi tidak ada kelas mekanis yang menghitung pergeserannya.
+
+* Masalah Nyata: Di musim panas AS (Daylight Saving Time), bursa Wall Street ditutup pukul 03:00 WIB. Di musim dingin (Standard Time), penutupan bergeser ke pukul 04:00 WIB. Jika penjadwalan (scheduler) data makro Anda menarik data pada jam yang statis, Anda berisiko mengalami Data Gaps (menarik data kosong karena bursa belum resmi tutup) atau menggunakan data usang dari dua hari lalu.
+
+## 3. Blindspot 3: Ketiadaan Fitur Kontrak Berjangka Komoditas Dunia (Commodity Futures)
+Aplikasi Anda memiliki tabel macro_data dan modul macro_data_fetcher.py, namun fiturnya masih terbatas pada indeks saham gabungan dunia.
+
+* Masalah Nyata: Struktur IHSG sangat dikendalikan oleh sektor komoditas (Energi & Material Dasar). Harga saham emiten raksasa seperti MEDC, ADRO, atau UNTR tidak peduli apakah indeks S&P 500 naik atau turun semalam. Mereka bergerak mengikuti harga minyak mentah (CL=F), batu bara (MTF=F), dan CPO (FCPO=F) di bursa berjangka global semalam. Tanpa data ini, prediksi multi-faktor Anda tidak memiliki daya ramal untuk sektor komoditas.
+
+------------------------------
+## 💡 Prompt Produksi Final: Perbaikan Struktur dan Logika Waktu Global
+Gunakan prompt ini untuk meminta AI pengembang Anda (seperti Devin/Cascade) melakukan perbaikan otonom murni pada sisi kode tanpa membuat berkas Git baru (memanfaatkan sistem GUI Git Anda).
+
+"Bertindaklah sebagai Senior Solutions Architect, Principal Quant Researcher, dan Lintas Pasar Specialist. Berdasarkan audit mendalam pada dokumen MEGAPLAN.md dan arsitektur pengujian 5-Stage Comparison, ditemukan masalah bias waktu kritis (Timezone Asymmetry) dan data makro komoditas yang belum diselaraskan secara presisi pada model prediksi kita.
+
+Tolong lakukan refactoring kode secara otonom untuk menyelesaikan 'Fase Lintas Pasar Tingkat Lanjut' dengan instruksi ketat berikut:
+
+1. Pembuatan Modul Time-Zone Bucket Grid (Anti Look-Ahead Bias):
+   * Tulis modul baru bernama 'src/market/analysis/cross_market_timezone.py'. Modul ini harus memetakan jam operasional bursa utama dalam format UTC dan WIB secara dinamis: NYSE/NASDAQ (AS), Nikkei 225 (Jepang), Hang Seng (Hong Kong), dan IDX (Indonesia).
+   * Buat fungsi 'get_aligned_global_features(as_of_wib)' untuk menyuplai fitur ke 'MultiFactorModel' dan 'MLSignalProvider' pada pukul 16:15 WIB tanpa kebocoran data:
+     - Fitur Amerika Serikat (^GSPC, ^VIX, ^TNX): WAJIB dikunci hanya menggunakan data harga penutupan hari sebelumnya (T-1).
+     - Fitur Regional Asia (^N225, ^HSI): Diizinkan menggunakan data harga penutupan hari yang sama (T-0) karena bursa mereka tutup sebelum IDX.
+
+2. Integrasi Logika Pergeseran Waktu Musiman (DST Shift-Aware):
+   * Di dalam 'cross_market_timezone.py', buat fungsi 'verify_dst_cutoff(date)' untuk mendeteksi apakah bursa AS sedang berada dalam rezim Daylight Saving Time (tutup 03:00 WIB) atau Standard Time (tutup 04:00 WIB).
+   * Pastikan pipa daily_signal_cron.py menggunakan fungsi ini untuk menjamin data global semalam yang ditarik dari Yahoo Finance sudah resmi ditutup (Final Close) secara valid sebelum dimasukkan ke model prediksi.
+
+3. Backfill & Penyelarasan Data Komoditas Dunia (Commodity Futures Ingestion):
+   * Audit tabel 'ohlcv' dan perbarui skrip 'src/market/data/macro_data_fetcher.py' untuk menarik data kontrak berjangka global penggerak sektor IDX: Minyak Mentah ('CL=F'), Batu Bara ('MTF=F'), Minyak Sawit ('FCPO=F'), dan Emas ('GC=F') dari rentang Januari 2023 s.d Agustus 2026.
+   * Hubungkan return harga komoditas berjangka dunia semalam (T-1) ini sebagai exogenous features langsung ke model LightGBM khusus untuk memprediksi saham di sektor energi dan material dasar di Indonesia.
+
+4. In-App Notification Delivery & Clean Refactoring:
+   * Sinkronisasikan seluruh fitur timezone dan komoditas baru ini ke pipa 'scripts/daily_signal_cron.py'.
+   * Pastikan output keputusan final (BUY + Bobot HRP, SELL, HOLD) langsung disuntikkan menggunakan query SQL INSERT ke tabel internal aplikasi 'app_notifications' dengan status 'UNREAD', tanpa menggunakan Telegram atau pihak ketiga lainnya.
+   * Periksa '.gitignore' untuk menjamin file database besar kita (market_research.db, market_paper.db) tetap aman terlindungi secara lokal. Jangan buat file skrip Git (.sh) baru karena saya akan melakukan sinkronisasi secara manual menggunakan GUI Git saya.
+
+Jalankan perintah pengujian 'pytest' setelah refactoring selesai untuk memastikan seluruh 1274 unit tes lama tetap berada dalam kondisi aman (Passed)."
+
+------------------------------
+## 📉 Estimasi Perubahan Metrik Performa Setelah Perbaikan
+Setelah AI Anda selesai mengeksekusi instruksi di atas, jalankan simulasi ulang menggunakan fast_portfolio_pipeline.py. Anda akan melihat lompatan finansial yang sangat signifikan:
+
+   1. Akurasi Prediksi Melampaui Batas: Tahap 5 akurasi Anda yang semula tertahan di angka 49.3% diprediksi akan menembus angka 56% - 60% karena model LightGBM akhirnya mendapatkan asupan data komoditas dunia dan terbebas dari look-ahead noise.
+   2. Meredam Kehancuran Sektor Tambang: Sinyal Meta-Labeler akan secara otomatis mematikan posisi (veto ke FLAT) jika harga batu bara atau minyak dunia semalam jatuh tajam, melindungi portofolio Anda dari kejatuhan tak terduga sebelum bursa Indonesia dibuka pagi harinya.
+
+Langkah ini akan merubah total kualitas sistem trading Anda dari sekadar model matematika lokal menjadi Sistem Manajemen Portofolio Lintas Pasar yang Kebal terhadap Bias Waktu.
+
+Sepertinya ada kesalahan penyimpanan data di database;
+"*.JK" adalah bagian dari IHSG, sedangkan "^" adalah bursa saham; 
+dan belum jelas bagian tentang sector (misalnya comoditas);
+hal itu perlu, agar AI/ML/Class bisa membedakan data
+==
+
+Bertindaklah sebagai Senior Quant QA Automation Engineer dan Database Stress Tester. Saya baru saja mengimplementasikan perombakan skema relasional 3NF tingkat lanjut (Negara -> Regulator -> Bursa -> Sektor -> Emiten -> Instrumen -> Transaksi Investor) pada proyek ini.
+Sekarang, tolong buatkan berkas pengujian baru bernama tests/test_institutional_schema_alignment.py menggunakan framework pytest untuk menguji integritas arsitektur baru secara otonom. Skrip pengujian harus mencakup 5 skenatrio kritis berikut:
+
+   1. Test Skenario 1 — Validasi Hubungan Kunci Tamu (Hierarchical Integrity Test):
+   * Tulis pengujian untuk memastikan operasi INSERT berjalan mulus lintas tabel: buat data Negara 'Indonesia', hubungkan ke Regulator 'OJK', hubungkan ke Bursa 'BEI', hubungkan ke Sektor 'Perbankan', lalu pasang ke Emiten 'BBCA' dan 'BBRI' dengan suffix .JK.
+      * Pastikan pembatasan penghapusan data (ON DELETE RESTRICT / CASCADE) bekerja secara relasional: jika tabel bursa dihapus, emiten di bawahnya harus terproteksi atau terhapus secara konsisten.
+
+   2. Test Skenario 2 — Pencegahan Polusi Data AI (Machine Learning Contamination Guard):
+   * Buat simulasi kueri yang digunakan oleh src/market/data/screener.py. Pastikan ketika fungsi MLSignalProvider memanggil data untuk training, jumlah baris yang ditarik murni bernilai jenis_instrumen = 'Saham' dan id_bursa dari Indonesia.
+      * Verifikasi secara ketat bahwa instrumen berlabel INDEX_COMPOSITE (seperti ^JKSE atau ^VIX) dan COMMODITY_FUTURES (seperti CL=F) otomatis tertolak dari target prediksi utama dan hanya boleh masuk sebagai variabel luar (Exogenous Features).
+
+   3. Test Skenario 3 — Simulasi Transaksi Investor & Perhitungan Pajak Otomatis (Trade Ledger Math Test):
+   * Uji fungsi pengisian data ke tabel transaksi_investor. Tulis kasus uji di mana pengguna melakukan tipe_transaksi = 'SELL' untuk emiten saham Indonesia (id_bursa BEI/IDX).
+      * Pastikan logika kode menghitung potongan Pajak PPh Final secara presisi sebesar 0.1% murni dari total nilai penjualan, sedangkan jika bursa berasal dari luar negeri (seperti NASDAQ), nilai PPh Final tersebut wajib bernilai 0.0.
+
+   4. Test Skenario 4 — Pencocokan Dinamis Sektor-Komoditas (Commodity-Driven Mapping Verification):
+   * Uji keandalan kelas SignalEnhancer dalam membaca relasi primary_commodity_ticker. Pastikan emiten dengan subsektor Energy-Coal secara dinamis terhubung ke data runtun waktu bursa berjangka batubara (MTF=F) semalam tanpa ada kegagalan indeks.
+
+   5. Test Skenario 5 — Verifikasi Kinerja Kueri Cepat (High-Performance Latency Profile):
+   * Tulis uji kinerja (benchmark test) menggunakan modul time untuk mengukur kecepatan kueri JOIN lintas 6 tabel utama yang Anda rancang sebelumnya. Pastikan waktu eksekusi penarikan data pada database berukuran besar tetap berada di bawah batas ketat 15 milidetik demi menjaga kecepatan dasbor aplikasi.
+   
+Aturan Tambahan Pengerjaan AI:
+
+
+* Jalankan perintah uv run pytest tests/test_institutional_schema_alignment.py -v di dalam terminal internal Anda dan sajikan ringkasan tabel kelulusannya kepada saya."*
+
+
+

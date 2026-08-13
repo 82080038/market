@@ -101,6 +101,109 @@ async def prices_latest(
     }
 
 
+@router.get("/ihsg")
+async def ihsg_summary(
+    session: Annotated[Session, Depends(get_session)],
+) -> dict[str, Any]:
+    """Latest IHSG (^JKSE) summary — lightweight endpoint for dashboard."""
+    from sqlalchemy import text as sql_text
+
+    sql = sql_text("""
+        SELECT timestamp, open, high, low, close, volume
+        FROM ohlcv
+        WHERE ticker = '^JKSE' AND timeframe = '1d'
+          AND timestamp IS NOT NULL
+        ORDER BY timestamp DESC
+        LIMIT 2
+    """)
+    rows = session.execute(sql).fetchall()
+    if not rows:
+        return {"price": None, "change": None, "pct_change": None, "as_of": None}
+    latest = rows[0]
+    prev = rows[1] if len(rows) > 1 else None
+    close = float(latest[4])
+    prev_close = float(prev[4]) if prev else None
+    change = close - prev_close if prev_close else None
+    pct = round((change / prev_close * 100), 2) if prev_close and prev_close > 0 else None
+    return {
+        "price": close,
+        "open": float(latest[1]),
+        "high": float(latest[2]),
+        "low": float(latest[3]),
+        "volume": int(latest[5]) if latest[5] else 0,
+        "change": round(change, 2) if change is not None else None,
+        "pct_change": pct,
+        "as_of": to_jakarta(latest[0]),
+    }
+
+
+@router.get("/movers")
+async def prices_movers(
+    session: Annotated[Session, Depends(get_session)],
+    limit: int = 10,
+) -> dict[str, Any]:
+    """Top movers (gainers/losers) based on latest daily pct change.
+
+    Compares the latest 1d close vs the previous trading day close
+    for all IDX tickers.
+
+    Query params:
+        limit: Number of gainers/losers to return (default 10).
+    """
+    from sqlalchemy import func, literal_column, text
+
+    # Use raw SQL for efficient LAG window function
+    sql = text("""
+        WITH ranked AS (
+            SELECT ticker, close, timestamp,
+                   ROW_NUMBER() OVER (PARTITION BY ticker ORDER BY timestamp DESC) AS rn
+            FROM ohlcv
+            WHERE timeframe = '1d'
+              AND ticker LIKE '%.JK'
+              AND timestamp IS NOT NULL
+        ),
+        latest AS (
+            SELECT ticker, close, timestamp FROM ranked WHERE rn = 1
+        ),
+        prev AS (
+            SELECT ticker, close AS prev_close FROM ranked WHERE rn = 2
+        )
+        SELECT l.ticker, l.close, l.timestamp, p.prev_close,
+               ((l.close - p.prev_close) / NULLIF(p.prev_close, 0) * 100) AS pct_change
+        FROM latest l
+        JOIN prev p ON l.ticker = p.ticker
+        WHERE p.prev_close > 0
+        ORDER BY pct_change DESC
+    """)
+
+    rows = session.execute(sql).fetchall()
+
+    if not rows:
+        return {"gainers": [], "losers": [], "as_of": None, "count": 0}
+
+    movers = [
+        {
+            "ticker": r[0],
+            "close": float(r[1]),
+            "prev_close": float(r[3]),
+            "pct_change": round(float(r[4]), 2),
+        }
+        for r in rows
+        if r[4] is not None
+    ]
+
+    gainers = movers[:limit]
+    losers = list(reversed(movers))[:limit]
+    as_of = to_jakarta(rows[0][2]) if rows[0][2] else None
+
+    return {
+        "gainers": gainers,
+        "losers": losers,
+        "as_of": as_of,
+        "count": len(movers),
+    }
+
+
 @router.post("/intraday/trigger")
 async def intraday_trigger(
     body: dict[str, Any] | None = None,

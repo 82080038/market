@@ -1,8 +1,11 @@
 #!/usr/bin/env python3
 """Weekly drift detection cron — checks feature drift via PSI.
 
-Runs every Saturday (crontab: 0 4 * * 6) to detect feature distribution
-changes in technical_indicators_wide that could degrade ML model performance.
+Dijalankan via scheduler task (weekly_drift_check) — cron Sabtu 10:00 WIB
+trigger run_daily_scheduler.sh → run_all_due() → task ini due jika >6 hari.
+Catch-up otomatis: kalau komputer mati Sabtu, task jalan di trigger berikutnya.
+Checks feature distribution changes in technical_indicators_wide that could
+degrade ML model performance.
 
 Output: logs/drift_report_YYYY-MM-DD.json
 """

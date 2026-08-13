@@ -56,6 +56,10 @@ Endpoint inventory:
 
 from __future__ import annotations
 
+import logging
+import threading
+from datetime import UTC, datetime
+
 from fastapi import FastAPI
 
 from market.api.routes_analysis import router as analysis_router
@@ -73,6 +77,99 @@ from market.api.routes_prices import router as prices_router
 from market.api.routes_recompute import router as recompute_router
 from market.api.routes_scheduler import router as scheduler_router
 from market.api.routes_system import router as system_router
+
+logger = logging.getLogger(__name__)
+
+# Global scheduler instance — shared between background loop and API endpoints
+_scheduler_instance = None
+_scheduler_thread = None
+_scheduler_stop_event = threading.Event()
+
+SCHEDULER_POLL_INTERVAL = 300  # 5 minutes
+
+
+def _get_scheduler():
+    """Get or create the global scheduler instance."""
+    global _scheduler_instance
+    if _scheduler_instance is None:
+        from market.core.wiring import wire_all_events
+        from market.scheduler import DailyScheduler
+        from market.scheduler_tasks import register_default_tasks
+
+        wire_all_events()
+        _scheduler_instance = DailyScheduler()
+        register_default_tasks(_scheduler_instance)
+        logger.info("Scheduler instance created with %d tasks",
+                     len(_scheduler_instance.tasks))
+    return _scheduler_instance
+
+
+# Heavy tasks that fetch external data — run in background thread
+# so they don't block the scheduler loop or other tasks
+_HEAVY_TASKS = frozenset({
+    "fetch_eod", "fetch_global", "fetch_macro", "fetch_macroeconomic_indicators",
+    "fetch_fundamental", "fetch_fundamental_quarterly", "fetch_macro_fred",
+    "fetch_satellite", "fetch_intraday", "scrape_news",
+    "weekly_hrp_recompute", "weekly_drift_check",
+    "strategy_assignment", "compute_astronacci_cycles",
+    "macro_correlation_analysis", "export_parquet",
+    "recompute", "generate_signals", "startup_catchup",
+})
+
+
+def _scheduler_loop() -> None:
+    """Background loop that runs all due tasks periodically.
+
+    Heavy/long tasks (data fetch, export) are dispatched in separate
+    threads so they don't block the loop. Light tasks run inline.
+    """
+    logger.info("Scheduler background loop started (poll every %ds)",
+                SCHEDULER_POLL_INTERVAL)
+    while not _scheduler_stop_event.is_set():
+        try:
+            sched = _get_scheduler()
+            # Load state to know what's due
+            if sched._persist:
+                sched.load_state()
+
+            now = datetime.now(UTC)
+            due_tasks = [
+                t for t in sched.tasks
+                if t.enabled and sched._is_due(t, now)
+            ]
+
+            if due_tasks:
+                logger.info("Scheduler: %d due tasks", len(due_tasks))
+
+            for task in due_tasks:
+                if task.task_id in _HEAVY_TASKS:
+                    # Run heavy task in separate thread
+                    def _run_heavy(t=task):
+                        try:
+                            ex = sched.run_task(t.task_id)
+                            if ex:
+                                logger.info("  [bg] %s: %s (%.1fs)",
+                                            ex.task_id, ex.status.value,
+                                            ex.duration_seconds)
+                        except Exception as e:
+                            logger.error("  [bg] %s failed: %s", t.task_id, e)
+                    threading.Thread(
+                        target=_run_heavy, daemon=True,
+                        name=f"task-{task.task_id}",
+                    ).start()
+                else:
+                    # Run light task inline
+                    ex = sched.run_task(task.task_id)
+                    if ex:
+                        logger.info("  %s: %s (%.1fs)",
+                                    ex.task_id, ex.status.value,
+                                    ex.duration_seconds)
+        except Exception as e:
+            logger.error("Scheduler loop error: %s", e)
+
+        _scheduler_stop_event.wait(SCHEDULER_POLL_INTERVAL)
+
+    logger.info("Scheduler background loop stopped")
 
 
 def create_app() -> FastAPI:
@@ -98,6 +195,21 @@ def create_app() -> FastAPI:
     app.include_router(scheduler_router)
     app.include_router(notifications_router)
     app.include_router(cosmos_router)
+
+    @app.on_event("startup")
+    def _start_scheduler() -> None:
+        global _scheduler_thread
+        _scheduler_stop_event.clear()
+        _scheduler_thread = threading.Thread(
+            target=_scheduler_loop, daemon=True, name="scheduler-loop",
+        )
+        _scheduler_thread.start()
+
+    @app.on_event("shutdown")
+    def _stop_scheduler() -> None:
+        _scheduler_stop_event.set()
+        if _scheduler_thread is not None:
+            _scheduler_thread.join(timeout=10)
 
     return app
 

@@ -53,6 +53,12 @@ def _load_ohlcv_df(session: Session, ticker: str) -> pd.DataFrame:
     )
     if df.empty:
         return df
+    # Filter NaT timestamps (from NULL in ohlcv view) and dedup index
+    df = df[~df.index.isna()]
+    if not df.index.is_unique:
+        df = df[~df.index.duplicated(keep="last")]
+    if df.empty:
+        return df
     df["open"] = df["open"].astype(float)
     df["high"] = df["high"].astype(float)
     df["low"] = df["low"].astype(float)
@@ -102,6 +108,12 @@ def _load_all_ohlcv_dfs(
             continue
         for ticker, group in df.groupby("ticker"):
             gdf = group.drop(columns=["ticker"]).set_index("timestamp")
+            # Filter NaT timestamps (from NULL in DB view) and dedup index
+            gdf = gdf[~gdf.index.isna()]
+            if not gdf.index.is_unique:
+                gdf = gdf[~gdf.index.duplicated(keep="last")]
+            if gdf.empty:
+                continue
             gdf["open"] = gdf["open"].astype(float)
             gdf["high"] = gdf["high"].astype(float)
             gdf["low"] = gdf["low"].astype(float)
@@ -135,6 +147,12 @@ def _load_ohlcv_df_since(
         index_col="timestamp",
         parse_dates=["timestamp"],
     )
+    if df.empty:
+        return df
+    # Filter NaT timestamps (from NULL in ohlcv view) and dedup index
+    df = df[~df.index.isna()]
+    if not df.index.is_unique:
+        df = df[~df.index.duplicated(keep="last")]
     if df.empty:
         return df
     df["open"] = df["open"].astype(float)

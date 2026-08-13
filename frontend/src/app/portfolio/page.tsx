@@ -1,6 +1,48 @@
+"use client";
+
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { useCallback, useEffect, useState } from "react";
+
+interface Position {
+  ticker: string;
+  shares: number;
+  avg_cost: number;
+  current_price: number;
+  market_value: number;
+  pnl: number;
+  weight: number;
+}
+
+interface PortfolioData {
+  nav: number;
+  pnl_realized: number;
+  pnl_unrealized: number;
+  positions: Position[];
+}
 
 export default function PortfolioPage() {
+  const [data, setData] = useState<PortfolioData | null>(null);
+  const [loading, setLoading] = useState(true);
+
+  const load = useCallback(async () => {
+    try {
+      const res = await fetch("/api/portfolio");
+      if (res.ok) setData(await res.json());
+    } catch {
+      // ignore
+    }
+    setLoading(false);
+  }, []);
+
+  useEffect(() => {
+    load();
+  }, [load]);
+
+  const nav = data?.nav ?? 0;
+  const realized = data?.pnl_realized ?? 0;
+  const unrealized = data?.pnl_unrealized ?? 0;
+  const positions = data?.positions ?? [];
+
   return (
     <div className="space-y-6">
       <div>
@@ -14,19 +56,25 @@ export default function PortfolioPage() {
         <Card>
           <CardHeader><CardTitle>NAV Total</CardTitle></CardHeader>
           <CardContent>
-            <p className="text-2xl font-bold">Rp 0</p>
+            <p className="text-2xl font-bold">
+              Rp {nav.toLocaleString("id-ID")}
+            </p>
           </CardContent>
         </Card>
         <Card>
           <CardHeader><CardTitle>PnL Realized</CardTitle></CardHeader>
           <CardContent>
-            <p className="text-2xl font-bold text-muted-foreground">Rp 0</p>
+            <p className={`text-2xl font-bold ${realized >= 0 ? "text-green-600" : "text-red-600"}`}>
+              {realized >= 0 ? "+" : ""}Rp {realized.toLocaleString("id-ID")}
+            </p>
           </CardContent>
         </Card>
         <Card>
           <CardHeader><CardTitle>PnL Unrealized</CardTitle></CardHeader>
           <CardContent>
-            <p className="text-2xl font-bold text-muted-foreground">Rp 0</p>
+            <p className={`text-2xl font-bold ${unrealized >= 0 ? "text-green-600" : "text-red-600"}`}>
+              {unrealized >= 0 ? "+" : ""}Rp {unrealized.toLocaleString("id-ID")}
+            </p>
           </CardContent>
         </Card>
       </div>
@@ -34,35 +82,89 @@ export default function PortfolioPage() {
       <Card>
         <CardHeader><CardTitle>Posisi Aktif</CardTitle></CardHeader>
         <CardContent>
-          <table className="w-full text-sm">
-            <thead>
-              <tr className="border-b border-border text-muted-foreground">
-                <th className="text-left py-2">Ticker</th>
-                <th className="text-right">Saham</th>
-                <th className="text-right">Avg Cost</th>
-                <th className="text-right">Harga</th>
-                <th className="text-right">Nilai</th>
-                <th className="text-right">PnL</th>
-                <th className="text-right">Bobot</th>
-              </tr>
-            </thead>
-            <tbody>
-              <tr className="text-muted-foreground">
-                <td colSpan={7} className="text-center py-8">
-                  Belum ada posisi. Mulai paper trading untuk menambah posisi.
-                </td>
-              </tr>
-            </tbody>
-          </table>
+          {loading ? (
+            <p className="text-muted-foreground text-sm py-8 text-center">Memuat data...</p>
+          ) : positions.length === 0 ? (
+            <table className="w-full text-sm">
+              <thead>
+                <tr className="border-b border-border text-muted-foreground">
+                  <th className="text-left py-2">Ticker</th>
+                  <th className="text-right">Saham</th>
+                  <th className="text-right">Avg Cost</th>
+                  <th className="text-right">Harga</th>
+                  <th className="text-right">Nilai</th>
+                  <th className="text-right">PnL</th>
+                  <th className="text-right">Bobot</th>
+                </tr>
+              </thead>
+              <tbody>
+                <tr className="text-muted-foreground">
+                  <td colSpan={7} className="text-center py-8">
+                    Belum ada posisi. Mulai paper trading untuk menambah posisi.
+                  </td>
+                </tr>
+              </tbody>
+            </table>
+          ) : (
+            <table className="w-full text-sm">
+              <thead>
+                <tr className="border-b border-border text-muted-foreground">
+                  <th className="text-left py-2">Ticker</th>
+                  <th className="text-right">Saham</th>
+                  <th className="text-right">Avg Cost</th>
+                  <th className="text-right">Harga</th>
+                  <th className="text-right">Nilai</th>
+                  <th className="text-right">PnL</th>
+                  <th className="text-right">Bobot</th>
+                </tr>
+              </thead>
+              <tbody>
+                {positions.map((p) => (
+                  <tr key={p.ticker} className="border-b border-border/50">
+                    <td className="py-2 font-mono">{p.ticker}</td>
+                    <td className="text-right">{p.shares.toLocaleString("id-ID")}</td>
+                    <td className="text-right">{p.avg_cost.toLocaleString("id-ID", { minimumFractionDigits: 0 })}</td>
+                    <td className="text-right">{p.current_price.toLocaleString("id-ID", { minimumFractionDigits: 0 })}</td>
+                    <td className="text-right">Rp {p.market_value.toLocaleString("id-ID", { maximumFractionDigits: 0 })}</td>
+                    <td className={`text-right ${p.pnl >= 0 ? "text-green-600" : "text-red-600"}`}>
+                      {p.pnl >= 0 ? "+" : ""}Rp {p.pnl.toLocaleString("id-ID", { maximumFractionDigits: 0 })}
+                    </td>
+                    <td className="text-right">{(p.weight * 100).toFixed(1)}%</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          )}
         </CardContent>
       </Card>
 
       <Card>
         <CardHeader><CardTitle>Alokasi Sektor</CardTitle></CardHeader>
         <CardContent>
-          <p className="text-muted-foreground text-sm">
-            Grafik alokasi sektor akan ditampilkan setelah posisi tersedia.
-          </p>
+          {positions.length > 0 ? (
+            <div className="space-y-2">
+              {positions.map((p) => (
+                <div key={p.ticker} className="flex items-center justify-between text-sm">
+                  <span className="font-mono">{p.ticker}</span>
+                  <div className="flex items-center gap-2 flex-1 ml-4">
+                    <div className="h-2 rounded-full bg-muted flex-1">
+                      <div
+                        className="h-2 rounded-full bg-primary"
+                        style={{ width: `${Math.min(p.weight * 100, 100)}%` }}
+                      />
+                    </div>
+                    <span className="text-muted-foreground w-12 text-right">
+                      {(p.weight * 100).toFixed(1)}%
+                    </span>
+                  </div>
+                </div>
+              ))}
+            </div>
+          ) : (
+            <p className="text-muted-foreground text-sm">
+              Grafik alokasi sektor akan ditampilkan setelah posisi tersedia.
+            </p>
+          )}
         </CardContent>
       </Card>
     </div>

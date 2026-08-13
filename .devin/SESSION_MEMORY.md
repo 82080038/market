@@ -735,3 +735,55 @@ ENV=research uv run pytest tests/test_macro_correlation.py -v --no-cov
 - Git commit & push semua perubahan
 - 42 pre-existing test failures (PG schema: watchlist id auto-increment, intraday column names, refresh_stale SQL placeholder)
 
+
+## Checkpoint Sesi 2026-08-13 — Scheduler Fix & Frontend Dynamic Wiring
+
+- **Topik:** Fix scheduler state persistence, duplicate label error, dan wiring frontend ke API.
+- **Tanggal:** 13 Agu 2026
+
+### Scheduler Fixes
+- `src/market/scheduler.py`: Fix `save_state` — `last_run` sudah string, jangan panggil `.isoformat()` lagi. Clear `last_error` pada success path.
+- `src/market/scheduler_tasks.py`: Fix `_task_strategy_assignment` — `InstrumentMaster.is_active == "1"` (text, bukan boolean).
+- `src/market/api/app.py`: Tambah `recompute`, `generate_signals`, `startup_catchup` ke `_HEAVY_TASKS`.
+- `src/market/api/routes_scheduler.py`: `POST /api/scheduler/run` non-blocking — heavy tasks di-dispatch ke background threads.
+- `frontend/src/app/scheduler/page.tsx`: Tampilkan `heavy_dispatched` tasks.
+
+### Duplicate Label Fix (recompute_internal.py)
+- Root cause: `ohlcv` VIEW punya NaT timestamps + same-date-different-time entries → non-unique DataFrame index → "cannot reindex on an axis with duplicate labels".
+- Fix: Filter NaT + dedup index (keep="last") di `_load_ohlcv_df`, `_load_all_ohlcv_dfs`, `_load_ohlcv_df_since`.
+
+### Frontend Dynamic Wiring (static → API)
+- **Dashboard** (`page.tsx`): Fetch IHSG, portfolio, movers via `Promise.allSettled`.
+- **Portfolio** (`portfolio/page.tsx`): Fetch `/api/portfolio` — NAV, PnL, positions table, alokasi bar.
+- **Stock** (`stock/page.tsx`): Fetch `/api/stock/{ticker}` — 30-day chart, factor scores, prediction. Pakai recharts.
+- **Screener** (`screener/page.tsx`): Fetch `/api/analysis/advisory` — filter composite + regime.
+- **Scheduler** (`scheduler/page.tsx`): Tampilkan heavy_dispatched.
+
+### Backend Endpoints Baru
+- `GET /api/prices/ihsg` — IHSG latest price + pct change (ringan, 2 rows).
+- `GET /api/prices/movers` — Top gainers/losers (1030 tickers, ~30s).
+- `GET /api/stock/{ticker}` — OHLCV 30 hari + factor scores dari `scores` table + prediction dari `stock_prediction` table.
+
+### Bug Fix Lain
+- `src/market/api/_shared.py`: `to_jakarta()` handle string/Decimal/non-datetime input (root cause error `routes_data.py:115`).
+- `src/market/api/routes_analysis.py`: Fix `scores` table column names (`engine`/`score`/`breakdown` bukan `technical_score`/dll). Fix `stock_prediction` column names.
+
+### File Modified
+- `src/market/api/app.py` — _HEAVY_TASKS set
+- `src/market/api/routes_scheduler.py` — non-blocking /run
+- `src/market/api/routes_prices.py` — /ihsg + /movers endpoints
+- `src/market/api/routes_analysis.py` — /stock/{ticker} endpoint
+- `src/market/api/_shared.py` — to_jakarta() robust
+- `src/market/scheduler.py` — save_state + clear last_error
+- `src/market/scheduler_tasks.py` — is_active == "1"
+- `src/market/data/recompute_internal.py` — NaT filter + dedup
+- `frontend/src/app/page.tsx` — dynamic dashboard
+- `frontend/src/app/portfolio/page.tsx` — dynamic portfolio
+- `frontend/src/app/stock/page.tsx` — dynamic stock detail
+- `frontend/src/app/screener/page.tsx` — dynamic screener
+- `frontend/src/app/scheduler/page.tsx` — heavy_dispatched display
+
+### Pending
+- Git commit & push
+- Reports & Settings pages masih static (tidak ada API backend)
+- Movers endpoint lambat (~30s untuk 1030 tickers) — pertimbangkan caching

@@ -8,7 +8,10 @@ untuk 20 saham fokus, dan menyuntikkan keputusan trading hari ini
 di database aplikasi — tanpa pihak ketiga (Telegram/dll).
 
 Dirancang untuk dijalankan via cron job setiap hari bursa pukul 16:15 WIB
-(09:15 UTC) setelah bursa IDX tutup perdagangan harian.
+setelah bursa IDX tutup perdagangan harian. Catatan: crontab sekarang
+ditulis langsung dalam WIB (`15 16 * * 1-5`) karena sistem timezone =
+Asia/Jakarta; sebelumnya ditulis `15 9` dengan asumsi UTC yang menyebabkan
+task jalan 7 jam terlalu cepat.
 
 Pipeline 4 modul:
 

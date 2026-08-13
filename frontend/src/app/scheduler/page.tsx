@@ -101,6 +101,8 @@ function StatusBadge({ status }: { status: string }) {
 export default function SchedulerPage() {
   const [status, setStatus] = useState<SchedulerStatus | null>(null);
   const [loading, setLoading] = useState(true);
+  const [running, setRunning] = useState(false);
+  const [runResult, setRunResult] = useState<string | null>(null);
   const [activeTab, setActiveTab] = useState<
     "tasks" | "cron" | "pipeline"
   >("tasks");
@@ -120,6 +122,36 @@ export default function SchedulerPage() {
 
   useEffect(() => {
     loadStatus();
+  }, [loadStatus]);
+
+  const runDueTasks = useCallback(async () => {
+    setRunning(true);
+    setRunResult(null);
+    try {
+      const res = await fetch("/api/scheduler/run", { method: "POST" });
+      if (res.ok) {
+        const data = await res.json();
+        const light = data.results?.map(
+          (r: { task_id: string; status: string; duration_seconds: number }) =>
+            `${r.task_id}(${r.status}, ${r.duration_seconds}s)`,
+        ).join(", ") || "";
+        const heavy = data.heavy_dispatched?.length
+          ? ` | Background: ${data.heavy_dispatched.join(", ")}`
+          : "";
+        setRunResult(
+          `Menjalankan ${data.executed} task` +
+            (light ? `: ${light}` : "") +
+            heavy +
+            (data.executed === 0 ? " — semua sudah up to date" : ""),
+        );
+        loadStatus();
+      } else {
+        setRunResult("Gagal menjalankan scheduler");
+      }
+    } catch {
+      setRunResult("Error: tidak bisa terhubung ke API");
+    }
+    setRunning(false);
   }, [loadStatus]);
 
   const fmtDate = (s: string | null) => {
@@ -144,14 +176,30 @@ export default function SchedulerPage() {
             Status task terjadwal, cron jobs, dan event-driven pipeline
           </p>
         </div>
-        <button
-          onClick={loadStatus}
-          className="flex items-center gap-2 px-3 py-2 rounded-md border border-border text-sm hover:bg-accent"
-        >
-          <RefreshCw className={`w-4 h-4 ${loading ? "animate-spin" : ""}`} />
-          Refresh
-        </button>
+        <div className="flex items-center gap-2">
+          <button
+            onClick={runDueTasks}
+            disabled={running}
+            className="flex items-center gap-2 px-3 py-2 rounded-md bg-primary text-primary-foreground text-sm hover:bg-primary/90 disabled:opacity-50"
+          >
+            <Zap className={`w-4 h-4 ${running ? "animate-pulse" : ""}`} />
+            {running ? "Menjalankan..." : "Run Due Tasks"}
+          </button>
+          <button
+            onClick={loadStatus}
+            className="flex items-center gap-2 px-3 py-2 rounded-md border border-border text-sm hover:bg-accent"
+          >
+            <RefreshCw className={`w-4 h-4 ${loading ? "animate-spin" : ""}`} />
+            Refresh
+          </button>
+        </div>
       </div>
+
+      {runResult && (
+        <div className="p-3 rounded-md border border-border bg-muted/50 text-sm">
+          {runResult}
+        </div>
+      )}
 
       {/* Summary Cards */}
       {status && (
@@ -254,7 +302,7 @@ export default function SchedulerPage() {
         <Card>
           <CardHeader>
             <CardTitle className="text-base">
-              Task Scheduler — 22 Task Terdaftar
+              Task Scheduler — 24 Task Terdaftar
             </CardTitle>
           </CardHeader>
           <CardContent>
@@ -324,7 +372,7 @@ export default function SchedulerPage() {
                 <table className="w-full text-sm">
                   <thead>
                     <tr className="border-b border-border text-left text-muted-foreground">
-                      <th className="pb-2 pr-4">Schedule (UTC)</th>
+                      <th className="pb-2 pr-4">Schedule (WIB)</th>
                       <th className="pb-2 pr-4">WIB</th>
                       <th className="pb-2 pr-4">Script</th>
                       <th className="pb-2 pr-4">Deskripsi</th>

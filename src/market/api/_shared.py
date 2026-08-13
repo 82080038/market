@@ -14,14 +14,23 @@ from pydantic import BaseModel
 _JAKARTA_TZ = ZoneInfo("Asia/Jakarta")
 
 
-def to_jakarta(dt: datetime | None) -> str | None:
+def to_jakarta(dt: Any) -> str | None:
     """Convert UTC datetime to Asia/Jakarta (WIB, UTC+7) ISO string.
 
     This is the presentation-layer conversion — backend logic stays in UTC,
     only API responses convert to local time for the frontend.
+
+    Handles edge cases where DB returns string or Decimal instead of datetime.
     """
     if dt is None:
         return None
+    if isinstance(dt, str):
+        try:
+            dt = datetime.fromisoformat(dt)
+        except ValueError:
+            return str(dt)
+    if not isinstance(dt, datetime):
+        return str(dt)
     if dt.tzinfo is None:
         dt = dt.replace(tzinfo=ZoneInfo("UTC"))
     return dt.astimezone(_JAKARTA_TZ).isoformat()

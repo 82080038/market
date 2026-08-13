@@ -1,6 +1,8 @@
 #!/bin/bash
 # Weekly HRP + Multi-Strategy Recompute
-# Runs every Saturday 10:00 WIB (03:00 UTC) after market close
+# Dijalankan via scheduler task (weekly_hrp_recompute) — cron Sabtu 10:00 WIB
+# trigger run_daily_scheduler.sh → run_all_due() → task ini due jika >6 hari.
+# Catch-up otomatis: kalau komputer mati Sabtu, task jalan di trigger berikutnya.
 # Recomputes portfolio weights + updates stock_personality table
 
 set -euo pipefail

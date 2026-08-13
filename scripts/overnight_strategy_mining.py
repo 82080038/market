@@ -1,9 +1,9 @@
 #!/usr/bin/env python3
 """Overnight Strategy Mining — Trade Ideas Mode.
 
-Runs at 02:00 WIB (19:00 UTC previous day) via crontab to mine optimal
-Donchian Channel parameters for IHSG morning session based on overnight
-global market conditions.
+Runs at 02:00 WIB via crontab to mine optimal Donchian Channel parameters
+for IHSG morning session based on overnight global market conditions.
+(Crontab sekarang dalam WIB karena sistem timezone = Asia/Jakarta.)
 
 Workflow:
 1. Fetch latest close data for global indicators: ^GSPC, ^VIX, CL=F, MTF=F

@@ -224,7 +224,7 @@ class DailyScheduler:
 
             import json
             state_val = json.dumps({
-                "last_run": task.last_run.isoformat() if task.last_run else None,
+                "last_run": task.last_run if task.last_run else None,
                 "last_status": task.last_status.value,
                 "last_error": task.last_error,
                 "run_count": task.run_count,
@@ -277,6 +277,7 @@ class DailyScheduler:
             task.last_status = TaskStatus.RUNNING
             task.func()
             task.last_status = TaskStatus.SUCCESS
+            task.last_error = ""
             execution.status = TaskStatus.SUCCESS
         except Exception as e:
             task.last_status = TaskStatus.FAILED

@@ -1,7 +1,74 @@
+"use client";
+
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { TrendingUp, TrendingDown, Wallet, Activity } from "lucide-react";
+import { useCallback, useEffect, useState } from "react";
+
+interface Mover {
+  ticker: string;
+  close: number;
+  prev_close: number;
+  pct_change: number;
+}
+
+interface MoversData {
+  gainers: Mover[];
+  losers: Mover[];
+  as_of: string | null;
+  count: number;
+}
+
+interface IhsgData {
+  price: number | null;
+  change: number | null;
+  pct_change: number | null;
+  as_of: string | null;
+}
+
+interface PortfolioSummary {
+  nav: number;
+  pnl_unrealized: number;
+  pnl_realized: number;
+  positions: Array<{
+    ticker: string;
+    shares: number;
+    avg_cost: number;
+    current_price: number;
+    market_value: number;
+    pnl: number;
+    weight: number;
+  }>;
+}
 
 export default function DashboardPage() {
+  const [movers, setMovers] = useState<MoversData | null>(null);
+  const [ihsg, setIhsg] = useState<IhsgData | null>(null);
+  const [portfolio, setPortfolio] = useState<PortfolioSummary | null>(null);
+  const [loading, setLoading] = useState(true);
+
+  const loadData = useCallback(async () => {
+    const [moversRes, ihsgRes, portfolioRes] = await Promise.allSettled([
+      fetch("/api/prices/movers?limit=5"),
+      fetch("/api/prices/ihsg"),
+      fetch("/api/portfolio"),
+    ]);
+    if (moversRes.status === "fulfilled" && moversRes.value.ok) {
+      setMovers(await moversRes.value.json());
+    }
+    if (ihsgRes.status === "fulfilled" && ihsgRes.value.ok) {
+      setIhsg(await ihsgRes.value.json());
+    }
+    if (portfolioRes.status === "fulfilled" && portfolioRes.value.ok) {
+      const data = await portfolioRes.value.json();
+      setPortfolio(data);
+    }
+    setLoading(false);
+  }, []);
+
+  useEffect(() => {
+    loadData();
+  }, [loadData]);
+
   return (
     <div className="space-y-6">
       <div>
@@ -20,9 +87,13 @@ export default function DashboardPage() {
             </div>
           </CardHeader>
           <CardContent>
-            <p className="text-2xl font-bold">Rp 0</p>
+            <p className="text-2xl font-bold">
+              Rp {portfolio ? portfolio.nav.toLocaleString("id-ID") : "0"}
+            </p>
             <p className="text-xs text-muted-foreground mt-1">
-              Belum ada posisi aktif
+              {portfolio && portfolio.positions?.length > 0
+                ? `${portfolio.positions.length} posisi aktif`
+                : "Belum ada posisi aktif"}
             </p>
           </CardContent>
         </Card>
@@ -35,9 +106,13 @@ export default function DashboardPage() {
             </div>
           </CardHeader>
           <CardContent>
-            <p className="text-2xl font-bold text-primary">+0.00%</p>
+            <p className="text-2xl font-bold text-primary">
+              {portfolio && portfolio.pnl_unrealized
+                ? `${portfolio.pnl_unrealized >= 0 ? "+" : ""}${portfolio.pnl_unrealized.toLocaleString("id-ID", { style: "currency", currency: "IDR", maximumFractionDigits: 0 })}`
+                : "+0.00%"}
+            </p>
             <p className="text-xs text-muted-foreground mt-1">
-              vs IHSG: 0.00%
+              vs IHSG: {ihsg?.pct_change != null ? `${ihsg.pct_change >= 0 ? "+" : ""}${ihsg.pct_change.toFixed(2)}%` : "—"}
             </p>
           </CardContent>
         </Card>
@@ -50,9 +125,9 @@ export default function DashboardPage() {
             </div>
           </CardHeader>
           <CardContent>
-            <p className="text-2xl font-bold">0</p>
+            <p className="text-2xl font-bold">{portfolio?.positions?.length ?? 0}</p>
             <p className="text-xs text-muted-foreground mt-1">
-              0 sektor
+              {portfolio?.positions?.length ? `${new Set(portfolio.positions.map((p) => p.ticker)).size} sektor` : "0 sektor"}
             </p>
           </CardContent>
         </Card>
@@ -90,7 +165,16 @@ export default function DashboardPage() {
               </div>
               <div className="flex justify-between">
                 <span className="text-muted-foreground">IHSG</span>
-                <span className="font-medium">—</span>
+                <span className="font-medium">
+                  {ihsg?.price != null
+                    ? ihsg.price.toLocaleString("id-ID", { minimumFractionDigits: 2 })
+                    : "—"}
+                  {ihsg?.pct_change != null && (
+                    <span className={ihsg.pct_change >= 0 ? "text-green-600 ml-1" : "text-red-600 ml-1"}>
+                      {ihsg.pct_change >= 0 ? "+" : ""}{ihsg.pct_change.toFixed(2)}%
+                    </span>
+                  )}
+                </span>
               </div>
             </div>
           </CardContent>
@@ -98,12 +182,65 @@ export default function DashboardPage() {
 
         <Card>
           <CardHeader>
-            <CardTitle>Top Movers</CardTitle>
+            <div className="flex items-center justify-between">
+              <CardTitle>Top Movers</CardTitle>
+              {movers?.as_of && (
+                <span className="text-xs text-muted-foreground">
+                  {new Date(movers.as_of).toLocaleDateString("id-ID", {
+                    day: "numeric",
+                    month: "short",
+                  })}
+                </span>
+              )}
+            </div>
           </CardHeader>
           <CardContent>
-            <p className="text-muted-foreground text-sm">
-              Belum ada data. Jalankan fetch untuk mengisi OHLCV.
-            </p>
+            {loading ? (
+              <p className="text-muted-foreground text-sm">Memuat data...</p>
+            ) : !movers || movers.count === 0 ? (
+              <p className="text-muted-foreground text-sm">
+                Belum ada data. Jalankan fetch untuk mengisi OHLCV.
+              </p>
+            ) : (
+              <div className="space-y-3">
+                <div>
+                  <p className="text-xs font-medium text-green-600 mb-1">
+                    Top Gainers
+                  </p>
+                  <div className="space-y-1">
+                    {movers.gainers.map((m) => (
+                      <div
+                        key={m.ticker}
+                        className="flex items-center justify-between text-sm"
+                      >
+                        <span className="font-mono">{m.ticker}</span>
+                        <span className="font-medium text-green-600">
+                          +{m.pct_change.toFixed(2)}%
+                        </span>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+                <div>
+                  <p className="text-xs font-medium text-red-600 mb-1">
+                    Top Losers
+                  </p>
+                  <div className="space-y-1">
+                    {movers.losers.map((m) => (
+                      <div
+                        key={m.ticker}
+                        className="flex items-center justify-between text-sm"
+                      >
+                        <span className="font-mono">{m.ticker}</span>
+                        <span className="font-medium text-red-600">
+                          {m.pct_change.toFixed(2)}%
+                        </span>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              </div>
+            )}
           </CardContent>
         </Card>
       </div>

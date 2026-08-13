@@ -2,14 +2,130 @@
 
 from __future__ import annotations
 
-from typing import Any
+from typing import Annotated, Any
 
-from fastapi import APIRouter, Query
+from fastapi import APIRouter, Depends, HTTPException, Query
+from sqlalchemy import text
+from sqlalchemy.orm import Session
 
 from market.api._engines import engines
-from market.api._shared import _dataclass_to_dict
+from market.api._shared import _dataclass_to_dict, to_jakarta
+from market.db.engine import get_session
 
 router = APIRouter(prefix="/api", tags=["analysis"])
+
+
+@router.get("/stock/{ticker}")
+async def stock_summary(
+    ticker: str,
+    session: Annotated[Session, Depends(get_session)],
+) -> dict[str, Any]:
+    """Stock detail summary — latest OHLCV, factor scores from DB, prediction.
+
+    Combines data from multiple sources for the stock detail page.
+    """
+    from sqlalchemy import text as sql_text
+
+    # Latest OHLCV
+    sql = sql_text("""
+        SELECT timestamp, open, high, low, close, volume
+        FROM ohlcv
+        WHERE ticker = :ticker AND timeframe = '1d'
+          AND timestamp IS NOT NULL
+        ORDER BY timestamp DESC
+        LIMIT 30
+    """)
+    rows = session.execute(sql, {"ticker": ticker}).fetchall()
+    if not rows:
+        raise HTTPException(404, f"No data for {ticker}")
+
+    latest = rows[0]
+    prev = rows[1] if len(rows) > 1 else None
+    close = float(latest[4])
+    prev_close = float(prev[4]) if prev else None
+    pct_change = round((close - prev_close) / prev_close * 100, 2) if prev_close and prev_close > 0 else None
+
+    ohlcv = [
+        {
+            "date": to_jakarta(r[0])[:10] if r[0] else "",
+            "open": float(r[1]),
+            "high": float(r[2]),
+            "low": float(r[3]),
+            "close": float(r[4]),
+            "volume": int(r[5]) if r[5] else 0,
+        }
+        for r in reversed(rows)
+    ]
+
+    # Factor scores from scores table (one row per engine)
+    scores_sql = sql_text("""
+        SELECT engine, score, breakdown, as_of
+        FROM scores
+        WHERE ticker = :ticker
+        ORDER BY as_of DESC
+    """)
+    score_rows = session.execute(scores_sql, {"ticker": ticker}).fetchall()
+
+    factors: dict[str, Any] = {
+        "technical": 0, "fundamental": 0, "macro": 0,
+        "global": 0, "relationship": 0, "sentiment": 0,
+        "composite": 0,
+    }
+    import json as _json
+    for row in score_rows:
+        engine_name = row[0]
+        score_val = float(row[1] or 0)
+        breakdown = row[2]
+        if engine_name == "composite":
+            factors["composite"] = score_val
+        elif engine_name in factors:
+            factors[engine_name] = score_val
+        elif breakdown:
+            try:
+                bd = _json.loads(breakdown) if isinstance(breakdown, str) else breakdown
+                if isinstance(bd, dict):
+                    for k in factors:
+                        if k in bd:
+                            factors[k] = float(bd[k] or 0)
+            except Exception:
+                pass
+
+    # Prediction from stock_prediction table
+    pred_sql = sql_text("""
+        SELECT predicted_direction, predicted_price, predicted_return_pct,
+               prediction_confidence, composite_signal, prediction_updated_at
+        FROM stock_prediction
+        WHERE ticker = :ticker
+        ORDER BY prediction_updated_at DESC
+        LIMIT 1
+    """)
+    pred_row = session.execute(pred_sql, {"ticker": ticker}).fetchone()
+    prediction = None
+    if pred_row:
+        prediction = {
+            "direction": pred_row[0],
+            "predicted_price": float(pred_row[1]) if pred_row[1] else None,
+            "return_pct": float(pred_row[2]) if pred_row[2] else None,
+            "confidence": float(pred_row[3]) if pred_row[3] else None,
+            "composite_signal": float(pred_row[4]) if pred_row[4] else None,
+            "as_of": to_jakarta(pred_row[5]),
+        }
+
+    return {
+        "ticker": ticker,
+        "latest": {
+            "close": close,
+            "open": float(latest[1]),
+            "high": float(latest[2]),
+            "low": float(latest[3]),
+            "volume": int(latest[5]) if latest[5] else 0,
+            "pct_change": pct_change,
+            "as_of": to_jakarta(latest[0]),
+        },
+        "ohlcv": ohlcv,
+        "factors": factors,
+        "prediction": prediction,
+    }
 
 
 @router.get("/scores/{ticker}")

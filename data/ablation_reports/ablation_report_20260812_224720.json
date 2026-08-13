@@ -1,0 +1,289 @@
+{
+  "metadata": {
+    "timestamp": "2026-08-12T22:47:20.534334+00:00",
+    "tickers": [
+      "BBCA.JK",
+      "BBRI.JK",
+      "UNVR.JK",
+      "ANTM.JK",
+      "TLKM.JK"
+    ],
+    "period": "2024-01-01 to 2026-08-12",
+    "total_engines": 4,
+    "keep": 0,
+    "marginal": 0,
+    "remove": 4,
+    "bonferroni_alpha": 0.0125,
+    "multiple_testing_correction": "Bonferroni"
+  },
+  "scorecards": [
+    {
+      "engine_name": "vta_reasoning",
+      "verdict": "REMOVE",
+      "composite_score": 21.32,
+      "delta_sharpe": -0.7409,
+      "delta_alpha": -0.2512,
+      "delta_win_rate": -6.43,
+      "p_value": 0.28918,
+      "is_significant": false,
+      "n_observations": 3073,
+      "isolated_sharpe": -0.7016,
+      "baseline_sharpe": 0.0392,
+      "reasons": [
+        "Negative or zero Sharpe delta (-0.741)",
+        "Negative alpha contribution (-0.2512)",
+        "Win rate decreased by -6.4%"
+      ]
+    },
+    {
+      "engine_name": "causal_discovery",
+      "verdict": "REMOVE",
+      "composite_score": 13.17,
+      "delta_sharpe": -0.3154,
+      "delta_alpha": -0.061,
+      "delta_win_rate": -25.9,
+      "p_value": 0.560866,
+      "is_significant": false,
+      "n_observations": 3073,
+      "isolated_sharpe": -0.2762,
+      "baseline_sharpe": 0.0392,
+      "reasons": [
+        "Negative or zero Sharpe delta (-0.315)",
+        "Negative alpha contribution (-0.0610)",
+        "Win rate decreased by -25.9%"
+      ]
+    },
+    {
+      "engine_name": "denoised_news",
+      "verdict": "REMOVE",
+      "composite_score": 10.68,
+      "delta_sharpe": -0.0392,
+      "delta_alpha": -0.0128,
+      "delta_win_rate": -39.8,
+      "p_value": 0.643976,
+      "is_significant": false,
+      "n_observations": 3073,
+      "isolated_sharpe": 0.0,
+      "baseline_sharpe": 0.0392,
+      "reasons": [
+        "Negative or zero Sharpe delta (-0.039)",
+        "Negative alpha contribution (-0.0128)",
+        "Win rate decreased by -39.8%"
+      ]
+    },
+    {
+      "engine_name": "spillover_lab",
+      "verdict": "REMOVE",
+      "composite_score": 10.68,
+      "delta_sharpe": -0.0392,
+      "delta_alpha": -0.0128,
+      "delta_win_rate": -39.8,
+      "p_value": 0.643976,
+      "is_significant": false,
+      "n_observations": 3073,
+      "isolated_sharpe": 0.0,
+      "baseline_sharpe": 0.0392,
+      "reasons": [
+        "Negative or zero Sharpe delta (-0.039)",
+        "Negative alpha contribution (-0.0128)",
+        "Win rate decreased by -39.8%"
+      ]
+    }
+  ],
+  "results": [
+    {
+      "engine_name": "vta_reasoning",
+      "baseline_metrics": {
+        "sharpe_ratio": 0.03923999999999999,
+        "sortino_ratio": 0.05366,
+        "max_drawdown_pct": -40.738,
+        "win_rate_pct": 39.796,
+        "total_return_pct": -4.563999999999998,
+        "annual_return_pct": -3.1719999999999997,
+        "alpha": 0.012840000000000004,
+        "beta": -0.28474,
+        "n_days": 614.6
+      },
+      "isolated_metrics": {
+        "sharpe_ratio": -0.7016199999999999,
+        "sortino_ratio": -0.8603400000000001,
+        "max_drawdown_pct": -60.084,
+        "win_rate_pct": 33.368,
+        "total_return_pct": -40.67199999999999,
+        "annual_return_pct": -22.994000000000003,
+        "alpha": -0.23832,
+        "beta": -0.28888,
+        "n_days": 614.6
+      },
+      "delta_metrics": {
+        "sharpe_ratio": -0.74086,
+        "sortino_ratio": -0.914,
+        "max_drawdown_pct": -19.345999999999997,
+        "win_rate_pct": -6.428,
+        "total_return_pct": -36.108000000000004,
+        "annual_return_pct": -19.822000000000003,
+        "alpha": -0.25116,
+        "beta": -0.004139999999999996,
+        "n_days": 0.0
+      },
+      "p_value": 0.2891798,
+      "t_statistic": -0.9475,
+      "is_significant": false,
+      "n_observations": 3073,
+      "error": null
+    },
+    {
+      "engine_name": "causal_discovery",
+      "baseline_metrics": {
+        "sharpe_ratio": 0.03923999999999999,
+        "sortino_ratio": 0.05366,
+        "max_drawdown_pct": -40.738,
+        "win_rate_pct": 39.796,
+        "total_return_pct": -4.563999999999998,
+        "annual_return_pct": -3.1719999999999997,
+        "alpha": 0.012840000000000004,
+        "beta": -0.28474,
+        "n_days": 614.6
+      },
+      "isolated_metrics": {
+        "sharpe_ratio": -0.27618,
+        "sortino_ratio": -0.1443,
+        "max_drawdown_pct": -33.980000000000004,
+        "win_rate_pct": 13.892,
+        "total_return_pct": -12.642,
+        "annual_return_pct": -6.008000000000001,
+        "alpha": -0.04816,
+        "beta": -0.15926,
+        "n_days": 614.6
+      },
+      "delta_metrics": {
+        "sharpe_ratio": -0.31542,
+        "sortino_ratio": -0.19796,
+        "max_drawdown_pct": 6.758,
+        "win_rate_pct": -25.904000000000003,
+        "total_return_pct": -8.078,
+        "annual_return_pct": -2.8359999999999994,
+        "alpha": -0.061,
+        "beta": 0.12547999999999998,
+        "n_days": 0.0
+      },
+      "p_value": 0.560866,
+      "t_statistic": -0.2525,
+      "is_significant": false,
+      "n_observations": 3073,
+      "error": null
+    },
+    {
+      "engine_name": "denoised_news",
+      "baseline_metrics": {
+        "sharpe_ratio": 0.03923999999999999,
+        "sortino_ratio": 0.05366,
+        "max_drawdown_pct": -40.738,
+        "win_rate_pct": 39.796,
+        "total_return_pct": -4.563999999999998,
+        "annual_return_pct": -3.1719999999999997,
+        "alpha": 0.012840000000000004,
+        "beta": -0.28474,
+        "n_days": 614.6
+      },
+      "isolated_metrics": {
+        "sharpe_ratio": 0.0,
+        "sortino_ratio": 0.0,
+        "max_drawdown_pct": 0.0,
+        "win_rate_pct": 0.0,
+        "total_return_pct": 0.0,
+        "annual_return_pct": 0.0,
+        "alpha": 0.0,
+        "beta": 0.0,
+        "n_days": 614.6
+      },
+      "delta_metrics": {
+        "sharpe_ratio": -0.03923999999999999,
+        "sortino_ratio": -0.05366,
+        "max_drawdown_pct": 40.738,
+        "win_rate_pct": -39.796,
+        "total_return_pct": 4.563999999999998,
+        "annual_return_pct": 3.1719999999999997,
+        "alpha": -0.012840000000000004,
+        "beta": 0.28474,
+        "n_days": 0.0
+      },
+      "p_value": 0.6439756,
+      "t_statistic": -0.06261999999999998,
+      "is_significant": false,
+      "n_observations": 3073,
+      "error": null
+    },
+    {
+      "engine_name": "spillover_lab",
+      "baseline_metrics": {
+        "sharpe_ratio": 0.03923999999999999,
+        "sortino_ratio": 0.05366,
+        "max_drawdown_pct": -40.738,
+        "win_rate_pct": 39.796,
+        "total_return_pct": -4.563999999999998,
+        "annual_return_pct": -3.1719999999999997,
+        "alpha": 0.012840000000000004,
+        "beta": -0.28474,
+        "n_days": 614.6
+      },
+      "isolated_metrics": {
+        "sharpe_ratio": 0.0,
+        "sortino_ratio": 0.0,
+        "max_drawdown_pct": 0.0,
+        "win_rate_pct": 0.0,
+        "total_return_pct": 0.0,
+        "annual_return_pct": 0.0,
+        "alpha": 0.0,
+        "beta": 0.0,
+        "n_days": 614.6
+      },
+      "delta_metrics": {
+        "sharpe_ratio": -0.03923999999999999,
+        "sortino_ratio": -0.05366,
+        "max_drawdown_pct": 40.738,
+        "win_rate_pct": -39.796,
+        "total_return_pct": 4.563999999999998,
+        "annual_return_pct": 3.1719999999999997,
+        "alpha": -0.012840000000000004,
+        "beta": 0.28474,
+        "n_days": 0.0
+      },
+      "p_value": 0.6439756,
+      "t_statistic": -0.06261999999999998,
+      "is_significant": false,
+      "n_observations": 3073,
+      "error": null
+    }
+  ],
+  "recommendations": [
+    {
+      "engine": "vta_reasoning",
+      "verdict": "REMOVE",
+      "action": "reduce_or_remove",
+      "suggestion": "Reduce weight to 0 or remove from production pipeline",
+      "composite_score": 21.32
+    },
+    {
+      "engine": "causal_discovery",
+      "verdict": "REMOVE",
+      "action": "reduce_or_remove",
+      "suggestion": "Reduce weight to 0 or remove from production pipeline",
+      "composite_score": 13.17
+    },
+    {
+      "engine": "denoised_news",
+      "verdict": "REMOVE",
+      "action": "reduce_or_remove",
+      "suggestion": "Reduce weight to 0 or remove from production pipeline",
+      "composite_score": 10.68
+    },
+    {
+      "engine": "spillover_lab",
+      "verdict": "REMOVE",
+      "action": "reduce_or_remove",
+      "suggestion": "Reduce weight to 0 or remove from production pipeline",
+      "composite_score": 10.68
+    }
+  ]
+}

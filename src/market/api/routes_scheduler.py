@@ -19,7 +19,9 @@ TASK_DEFINITIONS: list[dict[str, str]] = [
     {"task_id": "startup_catchup", "name": "Startup data staleness check & catch-up", "schedule": "daily", "time_of_day": "00:00"},
     {"task_id": "fetch_intraday", "name": "Intraday price poll (15-min interval)", "schedule": "every_15min", "time_of_day": "09:00"},
     {"task_id": "fetch_fundamental", "name": "Weekly fundamental data snapshot", "schedule": "weekly", "time_of_day": "10:00"},
+    {"task_id": "weekly_hrp_recompute", "name": "Weekly HRP + Multi-Strategy portfolio recompute", "schedule": "weekly", "time_of_day": "10:00"},
     {"task_id": "strategy_assignment", "name": "Weekly strategy re-evaluation", "schedule": "weekly", "time_of_day": "11:00"},
+    {"task_id": "weekly_drift_check", "name": "Weekly feature drift check (PSI)", "schedule": "weekly", "time_of_day": "11:00"},
     {"task_id": "fetch_fundamental_quarterly", "name": "Monthly quarterly fundamentals", "schedule": "monthly", "time_of_day": "12:00"},
     {"task_id": "fetch_macro_fred", "name": "Monthly FRED macro data", "schedule": "monthly", "time_of_day": "12:30"},
     {"task_id": "fetch_satellite", "name": "Weekly satellite observations", "schedule": "weekly", "time_of_day": "13:00"},
@@ -40,14 +42,17 @@ TASK_DEFINITIONS: list[dict[str, str]] = [
     {"task_id": "scrape_news", "name": "RSS news sentiment scrape", "schedule": "daily", "time_of_day": "20:00"},
 ]
 
-# Static cron job definitions (mirrors crontab -l)
+# Static cron job definitions (mirrors crontab -l).
+# Schedule field adalah cron expression dalam WIB (Asia/Jakarta, UTC+7) —
+# cron mengikuti timezone sistem. Sebelumnya ditulis sebagai UTC yang menyebabkan
+# semua task berjalan 7 jam terlalu cepat (sistem = WIB, bukan UTC).
+# Lihat logs/crontab_backup_20260813_153625.txt untuk versi lama.
 CRON_JOBS: list[dict[str, str]] = [
-    {"schedule": "30 0 * * *", "time_wib": "07:30", "script": "scrape_rss_news.py", "description": "RSS news scrape (sebelum IDX open)"},
-    {"schedule": "0 10 * * 1-5", "time_wib": "17:00", "script": "run_daily_scheduler.sh", "description": "Daily scheduler — 22 tasks (IDX close)"},
-    {"schedule": "0 22 * * 1-5", "time_wib": "05:00+1", "script": "run_global_fetch.sh", "description": "Global market fetch (post US close)"},
-    {"schedule": "15 9 * * 1-5", "time_wib": "16:15", "script": "daily_signal_cron.py", "description": "Daily signal generation"},
-    {"schedule": "0 3 * * 6", "time_wib": "10:00 Sat", "script": "weekly_hrp_recompute.sh", "description": "Weekly HRP portfolio recompute"},
-    {"schedule": "0 4 * * 6", "time_wib": "11:00 Sat", "script": "weekly_drift_check.py", "description": "Weekly model drift check"},
+    {"schedule": "30 7 * * *", "time_wib": "07:30", "script": "scrape_rss_news.py", "description": "RSS news scrape (sebelum IDX open 09:00 WIB)"},
+    {"schedule": "0 17 * * 1-5", "time_wib": "17:00", "script": "run_daily_scheduler.sh", "description": "Daily scheduler — 24 tasks (setelah IDX close, Sen-Jum)"},
+    {"schedule": "0 10 * * 6", "time_wib": "10:00 Sat", "script": "run_daily_scheduler.sh", "description": "Weekly scheduler trigger — weekly tasks due (>6 hari): HRP, drift, fundamental, dll."},
+    {"schedule": "0 5 * * 2-6", "time_wib": "05:00", "script": "run_global_fetch.sh", "description": "Global market fetch (post US close, Sel-Sab)"},
+    {"schedule": "15 16 * * 1-5", "time_wib": "16:15", "script": "daily_signal_cron.py", "description": "Daily signal generation (setelah IDX close)"},
     {"schedule": "@reboot", "time_wib": "boot", "script": "catchup_daily.sh", "description": "Catch-up semua missed tasks saat boot"},
 ]
 
@@ -117,4 +122,61 @@ async def scheduler_status(
             "pending": pending,
             "never_run": never_run,
         },
+    }
+
+
+@router.post("/run")
+async def scheduler_run() -> dict[str, Any]:
+    """Trigger due tasks manually.
+
+    Light tasks run inline and return results immediately.
+    Heavy tasks (fetch, recompute, export) are dispatched in background
+    threads — check scheduler status later for results.
+    """
+    import threading
+    from datetime import UTC, datetime
+
+    from market.api.app import _get_scheduler, _HEAVY_TASKS
+
+    sched = _get_scheduler()
+    if sched._persist:
+        sched.load_state()
+
+    now = datetime.now(UTC)
+    due_tasks = [
+        t for t in sched.tasks
+        if t.enabled and sched._is_due(t, now)
+    ]
+
+    results = []
+    heavy_dispatched = []
+
+    for task in due_tasks:
+        if task.task_id in _HEAVY_TASKS:
+            heavy_dispatched.append(task.task_id)
+
+            def _run_heavy(t=task):
+                try:
+                    sched.run_task(t.task_id)
+                except Exception:
+                    pass
+
+            threading.Thread(
+                target=_run_heavy, daemon=True,
+                name=f"api-task-{task.task_id}",
+            ).start()
+        else:
+            ex = sched.run_task(task.task_id)
+            if ex:
+                results.append({
+                    "task_id": ex.task_id,
+                    "status": ex.status.value,
+                    "duration_seconds": round(ex.duration_seconds, 2),
+                    "error": ex.error,
+                })
+
+    return {
+        "executed": len(results) + len(heavy_dispatched),
+        "results": results,
+        "heavy_dispatched": heavy_dispatched,
     }

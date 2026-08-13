@@ -2,13 +2,16 @@
 # Global market fetch runner — fetches global indices/commodities after US market close.
 #
 # US market closes at 16:00 ET = 04:00 WIB (21:00 UTC, or 20:00 UTC during DST).
-# We run at 05:00 WIB (22:00 UTC) to give yfinance time to publish EOD data.
+# We run at 05:00 WIB to give yfinance time to publish EOD data.
+#
+# Crontab (crontab -e) — jadwal dalam WIB (sistem timezone = Asia/Jakarta):
+#   0 5 * * 2-6 /home/petrick/projects/market/scripts/run_global_fetch.sh
+# (Selasa-Sabtu, karena US Mon close → Tue 05:00 WIB hari berikutnya)
+# Catatan: sebelumnya crontab ditulis `0 22 * * 1-5` dengan asumsi UTC, tapi
+# sistem WIB → task jalan sebelum US close. Sekarang langsung WIB.
 #
 # This script wires event handlers and emits the global fetch event.
 # The DataFetchPipeline handles the actual fetching via yfinance.
-#
-# Crontab (crontab -e):
-#   0 22 * * 1-5 /home/petrick/projects/market/scripts/run_global_fetch.sh
 #
 # After fetch completes, a recompute for global tickers will run on the next
 # scheduler cycle, or can be triggered manually.

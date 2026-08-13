@@ -283,6 +283,77 @@ def _task_drift_detection() -> None:
         session.close()
 
 
+def _task_weekly_hrp_recompute() -> None:
+    """Run weekly HRP + Multi-Strategy portfolio recompute via subprocess.
+
+    Wraps ``scripts/weekly_hrp_recompute.sh`` — recomputes portfolio weights
+    and updates ``stock_personality`` table. Integrated as scheduler task so
+    that ``run_all_due()`` catch-up covers it when the computer was off on
+    Saturday (previously a standalone cron with no catch-up).
+    """
+    import subprocess
+    import sys
+    from pathlib import Path
+
+    project_dir = Path(__file__).resolve().parents[2]
+    script = project_dir / "scripts" / "weekly_hrp_recompute.sh"
+    if not script.exists():
+        logger.warning("weekly_hrp_recompute.sh not found at %s, skipping", script)
+        return
+    logger.info("Weekly HRP recompute: starting subprocess %s", script)
+    result = subprocess.run(
+        ["bash", str(script)],
+        capture_output=True,
+        text=True,
+        cwd=str(project_dir),
+        timeout=3600,
+    )
+    if result.returncode != 0:
+        logger.error("Weekly HRP recompute failed (exit %d): %s",
+                     result.returncode, result.stderr[-500:] if result.stderr else "")
+    else:
+        logger.info("Weekly HRP recompute: complete")
+
+
+def _task_weekly_drift_check() -> None:
+    """Run weekly feature drift check via subprocess.
+
+    Wraps ``scripts/weekly_drift_check.py`` — checks PSI on
+    ``technical_indicators_wide`` for feature distribution changes that
+    could degrade ML model performance. This is distinct from the daily
+    ``_task_drift_detection`` which checks prediction drift on
+    ``stock_prediction`` table.
+
+    Integrated as scheduler task so that ``run_all_due()`` catch-up covers
+    it when the computer was off on Saturday (previously a standalone cron
+    with no catch-up).
+    """
+    import subprocess
+    import sys
+    from pathlib import Path
+
+    project_dir = Path(__file__).resolve().parents[2]
+    python = project_dir / ".venv" / "bin" / "python3"
+    script = project_dir / "scripts" / "weekly_drift_check.py"
+    if not script.exists():
+        logger.warning("weekly_drift_check.py not found at %s, skipping", script)
+        return
+    interpreter = str(python) if python.exists() else sys.executable
+    logger.info("Weekly drift check: starting subprocess %s", script)
+    result = subprocess.run(
+        [interpreter, str(script)],
+        capture_output=True,
+        text=True,
+        cwd=str(project_dir),
+        timeout=3600,
+    )
+    if result.returncode != 0:
+        logger.error("Weekly drift check failed (exit %d): %s",
+                     result.returncode, result.stderr[-500:] if result.stderr else "")
+    else:
+        logger.info("Weekly drift check: complete")
+
+
 def _task_generate_reports() -> None:
     """Generate daily advisory report — run AdvisoryEngine screening.
 
@@ -668,7 +739,7 @@ def _task_strategy_assignment() -> None:
         rows = session.execute(
             select(InstrumentMaster.ticker).where(
                 InstrumentMaster.asset_class == "equity",
-                InstrumentMaster.trading_status == "active",
+                InstrumentMaster.is_active == "1",
             ).order_by(InstrumentMaster.ticker)
         ).fetchall()
         tickers = [r[0] for r in rows]
@@ -1005,7 +1076,9 @@ def register_default_tasks(scheduler: DailyScheduler) -> None:
         19:00  generate_reports  — daily reports
         19:30  export_parquet    — backup DB to parquet + WAL checkpoint (ONCE)
         Sat 10:00 fetch_fundamental — weekly fundamental snapshot from yfinance
+        Sat 10:00 weekly_hrp_recompute — HRP + Multi-Strategy portfolio weights
         Sat 11:00 strategy_assignment — weekly strategy re-evaluation per ticker
+        Sat 11:00 weekly_drift_check — feature drift via PSI (technical_indicators_wide)
         Sat 12:00 fetch_fundamental_quarterly — monthly quarterly fundamentals (100+ tickers)
         Sat 12:30 fetch_macro_fred    — monthly FRED macro (BI Rate, CPI, GDP + global backfill)
         20:00  scrape_news       — RSS news sentiment scrape (daily)
@@ -1048,9 +1121,23 @@ def register_default_tasks(scheduler: DailyScheduler) -> None:
         time_of_day="10:00",
     )
     scheduler.register_task(
+        task_id="weekly_hrp_recompute",
+        name="Weekly HRP + Multi-Strategy portfolio recompute (Sabtu)",
+        func=_task_weekly_hrp_recompute,
+        schedule="weekly",
+        time_of_day="10:00",
+    )
+    scheduler.register_task(
         task_id="strategy_assignment",
         name="Weekly strategy assignment re-evaluation",
         func=_task_strategy_assignment,
+        schedule="weekly",
+        time_of_day="11:00",
+    )
+    scheduler.register_task(
+        task_id="weekly_drift_check",
+        name="Weekly feature drift check via PSI (Sabtu)",
+        func=_task_weekly_drift_check,
         schedule="weekly",
         time_of_day="11:00",
     )
