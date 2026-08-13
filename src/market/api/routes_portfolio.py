@@ -31,11 +31,12 @@ async def portfolio(session: Annotated[Session, Depends(get_session)]) -> dict[s
     try:
         tickers = session.execute(
             select(StockPrice.ticker).distinct()
+            .where(StockPrice.timeframe == "1d")
         ).scalars().all()
 
         for ticker in tickers[:50]:
             latest = session.execute(
-                select(StockPrice).where(StockPrice.ticker == ticker)
+                select(StockPrice).where(StockPrice.ticker == ticker, StockPrice.timeframe == "1d")
                 .order_by(StockPrice.timestamp.desc()).limit(1)
             ).scalar_one_or_none()
             if latest:
@@ -49,11 +50,12 @@ async def portfolio(session: Annotated[Session, Depends(get_session)]) -> dict[s
             pass
         tickers = session.execute(
             select(OHLCV.ticker).distinct()
+            .where(OHLCV.timeframe == "1d")
         ).scalars().all()
 
         for ticker in tickers[:50]:
             latest = session.execute(
-                select(OHLCV).where(OHLCV.ticker == ticker)
+                select(OHLCV).where(OHLCV.ticker == ticker, OHLCV.timeframe == "1d")
                 .order_by(OHLCV.timestamp.desc()).limit(1)
             ).scalar_one_or_none()
             if latest:

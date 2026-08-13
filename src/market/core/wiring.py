@@ -22,8 +22,15 @@ Flow (decoupled — fetch does NOT auto-trigger recompute/export):
         data.export.completed         →  HealthPipeline → health.check.completed
         health.check.requested        →  HealthPipeline
 
-    ALERTS (after recompute):
-        data.recompute.completed      →  AlertPipeline (terminal)
+    PHASE 5 — ALERTS (after recompute):
+        data.recompute.completed      →  AlertPipeline → alert.check.completed
+
+    PHASE 6 — SIGNALS (scheduler triggers after recompute):
+        signal.generate.requested     →  SignalPipeline → signal.generate.completed
+
+    PHASE 7 — NOTIFICATIONS (terminal, after alerts and signals):
+        alert.check.completed         →  NotificationPipeline (terminal)
+        signal.generate.completed     →  NotificationPipeline (terminal)
 
 Key change: fetch phases emit "data.fetch.stored" (not "data.fetch.completed")
 which does NOT auto-trigger recompute. This prevents 3-4x redundant recompute
@@ -90,13 +97,30 @@ def wire_all_events() -> None:
     broker.subscribe("data.export.completed", health_pipeline.on_export_done)
     broker.subscribe("health.check.requested", health_pipeline.on_check_requested)
 
-    # ── Alerts: alert pipeline (after recompute) ────────────────
+    # ── PHASE 5: Alert pipeline (after recompute) ───────────────
     # Listens to: data.recompute.completed
-    # Emits:      (nothing — terminal node)
+    # Emits:      alert.check.completed
     from market.pipelines.alerts import AlertPipeline
 
     alert_pipeline = AlertPipeline()
     broker.subscribe("data.recompute.completed", alert_pipeline.on_recompute_done)
+
+    # ── PHASE 6: Signal pipeline (scheduler triggers after recompute) ──
+    # Listens to: signal.generate.requested
+    # Emits:      signal.generate.completed
+    from market.pipelines.signal import SignalPipeline
+
+    signal_pipeline = SignalPipeline()
+    broker.subscribe("signal.generate.requested", signal_pipeline.on_signal_requested)
+
+    # ── PHASE 7: Notification pipeline (terminal, after alerts/signals) ──
+    # Listens to: alert.check.completed, signal.generate.completed
+    # Emits:      (nothing — terminal node)
+    from market.pipelines.notification import NotificationPipeline
+
+    notification_pipeline = NotificationPipeline()
+    broker.subscribe("alert.check.completed", notification_pipeline.on_alert_completed)
+    broker.subscribe("signal.generate.completed", notification_pipeline.on_signal_completed)
 
     registered = broker.registered_events()
     logger.info("Event wiring complete: %d event types registered", len(registered))

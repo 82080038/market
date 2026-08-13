@@ -9,7 +9,7 @@ from market.scheduler_tasks import register_default_tasks
 def test_register_default_tasks_count():
     sched = DailyScheduler(persist=False)
     register_default_tasks(sched)
-    assert len(sched.tasks) == 21
+    assert len(sched.tasks) == 22
 
 
 def test_register_default_tasks_ids():
@@ -19,7 +19,7 @@ def test_register_default_tasks_ids():
     assert ids == {
         "startup_catchup", "fetch_intraday", "health_check",
         "fetch_eod", "fetch_global", "fetch_macro",
-        "quality_check", "recompute", "feature_store",
+        "quality_check", "recompute", "generate_signals", "feature_store",
         "drift_detection", "generate_reports", "export_parquet",
         "fetch_fundamental", "scrape_news", "strategy_assignment",
         "fetch_fundamental_quarterly", "fetch_macro_fred",
@@ -48,7 +48,7 @@ def test_register_default_tasks_idempotent():
     register_default_tasks(sched)
     register_default_tasks(sched)
     # Re-registering overwrites, so count stays the same
-    assert len(sched.tasks) == 21
+    assert len(sched.tasks) == 22
 
 
 def test_register_default_tasks_order():

@@ -16,6 +16,7 @@ from market.db.models import (
     AuditLog,
     DataWatermark,
     SourceHealth,
+    StockPrice,
 )
 
 router = APIRouter(prefix="/api/data", tags=["data"])
@@ -160,9 +161,25 @@ async def data_quality(
     """
     from market.data.validation import DataQualityEngine
 
-    rows = session.execute(
-        select(OHLCV).where(OHLCV.ticker == ticker).order_by(OHLCV.timestamp)
-    ).scalars().all()
+    # Try PG stock_prices first, fallback to SQLite ohlcv
+    try:
+        rows = session.execute(
+            select(StockPrice)
+            .where(StockPrice.ticker == ticker, StockPrice.timeframe == "1d")
+            .order_by(StockPrice.timestamp)
+        ).scalars().all()
+        if not rows:
+            raise Exception("No PG stock_prices data")
+    except Exception:
+        try:
+            session.rollback()
+        except Exception:
+            pass
+        rows = session.execute(
+            select(OHLCV)
+            .where(OHLCV.ticker == ticker, OHLCV.timeframe == "1d")
+            .order_by(OHLCV.timestamp)
+        ).scalars().all()
 
     if not rows:
         return {

@@ -42,7 +42,7 @@ def _load_ohlcv_df(session: Session, ticker: str) -> pd.DataFrame:
     """
     sql = text(
         "SELECT timestamp, open, high, low, close, volume "
-        "FROM ohlcv WHERE ticker = :ticker ORDER BY timestamp"
+        "FROM ohlcv WHERE ticker = :ticker AND timeframe = '1d' ORDER BY timestamp"
     )
     df = pd.read_sql(
         sql,
@@ -89,7 +89,8 @@ def _load_all_ohlcv_dfs(
         params = {f"t{j}": t for j, t in enumerate(chunk)}
         sql = text(
             f"SELECT ticker, timestamp, open, high, low, close, volume "
-            f"FROM ohlcv WHERE ticker IN ({placeholders}) ORDER BY ticker, timestamp"
+            f"FROM ohlcv WHERE ticker IN ({placeholders}) AND timeframe = '1d' "
+            f"ORDER BY ticker, timestamp"
         )
         df = pd.read_sql(
             sql,
@@ -124,8 +125,8 @@ def _load_ohlcv_df_since(
     cutoff = since_date - timedelta(days=buffer_days)
     sql = text(
         "SELECT timestamp, open, high, low, close, volume "
-        "FROM ohlcv WHERE ticker = :ticker AND timestamp >= :cutoff "
-        "ORDER BY timestamp"
+        "FROM ohlcv WHERE ticker = :ticker AND timeframe = '1d' "
+        "AND timestamp >= :cutoff ORDER BY timestamp"
     )
     df = pd.read_sql(
         sql,

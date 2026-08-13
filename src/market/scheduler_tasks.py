@@ -71,28 +71,13 @@ def _task_fetch_intraday() -> None:
 
 
 def _task_quality_check() -> None:
-    """Run data quality checks directly (lightweight, no event needed)."""
-    from sqlalchemy import func, select
+    """Emit health check request — health pipeline handles quality checks.
 
-    from market.db.engine import get_sessionmaker
-    from market.db.models import OHLCV
-
-    session = get_sessionmaker()()
-    try:
-        counts = session.execute(
-            select(OHLCV.ticker, func.count()).group_by(OHLCV.ticker)
-        ).all()
-        low_data = sum(1 for _, c in counts if c < 30)
-        total = len(counts)
-        logger.info("Quality check: %d tickers, %d with <30 bars", total, low_data)
-
-        anomalies = session.execute(
-            select(func.count()).where(OHLCV.high < OHLCV.low)
-        ).scalar()
-        if anomalies:
-            logger.warning("OHLC anomalies (high<low): %d rows", anomalies)
-    finally:
-        session.close()
+    Previously this did direct DB queries (OHLCV model, not PG-compatible).
+    Now delegates to HealthPipeline via event broker, which uses
+    data_health.check_all() with proper PG/SQLite handling.
+    """
+    broker.emit("health.check.requested", {"source": "quality_check"})
 
 
 def _task_recompute() -> None:
@@ -115,6 +100,18 @@ def _task_recompute() -> None:
 def _task_feature_store() -> None:
     """Refresh feature store (stub — connect to FeatureStore when ready)."""
     logger.info("Feature store refresh: stub")
+
+
+def _task_generate_signals() -> None:
+    """Emit signal generation request — signal pipeline handles the rest.
+
+    Runs after recompute completes. Delegates to SignalPipeline which
+    wraps daily_signal_cron.py for actual signal generation.
+    """
+    broker.emit("signal.generate.requested", {
+        "source": "scheduled",
+        "dry_run": False,
+    })
 
 
 def _task_drift_detection() -> None:
@@ -158,13 +155,19 @@ def _task_startup_catchup() -> None:
     """
     from sqlalchemy import func, select
 
+    from market.config import settings
     from market.db.engine import get_sessionmaker
-    from market.db.models import OHLCV
+
+    is_pg = settings.db_backend == "postgresql"
+    if is_pg:
+        from market.db.models import StockPrice as model
+    else:
+        from market.db.models import OHLCV as model
 
     session = get_sessionmaker()()
     try:
         latest = session.execute(
-            select(func.max(OHLCV.timestamp)).where(OHLCV.timeframe == "1d")
+            select(func.max(model.timestamp)).where(model.timeframe == "1d")
         ).scalar()
 
         if latest is None:
@@ -835,6 +838,13 @@ def register_default_tasks(scheduler: DailyScheduler) -> None:
         func=_task_recompute,
         schedule="EOD",
         time_of_day="18:00",
+    )
+    scheduler.register_task(
+        task_id="generate_signals",
+        name="Generate trading signals for watchlist (after recompute)",
+        func=_task_generate_signals,
+        schedule="EOD",
+        time_of_day="18:15",
     )
     scheduler.register_task(
         task_id="feature_store",
