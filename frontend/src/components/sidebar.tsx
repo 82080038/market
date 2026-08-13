@@ -15,6 +15,7 @@ import {
   Database,
   BellRing,
   Orbit,
+  Clock,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 
@@ -30,6 +31,7 @@ const navItems = [
   { href: "/reports", label: "Laporan", icon: FileText },
   { href: "/data", label: "Data & Sumber", icon: Database },
   { href: "/cosmos", label: "Kosmos", icon: Orbit },
+  { href: "/scheduler", label: "Scheduler", icon: Clock },
   { href: "/settings", label: "Pengaturan", icon: Settings },
 ];
 

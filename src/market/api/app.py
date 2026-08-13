@@ -51,6 +51,7 @@ Endpoint inventory:
     GET  /api/notifications/{id}        — single notification detail
     PATCH /api/notifications/{id}/read  — mark notification as READ
     GET  /api/notifications/signals/latest — latest unread daily signal payload
+    GET  /api/scheduler/status           — scheduler task status, cron jobs, pipeline phases
 """
 
 from __future__ import annotations
@@ -70,6 +71,7 @@ from market.api.routes_portfolio import router as portfolio_router
 from market.api.routes_prediction import router as prediction_router
 from market.api.routes_prices import router as prices_router
 from market.api.routes_recompute import router as recompute_router
+from market.api.routes_scheduler import router as scheduler_router
 from market.api.routes_system import router as system_router
 
 
@@ -93,6 +95,7 @@ def create_app() -> FastAPI:
     app.include_router(data_router)
     app.include_router(prices_router)
     app.include_router(recompute_router)
+    app.include_router(scheduler_router)
     app.include_router(notifications_router)
     app.include_router(cosmos_router)
 
