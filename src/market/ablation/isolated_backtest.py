@@ -92,10 +92,28 @@ def simulate_returns(
 ) -> pd.Series:
     """Simulate daily returns from a signal series (vectorized).
 
+    Position held during day t equals ``signal[t-1]`` (the signal decided at
+    the end of day t-1 using information up to t-1). This avoids look-ahead:
+    the return earned during day t (close[t-1] → close[t]) is applied to the
+    position decided the prior evening.
+
+    Transaction costs are modelled as turnover-proportional:
+        turnover[t] = |position[t] - position[t-1]|
+        cost[t]     = turnover[t] * (cost_per_trade / 2)
+
+    ``cost_per_trade`` is a *round-trip* cost (buy + sell). A one-way trade
+    (enter from cash or exit to cash) has turnover 1 and is charged half the
+    round-trip cost. A flip (+1 → -1) has turnover 2 and is charged the full
+    round-trip cost. A complete enter-then-exit cycle therefore accrues
+    exactly ``cost_per_trade`` (not 2× as in the previous per-change model).
+
+    The cost is borne by the return of the first day the new position is
+    held (no off-by-one): the trade decided at end of t-1 affects day t.
+
     Args:
         ohlcv: DataFrame with 'close' column, DatetimeIndex.
         signals: Series of signals (-1, 0, +1) aligned to ohlcv index.
-        cost_per_trade: Round-trip cost when signal changes.
+        cost_per_trade: Round-trip cost (buy + sell) per unit turnover of 2.
 
     Returns:
         Daily returns series (after cost).
@@ -104,10 +122,14 @@ def simulate_returns(
     returns = close.pct_change()
 
     signals = signals.reindex(returns.index).fillna(0)
-    signal_change = signals.diff().fillna(0) != 0
-    cost = signal_change.astype(float) * cost_per_trade
+    # Position for day t = signal decided at end of t-1 (no look-ahead)
+    position = signals.shift(1).fillna(0)
+    # Turnover = how many units were traded at the end of the previous day
+    turnover = position.diff().abs().fillna(0)
+    # One-way cost = half round-trip; flips (turnover 2) pay full round-trip
+    cost = turnover * (cost_per_trade / 2.0)
 
-    strategy_returns = signals.shift(1) * returns - cost
+    strategy_returns = position * returns - cost
     return strategy_returns.dropna()
 
 

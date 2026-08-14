@@ -53,7 +53,7 @@ If the user supplied an argument (e.g. `0`, `1`, `paper`), use that phase as the
 - For AI-generated code: run AST scan and a sandbox test before integrating.
 - **Cross-OS paths (AGENTS.md §7):** Never hardcode OS-specific paths. Use `src/market/paths.py` for OS-aware defaults; `pathlib.Path` for all path operations.
 - **Terminal output (AGENTS.md §8):** Never use `tail`, `head -n`, `Select-Object -Last N`, or `| head` to truncate command output. Output must be fully visible in terminal.
-- **Migrations (AGENTS.md §6):** Alembic head = 0020. Check `alembic/versions/` for current state.
+- **Migrations (AGENTS.md §6):** Alembic head = 0021. Check `alembic/versions/` for current state. Note: batch P1–P9 (15 Agustus 2026) created 4 new tables (`seasonal_patterns`, `earnings_calendar`, `dcc_garch_results`, `commodity_to_stock_map`) via `CREATE TABLE IF NOT EXISTS` in scripts — proper Alembic migration still pending.
 - **Pustaka count (AGENTS.md §1):** 103 docs (00-README + 01-102). New docs start from 103.
 
 ### 2.3 TEST

@@ -35,14 +35,15 @@ TRADING_DAYS = 252
 
 def load_ohlcv_df(session, ticker: str) -> pd.DataFrame:
     rows = session.execute(
-        select(OHLCV.close, OHLCV.timestamp)
-        .where(OHLCV.ticker == ticker, OHLCV.timeframe == "1d")
-        .order_by(OHLCV.timestamp)
+        text("SELECT timestamp, close FROM stock_prices "
+             "WHERE ticker = :t AND timeframe = '1d' "
+             "ORDER BY timestamp"),
+        {"t": ticker},
     ).all()
     if not rows:
         return pd.DataFrame()
-    data = [{"close": float(r[0])} for r in rows]
-    idx = pd.DatetimeIndex([r[1] for r in rows])
+    data = [{"close": float(r[1])} for r in rows]
+    idx = pd.DatetimeIndex([r[0] for r in rows])
     return pd.DataFrame(data, index=idx)
 
 
@@ -150,11 +151,12 @@ def backfill_ticker(session, ticker: str, batch_size: int = 200) -> tuple[int, i
 
         if len(batch) >= batch_size:
             session.execute(
-                text("""INSERT OR IGNORE INTO daily_risk_metrics
+                text("""INSERT INTO daily_risk_metrics
                     (ticker, date, var_95, var_99, cvar_95, cvar_99,
                      max_drawdown, annualized_volatility, portfolio_value, created_at)
                     VALUES (:ticker, :date, :var_95, :var_99, :cvar_95, :cvar_99,
-                     :max_drawdown, :annualized_volatility, :portfolio_value, datetime('now'))"""),
+                     :max_drawdown, :annualized_volatility, :portfolio_value, now())
+                    ON CONFLICT DO NOTHING"""),
                 batch,
             )
             session.commit()
@@ -163,11 +165,12 @@ def backfill_ticker(session, ticker: str, batch_size: int = 200) -> tuple[int, i
 
     if batch:
         session.execute(
-            text("""INSERT OR IGNORE INTO daily_risk_metrics
+            text("""INSERT INTO daily_risk_metrics
                 (ticker, date, var_95, var_99, cvar_95, cvar_99,
                  max_drawdown, annualized_volatility, portfolio_value, created_at)
                 VALUES (:ticker, :date, :var_95, :var_99, :cvar_95, :cvar_99,
-                 :max_drawdown, :annualized_volatility, :portfolio_value, datetime('now'))"""),
+                 :max_drawdown, :annualized_volatility, :portfolio_value, now())
+                ON CONFLICT DO NOTHING"""),
             batch,
         )
         session.commit()
@@ -195,7 +198,7 @@ def main():
     else:
         rows = session.execute(
             text(
-                "SELECT DISTINCT ticker FROM ohlcv "
+                "SELECT DISTINCT ticker FROM stock_prices "
                 "WHERE ticker LIKE '%.JK' AND timeframe='1d' "
                 "ORDER BY ticker"
             )

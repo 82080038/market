@@ -241,6 +241,36 @@ def _rsi(close: pd.Series, period: int = 14) -> pd.Series:
     return (100 - (100 / (1 + rs))).fillna(50.0)
 
 
+def _combine_pvalues_fisher(pvalues: list[float]) -> float:
+    """Combine independent p-values via Fisher's method.
+
+    Fisher's statistic: X = -2 * Σ ln(p_i), which under the null (all
+    individual nulls true) follows χ²(2k) where k is the number of p-values.
+
+    Averaging p-values is statistically invalid (it does not control the
+    family-wise or false-discovery error rate and has no known distribution
+    under the null). Fisher's method is the standard combination rule for
+    independent hypothesis tests and is what the ablation framework needs
+    when aggregating per-ticker significance into a single verdict.
+
+    Args:
+        pvalues: List of per-ticker p-values in (0, 1].
+
+    Returns:
+        Combined p-value in [0, 1]. Returns 1.0 if the input is empty.
+    """
+    if not pvalues:
+        return 1.0
+    # Clip to (0, 1] to avoid log(0) when a ticker yields an exact 0.0 p-value
+    # (which would otherwise make Fisher's statistic infinite).
+    clipped = [min(max(float(p), 1e-300), 1.0) for p in pvalues]
+    stat = -2.0 * sum(np.log(p) for p in clipped)
+    df = 2 * len(clipped)
+    # chi2 survival function = 1 - CDF = upper-tail p-value
+    from scipy import stats as _stats
+    return float(_stats.chi2.sf(stat, df))
+
+
 def generate_engine_signals(
     ohlcv: pd.DataFrame,
     engine_name: str,
@@ -753,19 +783,25 @@ def generate_engine_signals(
                 global_data = _load_global_ohlcv(session, commodity_tickers, "2024-01-01", "2026-08-12")
                 data_cache["commodity_ohlcv"] = global_data
             signals = pd.Series(0, index=ohlcv.index)
+            # Accumulate a consensus vote across commodities (order-independent).
+            # Each commodity casts +1 (bullish move), -1 (bearish move), or 0.
+            consensus = pd.Series(0.0, index=ohlcv.index)
+            n_voters = 0
             for ct in commodity_tickers:
                 cdf = global_data.get(ct)
                 if cdf is None or cdf.empty:
                     continue
+                n_voters += 1
                 c_ret = cdf["close"].pct_change().shift(1)
-                for idx in signals.index:
-                    if idx in c_ret.index:
-                        ret = c_ret.loc[idx]
-                        if pd.notna(ret):
-                            if ret > 0.01:
-                                signals.loc[idx] = max(signals.loc[idx], 1)
-                            elif ret < -0.01:
-                                signals.loc[idx] = min(signals.loc[idx], -1)
+                vote = pd.Series(0.0, index=ohlcv.index)
+                aligned_ret = c_ret.reindex(ohlcv.index)
+                vote[aligned_ret > 0.01] = 1.0
+                vote[aligned_ret < -0.01] = -1.0
+                consensus = consensus.add(vote, fill_value=0.0)
+            if n_voters > 0:
+                # Net consensus: require majority agreement (>0 net) to signal
+                signals[consensus > 0] = 1
+                signals[consensus < 0] = -1
         except Exception as e:
             logger.warning("Commodity signal failed: %s", e)
 
@@ -839,7 +875,12 @@ def generate_engine_signals(
             signals = pd.Series(0, index=ohlcv.index)
 
             # ESG component: expanding mean (only data up to year T)
-            score_col = "score" if "esg_scores" != "esg_scores" or "score" not in esg_df.columns else "score"
+            # Pick the numeric ESG score column (prefer "score", then "esg_score").
+            score_col = None
+            for cand in ("score", "esg_score", "esg_score"):
+                if cand in esg_df.columns:
+                    score_col = cand
+                    break
             if not esg_df.empty and score_col in esg_df.columns:
                 esg_df = esg_df.copy()
                 esg_df["year"] = pd.to_numeric(esg_df["year"], errors="coerce")
@@ -946,8 +987,10 @@ def generate_engine_signals(
 
             signals = pd.Series(0, index=ohlcv.index)
 
-            # Compute composite commodity vol ratio
-            vol_ratios = pd.Series(1.0, index=ohlcv.index)
+            # Compute composite commodity vol ratio (average across available
+            # commodities). Initialize to NaN so missing commodities do not
+            # bias the average toward 1.0.
+            vol_ratios = pd.Series(np.nan, index=ohlcv.index)
             count = 0
             for ct in commodity_tickers:
                 cdf = global_data.get(ct)
@@ -956,15 +999,19 @@ def generate_engine_signals(
                 c_ret = cdf["close"].astype(float).pct_change()
                 c_vol_short = c_ret.rolling(20).std().shift(1)  # no look-ahead
                 c_vol_long = c_ret.rolling(60).std().shift(1)
-                c_ratio = (c_vol_short / c_vol_long.replace(0, np.nan)).fillna(1.0)
-                # Align to ohlcv index
-                for idx in signals.index:
-                    if idx in c_ratio.index:
-                        vol_ratios.loc[idx] += c_ratio.loc[idx]
+                c_ratio = (c_vol_short / c_vol_long.replace(0, np.nan))
+                # Align to ohlcv index and accumulate
+                aligned_ratio = c_ratio.reindex(ohlcv.index)
+                if count == 0:
+                    vol_ratios = aligned_ratio
+                else:
+                    # Element-wise sum; NaNs treated as 0 only where the other
+                    # side has a value, via combine_first fallback below.
+                    vol_ratios = vol_ratios.add(aligned_ratio, fill_value=0.0)
                 count += 1
 
             if count > 0:
-                vol_ratios = vol_ratios / (count + 1)  # average across commodities
+                vol_ratios = (vol_ratios / count).fillna(1.0)
                 # Regime filter: high commodity vol → risk-off, stable → risk-on
                 for idx in signals.index:
                     vr = vol_ratios.loc[idx]
@@ -1249,6 +1296,9 @@ def generate_engine_signals(
                 signals = pd.Series(0, index=ohlcv.index)
                 garch_window = 20
                 dcc_alpha, dcc_beta = 0.05, 0.90
+                # Accumulate per-ticker directional votes (order-independent).
+                consensus = pd.Series(0.0, index=ohlcv.index)
+                n_voters = 0
 
                 for gt in global_tickers:
                     gdf = global_data.get(gt)
@@ -1272,7 +1322,16 @@ def generate_engine_signals(
                     eps_g = eps_g.fillna(0).clip(-5, 5)
 
                     # DCC: Q_t = (1-a-b)*Q_bar + a*eps_{t-1}*eps_{t-1}' + b*Q_{t-1}
-                    corr_bar = float(eps_t.corr(eps_g))
+                    # Q_bar (unconditional correlation) is estimated from the
+                    # warmup window ONLY (first garch_window+20 bars) to avoid
+                    # look-ahead bias from using the full-sample correlation.
+                    warmup_n = garch_window + 20
+                    warmup_prod = (eps_t.iloc[:warmup_n] * eps_g.iloc[:warmup_n]).dropna()
+                    if len(warmup_prod) >= 5:
+                        # corr_bar ≈ E[eps_t * eps_g] since eps are standardized
+                        corr_bar = float(warmup_prod.mean())
+                    else:
+                        corr_bar = 0.0
                     if np.isnan(corr_bar):
                         corr_bar = 0.0
 
@@ -1290,31 +1349,31 @@ def generate_engine_signals(
                         dcc_corr_series.iloc[i] = np.tanh(q_t)
 
                     # Shift for no look-ahead
-                    dcc_corr_series = dcc_corr_series.shift(1)
+                    dcc_corr_series = dcc_corr_series.shift(1).reindex(ohlcv.index)
 
-                    # Signal: high corr = contagion risk, low = idiosyncratic
-                    for idx in signals.index:
-                        if idx in dcc_corr_series.index:
-                            c = dcc_corr_series.loc[idx]
-                            if pd.notna(c):
-                                if gt == "^VIX":
-                                    # VIX correlation: high = risk-off
-                                    if c > 0.3:
-                                        signals.loc[idx] = min(signals.loc[idx], -1)
-                                    elif c < -0.1:
-                                        signals.loc[idx] = max(signals.loc[idx], 1)
-                                elif gt == "IDR=X":
-                                    # USD/IDR correlation: high = FX pressure
-                                    if c > 0.3:
-                                        signals.loc[idx] = min(signals.loc[idx], -1)
-                                    elif c < -0.1:
-                                        signals.loc[idx] = max(signals.loc[idx], 1)
-                                else:
-                                    # S&P 500 correlation: high = contagion
-                                    if c > 0.7:
-                                        signals.loc[idx] = min(signals.loc[idx], -1)
-                                    elif c < 0.3:
-                                        signals.loc[idx] = max(signals.loc[idx], 1)
+                    # Per-ticker vote: +1 (idiosyncratic/opportunity), -1
+                    # (contagion/risk-off), 0 (neutral). Thresholds differ by
+                    # driver as in the production spec.
+                    vote = pd.Series(0.0, index=ohlcv.index)
+                    if gt == "^VIX":
+                        # VIX correlation: high = risk-off
+                        vote[dcc_corr_series > 0.3] = -1.0
+                        vote[dcc_corr_series < -0.1] = 1.0
+                    elif gt == "IDR=X":
+                        # USD/IDR correlation: high = FX pressure
+                        vote[dcc_corr_series > 0.3] = -1.0
+                        vote[dcc_corr_series < -0.1] = 1.0
+                    else:
+                        # S&P 500 correlation: high = contagion
+                        vote[dcc_corr_series > 0.7] = -1.0
+                        vote[dcc_corr_series < 0.3] = 1.0
+                    consensus = consensus.add(vote, fill_value=0.0)
+                    n_voters += 1
+
+                if n_voters > 0:
+                    # Net consensus across drivers (order-independent)
+                    signals[consensus > 0] = 1
+                    signals[consensus < 0] = -1
         except Exception as e:
             logger.warning("DCC-GARCH signal failed: %s", e)
 
@@ -1513,13 +1572,15 @@ def generate_engine_signals(
                                 asian_weight += abs(w)
 
                 if us_weight > 0 and asian_weight > 0:
-                    # Composite: US overnight (60%) + Asian confirmation (40%)
+                    # Composite: US overnight (60%) + Asian confirmation (40%).
+                    # composite is a weighted average of daily returns (~0.01
+                    # scale), so the threshold must be on that scale. A 0.4%
+                    # weighted-average overnight move is a meaningful signal.
                     composite = (us_score / us_weight) * 0.6 + (asian_score / asian_weight) * 0.4
-                    signal_val = composite * 20  # scale to [-100, +100]
 
-                    if signal_val > 5:
+                    if composite > 0.004:
                         signals.loc[idx] = 1
-                    elif signal_val < -5:
+                    elif composite < -0.004:
                         signals.loc[idx] = -1
         except Exception as e:
             logger.warning("Overnight IDX signal failed: %s", e)
@@ -1693,6 +1754,9 @@ def generate_engine_signals(
             signals = pd.Series(0, index=ohlcv.index)
             ticker_ret = close.pct_change()
             corr_window = 60
+            # Accumulate per-driver votes (order-independent).
+            consensus = pd.Series(0.0, index=ohlcv.index)
+            n_voters = 0
 
             for gt in global_tickers:
                 gdf = global_data.get(gt)
@@ -1703,22 +1767,22 @@ def generate_engine_signals(
                 if len(aligned) < corr_window + 20:
                     continue
                 rolling_corr = aligned["ticker"].rolling(corr_window).corr(aligned["global"]).shift(1)
-                for idx in signals.index:
-                    if idx in rolling_corr.index:
-                        c = rolling_corr.loc[idx]
-                        if pd.notna(c):
-                            if gt == "^JKSE":
-                                # IHSG correlation: high = normal, low = decoupled (opportunity)
-                                if c < 0.3:
-                                    signals.loc[idx] = max(signals.loc[idx], 1)
-                                elif c > 0.8:
-                                    signals.loc[idx] = min(signals.loc[idx], -1)
-                            else:
-                                # Global correlation: high = contagion risk, low = idiosyncratic
-                                if c > 0.7:
-                                    signals.loc[idx] = min(signals.loc[idx], -1)
-                                elif c < 0.2:
-                                    signals.loc[idx] = max(signals.loc[idx], 1)
+                rolling_corr = rolling_corr.reindex(ohlcv.index)
+                vote = pd.Series(0.0, index=ohlcv.index)
+                if gt == "^JKSE":
+                    # IHSG correlation: high = normal, low = decoupled (opportunity)
+                    vote[rolling_corr < 0.3] = 1.0
+                    vote[rolling_corr > 0.8] = -1.0
+                else:
+                    # Global correlation: high = contagion risk, low = idiosyncratic
+                    vote[rolling_corr > 0.7] = -1.0
+                    vote[rolling_corr < 0.2] = 1.0
+                consensus = consensus.add(vote, fill_value=0.0)
+                n_voters += 1
+
+            if n_voters > 0:
+                signals[consensus > 0] = 1
+                signals[consensus < 0] = -1
         except Exception as e:
             logger.warning("MC cross-market signal failed: %s", e)
 
@@ -2136,18 +2200,21 @@ def build_composite_signal(
     # ── Layer 3: Context modulation ──
     # Context signals [-1, +1] scale the signal strength.
     # Positive context → amplify, negative → attenuate.
-    # Weighted by context engine weights.
+    # Weighted by context engine weights. The weighted average context is
+    # added to the raw signal (bounded additive modulation, ±30% of the
+    # directional weight), NOT multiplied per-engine which would compound
+    # exponentially (1.3^N) and saturate after clipping.
     if context_signals:
         total_ctx_weight = sum(context_weights.values())
         if total_ctx_weight > 0:
-            context_scale = pd.Series(1.0, index=index)
+            context_avg = pd.Series(0.0, index=index)
             for name, sig in context_signals.items():
                 w = context_weights[name] / total_ctx_weight
                 aligned = sig.reindex(index).fillna(0)
-                # Context in [-1, +1] → scale factor [1 - 0.3*w, 1 + 0.3*w]
-                context_scale *= (1.0 + aligned * 0.3 * w * len(context_signals))
-            raw_signal *= context_scale
-            # Clip to [-1, 1] range
+                context_avg += aligned * w
+            # Additive modulation: scale raw signal by (1 + 0.3*context_avg)
+            # where context_avg ∈ [-1, +1] → modulation ∈ [0.7, 1.3].
+            raw_signal = raw_signal * (1.0 + 0.3 * context_avg)
             raw_signal = raw_signal.clip(-1.0, 1.0)
 
     # ── Layer 4: Timing gate ──
@@ -2301,10 +2368,15 @@ def run_pipeline_ablation(
                     benchmark_returns=benchmark if not benchmark.empty else None,
                 )
 
-                # Invert delta: we want full - without_X, but backtester computes engine - baseline
-                # So delta = loo - full = -(full - loo) → we need to negate
+                # Invert delta: we want contribution = full - without_X, but the
+                # backtester computes engine - baseline = loo - full. So negate
+                # both delta_metrics AND t_statistic so signs stay consistent
+                # (a helpful engine has positive delta_sharpe and positive t).
+                # p_value is two-sided and unaffected by sign; is_significant
+                # is derived from p_value so it remains valid.
                 for key in result.delta_metrics:
                     result.delta_metrics[key] = -result.delta_metrics[key]
+                result.t_statistic = -result.t_statistic
 
                 all_results.append(result)
 
@@ -2358,7 +2430,7 @@ def run_pipeline_ablation(
             avg_isolated[key] = sum(vals_i) / len(vals_i)
             avg_delta[key] = sum(vals_d) / len(vals_d)
 
-        avg_p = sum(r.p_value for r in engine_results) / len(engine_results)
+        avg_p = _combine_pvalues_fisher([r.p_value for r in engine_results])
         avg_t = sum(r.t_statistic for r in engine_results) / len(engine_results)
         total_obs = sum(r.n_observations for r in engine_results)
 
@@ -2604,8 +2676,10 @@ def _run_isolated_ablation(
             avg_isolated[key] = sum(vals_i) / len(vals_i)
             avg_delta[key] = sum(vals_d) / len(vals_d)
 
-        # Average p-value (Fisher's method would be better, but avg is simpler)
-        avg_p = sum(r.p_value for r in engine_results) / len(engine_results)
+        # Combine per-ticker p-values via Fisher's method (averaging p-values
+        # is statistically invalid — it has no known null distribution and
+        # does not control error rates). Fisher's X = -2·Σln(p) ~ χ²(2k).
+        avg_p = _combine_pvalues_fisher([r.p_value for r in engine_results])
         avg_t = sum(r.t_statistic for r in engine_results) / len(engine_results)
         total_obs = sum(r.n_observations for r in engine_results)
 

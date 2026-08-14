@@ -787,3 +787,159 @@ ENV=research uv run pytest tests/test_macro_correlation.py -v --no-cov
 - Git commit & push
 - Reports & Settings pages masih static (tidak ada API backend)
 - Movers endpoint lambat (~30s untuk 1030 tickers) — pertimbangkan caching
+
+## Checkpoint Sesi 2026-08-15 — Batch P1–P9 Market Driver Data Ingestion
+
+- **Topik:** Eksekusi batch autonomous 9 prioritas untuk mengisi database dengan market drivers (global + Indonesia).
+- **Trigger:** User request: "eksekusi sesuai Ringkasan secara batch, pro-aktif dan autonomous; siapkan database, lakukan segala upaya untuk mengisinya (data real), laporkan hasilnya."
+
+### Scripts Baru (scripts/batch_p{1-9}_*.py)
+- `batch_p1_commodity.py` — komoditas: CL=F, CPO=F, GC=F, HG=F, MTF=F, NICK.L, TIN.L → `stock_prices` + `macro_data` + `commodity_to_stock_map`
+- `batch_p2_event_cleaning.py` — cleaning `external_events` (75 noise dihapus, 44 retained) + verify `PolicyEventScorer`
+- `batch_p3_seasonal.py` — seasonal pattern engine → `seasonal_patterns` (9,696 rows, 807 tickers + IHSG aggregate)
+- `batch_p4_earnings_calendar.py` — forward earnings calendar → `earnings_calendar` (4,120 rows, estimated)
+- `batch_p5_macro_id.py` — World Bank macro ID → `macro_data` (353 rows) + `macroeconomic_indicators` (261 rows)
+- `batch_p6_spillover.py` — DCC-GARCH → `dcc_garch_results` (60 pairs); Diebold-Yilmaz GAGAL (statsmodels FEVD API)
+- `batch_p7_sector_cleanup.py` — sector taxonomy normalization (518 rows di `instrument_master`)
+- `batch_p8_satellite.py` — NASA POWER weather → `satellite_observations` (11,568 rows, 8 lokasi); Sentinel-2 NDVI GAGAL
+- `batch_p9_causal.py` — Granger causality → `causal_relationships` (198 rows) + `causal_graphs` (1 graph)
+
+### DB Tables Baru (via CREATE TABLE IF NOT EXISTS, bukan Alembic migration)
+- `seasonal_patterns` — ticker, month, avg_return, win_rate, seasonal_score, pattern_type
+- `earnings_calendar` — ticker, earnings_date, quarter, year, is_estimated
+- `dcc_garch_results` — pair, latest_corr, avg_corr, n_obs
+- `commodity_to_stock_map` — commodity_series, ticker, sector, sensitivity
+
+### DB Tables Modified
+- `stock_prices` — added NICK.L (1,670), TIN.L (1,386); updated CL=F, CPO=F, GC=F, HG=F, MTF=F
+- `macro_data` — added NICKEL, TIN, NEWCASTLE_COAL, CPO, COPPER series + 11 World Bank series
+- `macroeconomic_indicators` — added 261 rows from World Bank
+- `instrument_master` — normalized 518 sector values; added NICK.L, TIN.L
+- `external_events` — deleted 75 noise events; reclassified 44 remaining
+- `causal_relationships` — replaced with 198 fresh Granger test results
+- `causal_graphs` — added 1 summary graph
+- `satellite_observations` — populated with 11,568 NASA POWER observations
+- `satellite_ticker_locations` — populated with 35 location mappings
+
+### Key Findings
+- **Nickel price (NICK.L) Granger-causes INCO.JK p=0.0000** (lag=1) — hubungan fundamental sangat signifikan
+- **IHSG seasonal:** Februari (score=88.9, avg_return=+8.54%), Desember (score=83.4, year-end rally), Juli (score=74.8)
+- **Commodity sensitivity:** NICKEL→INCO 0.95, CPO→AALI 0.85, COAL→ADRO 0.80
+- **DCC-GARCH:** Korelasi IDX-global umumnya lemah (|r|<0.2) di daily returns
+
+### DecisionEngine Market Driver Narrative (integrasi 15 Agustus 2026)
+- `src/market/analysis/decision.py` — `DecisionEngine(db_url=...)` sekarang menghasilkan `market_driver_context: list[str]`
+- Narrative dari 5 sumber: causal_relationships, seasonal_patterns, commodity_to_stock_map, dcc_garch_results, satellite_observations
+- Graceful degradation: tanpa db_url → market_driver_context kosong (tidak crash)
+- 10/10 decision tests lulus tanpa perubahan
+
+### Gaps & Recommendations
+- `foreign_flow` stale (2026-08-03, 12 days) — perlu scheduler refresh
+- `policy_events` very stale (2025-07-10, 13 months) — perlu fetch BI/BEI announcements
+- `MTF=F` (coal) stale (2025-12-27) — Yahoo tidak update, perlu alternative source
+- Diebold-Yilmaz spillover gagal — statsmodels FEVD API compatibility
+- Sentinel-2 NDVI gagal — pystac_client API incompatibility
+- 30 tickers masih kosong sector — perlu manual review
+- Earnings calendar adalah estimasi — perlu confirmed issuer dates
+- World Bank macro annual — perlu BPS/BI untuk monthly/quarterly
+- No Alembic migration untuk tabel baru — perlu create proper migration
+
+### File Updated
+- `AGENTS.md` — migration head 0021, batch scripts, DB tables, DecisionEngine narrative
+- `pustaka/91-komoditas-spesifik-idx.md` — Update 15 Agustus 2026 (P1)
+- `pustaka/99-matriks-relevansi-satelit-pasar-modal.md` — Update 15 Agustus 2026 (P8)
+- `pustaka/101-global-idx-advanced-models.md` — Update 15 Agustus 2026 (P6)
+- `pustaka/102-sector-global-link-engine.md` — Update 15 Agustus 2026 (P7)
+- `pustaka/96-ai-ml-audit-framework.md` — Update 15 Agustus 2026 (DecisionEngine narrative)
+- `catatan.md` — jawaban 6 pertanyaan terbuka
+
+### Pending
+- Git commit & push untuk semua perubahan batch P1–P9
+- Fix Diebold-Yilmaz spillover (statsmodels FEVD API)
+- Fix Sentinel-2 NDVI (pystac_client compatibility)
+- Create Alembic migration untuk 4 tabel baru
+- Setup scheduler untuk foreign_flow refresh
+- Fetch policy_events terbaru dari BI/BEI
+
+## Checkpoint Sesi 2026-08-15 — Perbaikan Logika Ablation Framework
+
+**Topik:** Audit menyeluruh + perbaikan 9 kesalahan logika pada engine ablation framework
+(`src/market/ablation/` + `scripts/engine_ablation/run_ablation.py`). Catatan: catatan.md L386
+menyebut "ablation test belum memiliki code yang terbukti benar".
+
+### Kesalahan logika yang diperbaiki (9 bug)
+1. **`simulate_returns` cost model** (`isolated_backtest.py`) — dua bug: (a) biaya off-by-one
+   (dibebankan di hari t, padahal trade di end-of-t baru berlaku di t+1); (b) double-charging
+   round-trip (setiap perubahan sinyal kena `ROUND_TRIP_COST` penuh → enter+exit = 2× round-trip).
+   Fix: model turnover-proportional, `cost = |Δposition| * ROUND_TRIP_COST/2`, dibebankan di hari
+   posisi baru dipegang. Flip (+1→-1) = full round-trip; enter/exit = half.
+2. **`overnight_idx` threshold** (`run_ablation.py`) — `composite*20` + threshold `5` membuat
+   engine TIDAK PERNAH memicu sinyal (composite ~0.01, signal_val ~0.2 << 5). Fix: threshold
+   langsung pada skala return (0.004 = 0.4% weighted move).
+3. **`build_composite_signal` context modulation** — faktor `* len(context_signals)` menyebabkan
+   amplifikasi eksponensial `1.3^N` (≈8.2× untuk N=7) lalu clip ±1 → context selalu jenuh.
+   Fix: modulasi aditif bounded `raw * (1 + 0.3*context_avg)`, range [0.7, 1.3].
+4. **`commodity_v2` averaging** — init `vol_ratios=1.0` + `+=ratio` + `/count+1` memasukkan
+   artificial 1.0 ke rata-rata → bias ke 1.0. Fix: init NaN, akumulasi proper, `/count`.
+5. **`governance` tautology** — `score_col = "score" if "esg_scores" != "esg_scores" ...` selalu
+   False → dead code. Fix: loop kandidat kolom (score, esg_scores, esg_score).
+6. **Order-dependent min/max** pada `commodity`, `dcc_garch`, `mc_cross_market` — sinyal akhir
+   bergantung urutan iterasi ticker. Fix: consensus net-sum (vote per-driver, majority rule).
+7. **LOO delta negation** (`run_pipeline_ablation`) — `delta_metrics` di-negate tapi
+   `t_statistic` tidak → arah t-stat bertentangan dengan delta. Fix: negate t_statistic juga.
+8. **`dcc_garch` look-ahead** — `corr_bar = eps_t.corr(eps_g)` dihitung pada SELURUH series
+   (menggunakan data masa depan). Fix: estimasi `corr_bar` dari warmup window saja.
+9. **Agregasi p-value** — rata-rata p-value tidak valid secara statistik (tidak ada distribusi
+   null, tidak kontrol error rate). Fix: Fisher's method `-2·Σln(p) ~ χ²(2k)`.
+
+### File diubah
+- `src/market/ablation/isolated_backtest.py` — `simulate_returns` cost model
+- `scripts/engine_ablation/run_ablation.py` — fix #2–#9 + helper `_combine_pvalues_fisher`
+- `tests/ablation/test_isolated_backtest.py` — update test cost + 2 test baru (round-trip, flip)
+- `tests/ablation/test_run_ablation_logic.py` (BARU) — 12 test untuk Fisher, build_composite,
+  overnight_idx threshold
+
+### Verifikasi
+- `python -m pytest tests/ablation/ --no-cov` → **93 passed** (81 existing + 12 baru)
+- Smoke test isolated mode (pred_ma, pred_momentum, BBCA.JK) → run_id=12 tersimpan, scorecard OK
+- Smoke test pipeline/LOO mode → run_id=13, delta signs benar (pred_ma +0.43, pred_momentum -0.73)
+- Fisher helper: p=[0.01]×3 → 0.00011 (lebih kecil dari avg 0.01); p=0.0 clip tidak crash
+
+### Catatan
+- DB run_id 12, 13 adalah artefak smoke test (bukan data produksi) — bisa diabaikan/dihapus
+- `ml` engine masih single 60/40 split (bukan walk-forward seperti ml_v2/multi_factor) —
+  valid holdout, hanya inkonsisten dengan deskripsi registry; dibiarkan (data ~620 hari terlalu
+  sedikit untuk walk-forward 252d initial)
+- `event_v2` potensi look-ahead tergantung semantik kolom `date` di fundamental_data — dibiarkan
+
+## Checkpoint Sesi 2026-08-15 — Monitoring & Finalisasi (Ablation + DB Ticker)
+
+**Topik:** Monitoring dua conversation (Fix Ablation Test Logic + Database Ticker Classification),
+finalisasi, commit, push, shutdown.
+
+### Verifikasi Task 1: Fix Ablation Test Logic — SELESAI
+- 93 tests pass (81 existing + 12 baru)
+- 9 bug logika diperbaiki (cost model, overnight_idx threshold, composite signal, commodity_v2,
+  governance tautology, order-dependent min/max, LOO delta negation, dcc_garch look-ahead, p-value aggregation)
+- File: `isolated_backtest.py`, `run_ablation.py`, `test_isolated_backtest.py`, `test_run_ablation_logic.py` (NEW)
+- catatan.md L386 sudah ditandai [SELESAI 2026-08-15]
+
+### Verifikasi Task 2: Database Ticker Classification — SELESAI
+- Batch P1-P9 semua tabel terisi (commodity_to_stock_map 28, seasonal_patterns 9696, earnings_calendar 4120,
+  macroeconomic_indicators 4805, satellite_observations 11568, causal_relationships 198, dcc_garch_results 60, dll)
+- asset_class normalization: semua UPPERCASE, COMMODITY_ETF→COMMODITY_FUTURES, lowercase→UPPERCASE
+- CHECK constraint `chk_asset_class` sudah ada (7 nilai valid)
+- 1,099 instruments total: EQUITY_INDIVIDUAL 985, INDEX_COMPOSITE 59, FX 34, COMMODITY_FUTURES 12, VOLATILITY_RATE 4, ETF 4, FUND 1
+
+### Proses Background
+- Recompute ml_labels + cross_market (PID 44532) masih berjalan saat commit — tidak memblok file changes
+- Query stuck 2 jam (PID 22978, SELECT DISTINCT ohlvc) sudah terminated
+
+### File Update Sesi Ini
+- `catatan.md` — tambah section "Database Ticker Classification 2026-08-15"
+- `.devin/SESSION_MEMORY.md` — checkpoint ini
+
+### Pending
+- Git commit & push semua perubahan (ablation fix + batch scripts + DB normalization docs)
+- Shutdown komputer
+

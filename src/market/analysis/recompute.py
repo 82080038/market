@@ -880,7 +880,10 @@ def recompute_ml_labels(
                             "(ticker, date, horizon, direction, barrier_hit, "
                             "return_pct, vol_adjusted_return) "
                             "VALUES (:ticker, :date, :horizon, :direction, "
-                            ":barrier_hit, :return_pct, :vol_adjusted_return)"
+                            ":barrier_hit, :return_pct, :vol_adjusted_return) "
+                            "ON CONFLICT (ticker, date, horizon) DO UPDATE SET "
+                            "direction=EXCLUDED.direction, barrier_hit=EXCLUDED.barrier_hit, "
+                            "return_pct=EXCLUDED.return_pct, vol_adjusted_return=EXCLUDED.vol_adjusted_return"
                         ),
                         batch,
                     )
@@ -898,7 +901,10 @@ def recompute_ml_labels(
                     "(ticker, date, horizon, direction, barrier_hit, "
                     "return_pct, vol_adjusted_return) "
                     "VALUES (:ticker, :date, :horizon, :direction, "
-                    ":barrier_hit, :return_pct, :vol_adjusted_return)"
+                    ":barrier_hit, :return_pct, :vol_adjusted_return) "
+                    "ON CONFLICT (ticker, date, horizon) DO UPDATE SET "
+                    "direction=EXCLUDED.direction, barrier_hit=EXCLUDED.barrier_hit, "
+                    "return_pct=EXCLUDED.return_pct, vol_adjusted_return=EXCLUDED.vol_adjusted_return"
                 ),
                 batch,
             )

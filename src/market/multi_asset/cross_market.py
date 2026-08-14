@@ -340,7 +340,7 @@ def recompute_cross_market(
     if dry_run:
         return total_pairs
 
-    session.execute(text("DELETE FROM relationship_matrix WHERE window = 0"))
+    session.execute(text('DELETE FROM relationship_matrix WHERE "window" = 0'))
     session.commit()
 
     engine = CrossMarketEngine(min_samples=30)

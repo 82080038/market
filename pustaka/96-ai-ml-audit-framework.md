@@ -469,3 +469,29 @@ Pipeline lama 14-jam (`run_production_pipeline.sh`) **dihapus**. Pengganti: `fas
 ---
 
 > Dibuat: 7 Agustus 2026 | Update: 10 Agustus 2026 | Dokumen: `pustaka/96-ai-ml-audit-framework.md` | Cross-ref: `23`, `29`, `51`, `71`, `85`, `97`
+
+---
+
+## Update 15 Agustus 2026 — DecisionEngine Market Driver Narrative
+
+### Integrasi Narrative ke DecisionEngine
+
+`DecisionEngine` (line 35 di tabel §1.1) sekarang menghasilkan **market driver context** tambahan selain XAI explanation:
+
+```python
+engine = DecisionEngine(db_url="postgresql://petrick:market_dev@localhost:5432/market")
+result = engine.decide("INCO.JK", technical=72, fundamental=65, ...)
+# result.explanation → XAI breakdown (factor scores)
+# result.market_driver_context → narrative dari 5 sumber DB:
+```
+
+**Sumber narrative:**
+1. `causal_relationships` — Granger causality: "NICK.L → INCO.JK: p=0.0000 (sangat signifikan), lag=1 hari"
+2. `seasonal_patterns` — Monthly seasonal: "April: avg_return=+9.32%, win_rate=76%, score=99.0 (Seasonal Bullish Kuat)"
+3. `commodity_to_stock_map` + `macro_data` — Commodity sensitivity: "NICKEL: sensitivity=0.95 (tinggi), harga terakhir: 14.70"
+4. `dcc_garch_results` — DCC-GARCH correlation: "GC=F: korelasi positif lemah (latest=+0.127, avg=+0.097)"
+5. `satellite_observations` + `satellite_ticker_locations` — Weather/NDVI: "Indonesia_Nickel_Sulawesi: T2M=27.7, PRECTOTCORR=0.6"
+
+**Graceful degradation:** Tanpa `db_url`, `market_driver_context` kosong (tidak crash). DB error → log warning, lanjut tanpa narrative.
+
+**Relevansi untuk ablation:** Narrative ini tidak mempengaruhi composite score — hanya menambah konteks untuk XAI explanation. Jika narrative menunjukkan causal driver yang tidak tertangkap oleh factor scores, ini bisa menjadi sinyal untuk menambah engine baru atau adjust weights.

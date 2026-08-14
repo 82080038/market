@@ -490,6 +490,33 @@ Engine di-test berdampingan dengan 24 engine existing (19 asli + 5 v2). Total 28
 
 ---
 
+## Update 15 Agustus 2026 (P6 — DCC-GARCH + Spillover Execution)
+
+### DCC-GARCH: Berhasil
+
+- **60 pairs computed** (5 IDX proxy: BBCA, BBRI, ADRO, AALI, ANTM × 12 global drivers: ^GSPC, ^DJI, ^IXIC, ^N225, ^HSI, 000001.SS, ^VIX, CL=F, GC=F, CPO=F, HG=F, MTF=F).
+- Returns matrix: 641 rows, 17 columns (lookback 750 hari).
+- Persisted ke tabel baru `dcc_garch_results` (60 rows).
+- Sample: BBCA.JK vs ^GSPC (latest_corr=0.053, avg_corr=0.104), BBCA.JK vs ^N225 (latest_corr=0.003, avg_corr=0.118).
+- Korelasi umumnya lemah (|r| < 0.2) — IDX relatif terisolasi dari global drivers dalam short-term daily returns.
+
+### Diebold-Yilmaz Spillover: GAGAL
+
+- VAR estimation berhasil (264 obs, 8 tickers, lag order dari AIC).
+- FEVD computation error: "need at least one array to concatenate" — statsmodels API compatibility issue.
+- **Perlu fix:** Update `spillover_lab.py` untuk statsmodels terbaru, atau implement manual FEVD computation.
+- Script: `scripts/batch_p6_spillover.py`.
+
+### Granger Causality (P9 — terkait)
+
+- 198 Granger tests (11 global drivers × 18 IDX stocks), maxlag=5.
+- 28 significant (p<0.05), 11 strong (p<0.01).
+- Top: NICK.L→INCO.JK p=0.0000, GC=F→UNVR.JK p=0.0002, NICK.L→PTBA.JK p=0.0006.
+- Persisted ke `causal_relationships` (198 rows) + `causal_graphs` (1 summary graph).
+- Script: `scripts/batch_p9_causal.py`.
+
+---
+
 ## Referensi Lengkap
 
 1. Engle, R. (2002). "Dynamic Conditional Correlation." JBES, 20(3), 339-350.

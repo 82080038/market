@@ -58,12 +58,47 @@ class TestSimulateReturns:
     def test_cost_applied_on_signal_change(self):
         ohlcv = _make_synthetic_ohlcv(100)
         signals = pd.Series(0, index=ohlcv.index)
-        signals.iloc[50] = 1  # One signal change
+        signals.iloc[50] = 1  # One signal change (enter at end of day 50)
         returns = simulate_returns(ohlcv, signals, cost_per_trade=0.01)
-        # The day of signal change should have cost deducted
-        change_idx = ohlcv.index[50]
-        assert change_idx in returns.index
-        assert returns.loc[change_idx] < 0  # cost applied at signal change
+        # Position for day t = signal[t-1], so the enter at end of day 50
+        # means the position is held on day 51 and exited on day 52.
+        # One-way cost (0.01/2 = 0.005) is charged on day 51 (entry) and
+        # day 52 (exit). The exit day's return is purely the cost (position 0)
+        # so it is guaranteed negative.
+        entry_idx = ohlcv.index[51]
+        exit_idx = ohlcv.index[52]
+        assert entry_idx in returns.index
+        assert exit_idx in returns.index
+        # Exit day: position is 0, only cost is deducted → strictly negative
+        assert returns.loc[exit_idx] < 0
+        # Entry day: return = position*r - one_way_cost; cost is non-trivial
+        assert returns.loc[entry_idx] < simulate_returns(
+            ohlcv, signals, cost_per_trade=0.0
+        ).loc[entry_idx]
+
+    def test_cost_round_trip_not_double_charged(self):
+        """Enter + exit should accrue exactly one round-trip cost, not 2×."""
+        ohlcv = _make_synthetic_ohlcv(100)
+        signals = pd.Series(0, index=ohlcv.index)
+        signals.iloc[50] = 1   # enter at end of day 50
+        signals.iloc[60] = 0   # exit at end of day 60
+        gross = simulate_returns(ohlcv, signals, cost_per_trade=0.0)
+        net = simulate_returns(ohlcv, signals, cost_per_trade=0.01)
+        # Total cost over the period = one round trip = 0.01
+        total_cost = float((gross - net).sum())
+        assert total_cost == pytest.approx(0.01, abs=1e-9)
+
+    def test_cost_flip_charged_full_round_trip(self):
+        """A +1 → -1 flip is a full round trip (sell long + buy short)."""
+        ohlcv = _make_synthetic_ohlcv(100)
+        signals = pd.Series(0, index=ohlcv.index)
+        signals.iloc[50:60] = 1   # long for 10 bars
+        signals.iloc[60:] = -1    # flip to short and hold
+        gross = simulate_returns(ohlcv, signals, cost_per_trade=0.0)
+        net = simulate_returns(ohlcv, signals, cost_per_trade=0.01)
+        # Enter long (one-way 0.005) + flip to short (full round-trip 0.01) = 0.015
+        total_cost = float((gross - net).sum())
+        assert total_cost == pytest.approx(0.015, abs=1e-9)
 
 
 class TestComputeMetrics:

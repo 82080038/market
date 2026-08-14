@@ -236,3 +236,14 @@ Sektor fallback yang tersedia (cakupan global — semua benua):
 - NDVI dari Sentinel-2 adalah data real (via Microsoft Planetary Computer, gratis tanpa API key).
 - Pipeline produksi mendukung **lokasi global apa pun** — tidak terbatas ke kasus riset awal.
 - Cross-reference: `pustaka/30-sentiment-analysis-alternative-data.md`, `pustaka/97-strategi-alternatif-ekspansi-data-2026.md`
+
+---
+
+> **Update 15 Agustus 2026 (P8 — Batch Satellite Ingestion):** Data satelit real telah di-fetch dan disimpan ke PostgreSQL `market`:
+> - `satellite_observations`: 11,568 rows dari NASA POWER API (8 lokasi × 4 metrics × ~362 hari).
+> - `satellite_ticker_locations`: 35 mappings ticker→lokasi (palm oil: AALI/LSIP/SIMP/DSNG/ANJT × 4 lokasi; coal: PTBA/ITMG/ADRO/HRUM × 3 lokasi; nickel: INCO/ANTM/MDKA × 1 lokasi).
+> - Metrics per lokasi: T2M (temperature), PRECTOTCORR (precipitation), RH2M (humidity), ALLSKY_SFC_SW_DWN (solar radiation).
+> - Lokasi: Indonesia_Palm_Oil_Kalimantan (-2.5, 113.0), Indonesia_Palm_Oil_Sumatera (-3.0, 104.0), Malaysia_Palm_Oil_Sabah (5.5, 117.5), Malaysia_Palm_Oil_Sarawak (2.0, 112.0), Indonesia_Coal_East_Kalimantan (-1.0, 117.0), Indonesia_Coal_South_Sumatera (-4.0, 104.0), Australia_Coal_Queensland_Bowen_Basin (-22.0, 148.0), Indonesia_Nickel_Sulawesi (-1.0, 121.0).
+> - **Sentinel-2 NDVI gagal** — `pystac_client.Client.from_url` API incompatibility. Perlu fix untuk Planetary Computer STAC client, atau gunakan alternative approach (rasterio + direct asset URL).
+> - Script: `scripts/batch_p8_satellite.py`.
+> - **Gap:** Sentinel-2 NDVI belum berhasil di-fetch. NASA POWER weather data berhasil sebagai fallback.

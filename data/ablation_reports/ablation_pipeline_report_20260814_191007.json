@@ -1,0 +1,153 @@
+{
+  "metadata": {
+    "timestamp": "2026-08-14T19:10:07.330091+00:00",
+    "tickers": [
+      "BBCA.JK"
+    ],
+    "period": "2024-01-01 to 2026-08-12",
+    "total_engines": 2,
+    "keep": 0,
+    "marginal": 0,
+    "remove": 2,
+    "bonferroni_alpha": 0.025,
+    "multiple_testing_correction": "Bonferroni"
+  },
+  "scorecards": [
+    {
+      "engine_name": "pred_ma",
+      "verdict": "REMOVE",
+      "composite_score": 33.87,
+      "delta_sharpe": 0.4323,
+      "delta_alpha": 0.169,
+      "delta_win_rate": -10.65,
+      "p_value": 0.127762,
+      "is_significant": false,
+      "n_observations": 620,
+      "isolated_sharpe": -1.2135,
+      "baseline_sharpe": -0.7812,
+      "reasons": [
+        "Not significant (p=0.1278 >= Bonferroni \u03b1=0.0500)",
+        "Positive alpha contribution (+0.1690)",
+        "Win rate decreased by -10.7%"
+      ]
+    },
+    {
+      "engine_name": "pred_momentum",
+      "verdict": "REMOVE",
+      "composite_score": 25.48,
+      "delta_sharpe": -0.7265,
+      "delta_alpha": -0.1607,
+      "delta_win_rate": -15.16,
+      "p_value": 0.150724,
+      "is_significant": false,
+      "n_observations": 620,
+      "isolated_sharpe": -0.0547,
+      "baseline_sharpe": -0.7812,
+      "reasons": [
+        "Negative or zero Sharpe delta (-0.727)",
+        "Negative alpha contribution (-0.1607)",
+        "Win rate decreased by -15.2%"
+      ]
+    }
+  ],
+  "results": [
+    {
+      "engine_name": "pred_ma",
+      "baseline_metrics": {
+        "sharpe_ratio": -0.7812,
+        "sortino_ratio": -0.9315,
+        "max_drawdown_pct": -42.27,
+        "win_rate_pct": 30.32,
+        "total_return_pct": -39.93,
+        "annual_return_pct": -18.71,
+        "alpha": -0.1922,
+        "beta": -0.3319,
+        "n_days": 620.0
+      },
+      "isolated_metrics": {
+        "sharpe_ratio": -1.2135,
+        "sortino_ratio": -1.7724,
+        "max_drawdown_pct": -63.85,
+        "win_rate_pct": 40.97,
+        "total_return_pct": -62.22,
+        "annual_return_pct": -32.67,
+        "alpha": -0.3612,
+        "beta": -0.1938,
+        "n_days": 620.0
+      },
+      "delta_metrics": {
+        "sharpe_ratio": 0.4323,
+        "sortino_ratio": 0.8409,
+        "max_drawdown_pct": 21.58,
+        "win_rate_pct": -10.65,
+        "total_return_pct": 22.29,
+        "annual_return_pct": 13.96,
+        "alpha": 0.169,
+        "beta": -0.1381,
+        "n_days": 0.0
+      },
+      "p_value": 0.12776200000000001,
+      "t_statistic": 1.525,
+      "is_significant": false,
+      "n_observations": 620,
+      "error": null
+    },
+    {
+      "engine_name": "pred_momentum",
+      "baseline_metrics": {
+        "sharpe_ratio": -0.7812,
+        "sortino_ratio": -0.9315,
+        "max_drawdown_pct": -42.27,
+        "win_rate_pct": 30.32,
+        "total_return_pct": -39.93,
+        "annual_return_pct": -18.71,
+        "alpha": -0.1922,
+        "beta": -0.3319,
+        "n_days": 620.0
+      },
+      "isolated_metrics": {
+        "sharpe_ratio": -0.0547,
+        "sortino_ratio": -0.0734,
+        "max_drawdown_pct": -33.07,
+        "win_rate_pct": 45.48,
+        "total_return_pct": -13.36,
+        "annual_return_pct": -5.66,
+        "alpha": -0.0315,
+        "beta": -0.4665,
+        "n_days": 620.0
+      },
+      "delta_metrics": {
+        "sharpe_ratio": -0.7265,
+        "sortino_ratio": -0.8581,
+        "max_drawdown_pct": -9.2,
+        "win_rate_pct": -15.16,
+        "total_return_pct": -26.57,
+        "annual_return_pct": -13.05,
+        "alpha": -0.1607,
+        "beta": 0.1346,
+        "n_days": 0.0
+      },
+      "p_value": 0.150724,
+      "t_statistic": -1.4388,
+      "is_significant": false,
+      "n_observations": 620,
+      "error": null
+    }
+  ],
+  "recommendations": [
+    {
+      "engine": "pred_ma",
+      "verdict": "REMOVE",
+      "action": "reduce_or_remove",
+      "suggestion": "Reduce weight to 0 or remove from production pipeline",
+      "composite_score": 33.87
+    },
+    {
+      "engine": "pred_momentum",
+      "verdict": "REMOVE",
+      "action": "reduce_or_remove",
+      "suggestion": "Reduce weight to 0 or remove from production pipeline",
+      "composite_score": 25.48
+    }
+  ]
+}

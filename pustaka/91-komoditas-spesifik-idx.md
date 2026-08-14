@@ -544,3 +544,15 @@ Data parquet `raw/commodity/` sudah punya 1,523 rows (2018-2026) untuk 10 komodi
 ---
 
 > **Update 10 Agustus 2026:** Commodity futures data sudah di-backfill ke `ohlcv` table (CL=F: 2,179 rows, GC=F: 2,179, HG=F: 905, MTF=F: 750, CPO=F: 1,408). NI=F (nickel) tidak tersedia di yfinance (404). FCPO=F (alt ticker Bursa Malaysia) ditambahkan ke backfill script sebagai fallback. T-1 returns dari 5 komoditas (oil, gold, copper, coal, CPO) sudah masuk sebagai exogenous features di `MultiFactorFeaturePipeline` via `compute_exogenous_features()` dengan **asymmetric lag** (T-0 untuk ^N225/^HSI, T-1 untuk US/commodities) menggunakan `get_ticker_lag()`. Sector-specific commodity momentum signals sudah aktif di `MarketContextProvider._fetch_commodity_signal()`. DST-aware cutoff (`verify_dst_cutoff()`) memastikan global data di-lock hanya setelah Wall Street fully close (03:00 WIB summer / 04:00 WIB winter). `get_aligned_global_features()` menyupply global features siap pakai untuk MultiFactorModel/MLSignalProvider di 16:15 WIB.
+
+---
+
+> **Update 15 Agustus 2026 (P1 — Batch Commodity Ingestion):** Data komoditas real telah di-fetch dan disimpan ke PostgreSQL `market`:
+> - `stock_prices`: CL=F (2,946 rows, 2020-01-02→2026-08-13), CPO=F (2,570), GC=F (2,946), HG=F (2,573), MTF=F (2,860, stale hingga 2025-12-27 — Yahoo tidak update).
+> - **NICK.L** (WisdomTree Nickel Etc, LSE): 1,670 rows, 2020-01-02→2026-08-12 — proxy untuk LME Nickel karena NI=F tidak tersedia di yfinance (404).
+> - **TIN.L** (WisdomTree Tin ETC, LSE): 1,386 rows, 2021-02-16→2026-08-13 — proxy untuk LME Tin karena TIN=F tidak tersedia di yfinance (404).
+> - `macro_data` series baru: NICKEL (1,670 rows), TIN (1,386 rows), NEWCASTLE_COAL (1,745), CPO (1,663), COPPER (1,863).
+> - `commodity_to_stock_map` (tabel baru): 28 mappings komoditas→saham IDX dengan sensitivity score (CPO→AALI 0.85, NICKEL→INCO 0.95, COAL→ADRO 0.80, dll).
+> - Granger causality (P9): NICK.L→INCO.JK p=0.0000 (sangat signifikan, lag=1), NICK.L→ANTM.JK p=0.0032, NICK.L→TINS.JK p=0.0086.
+> - Script: `scripts/batch_p1_commodity.py` + `scripts/batch_p9_causal.py`.
+> - **Gap:** MTF=F (coal) stale hingga 2025-12-27 — perlu alternative source (ICE API atau manual input).

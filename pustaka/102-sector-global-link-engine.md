@@ -215,3 +215,13 @@ for each ticker:
 5. Driesprong, G., Jacobsen, B., & Maat, B. (2008). "Striking Oil: Another Puzzle?" Journal of Financial Economics, 89(2), 307-327.
 6. Chen, N.F., Roll, R., & Ross, S.A. (1986). "Economic Forces and the Stock Market." Journal of Business, 59(3), 383-403.
 7. pustaka/91-komoditas-spesifik-idx.md — komoditas spesifik untuk IDX
+
+---
+
+> **Update 15 Agustus 2026 (P7 — Sector Taxonomy Cleanup):** Sector classification di `instrument_master` telah dinormalisasi ke taxonomy GICS-like:
+> - 518 rows dinormalisasi: Consumer Cyclicals→Consumer Cyclical (172), Consumer Non-Cyclicals→Consumer Non-Cyclical (130), Consumer Defensive→Consumer Non-Cyclical (9), Commodities→Basic Materials (2), Properties & Real Estate→Real Estate (96), Transportation & Logistic→Transportation & Logistics (38), Infrastructures→Industrials (71).
+> - 18 index tickers (^%, JKSE) dan 38 FX tickers diklasifikasi.
+> - 30 tickers masih kosong sector (tidak bisa diinfer dari nama).
+> - Final distribution: Consumer Cyclical (172), Industrials (144), Consumer Non-Cyclical (139), Basic Materials (123), Financials (111), Real Estate (98), Energy (96), Technology (50), Healthcare (41), FX (38), Transportation & Logistics (38), Index (15), Utilities (2), Communication Services (1).
+> - Script: `scripts/batch_p7_sector_cleanup.py`.
+> - **Gap:** 30 tickers masih kosong — perlu manual review atau fetch dari BEI/ICDM classification.
