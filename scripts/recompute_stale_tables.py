@@ -84,9 +84,7 @@ def recompute_pattern_analysis(session, tickers: list[str]) -> int:
             session.execute(text("""
                 INSERT INTO pattern_analysis (ticker, date, pattern_type, confidence, direction, details, source, created_at)
                 VALUES (:ticker, :date, :pattern_type, :confidence, :direction, :details, :source, :created_at)
-                ON CONFLICT (ticker, date, pattern_type) DO UPDATE SET
-                    confidence=EXCLUDED.confidence, direction=EXCLUDED.direction,
-                    details=EXCLUDED.details, source=EXCLUDED.source
+                ON CONFLICT DO NOTHING
             """), batch)
             session.commit()
             batch.clear()
@@ -96,9 +94,7 @@ def recompute_pattern_analysis(session, tickers: list[str]) -> int:
         session.execute(text("""
             INSERT INTO pattern_analysis (ticker, date, pattern_type, confidence, direction, details, source, created_at)
             VALUES (:ticker, :date, :pattern_type, :confidence, :direction, :details, :source, :created_at)
-            ON CONFLICT (ticker, date, pattern_type) DO UPDATE SET
-                confidence=EXCLUDED.confidence, direction=EXCLUDED.direction,
-                details=EXCLUDED.details, source=EXCLUDED.source
+            ON CONFLICT DO NOTHING
         """), batch)
         session.commit()
 

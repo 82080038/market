@@ -42,7 +42,7 @@ Aplikasi **decision-support** untuk pasar modal Indonesia (IDX) dan global, diba
 │  SQLAlchemy ORM, Multi-DB (SQLite/PostgreSQL), Wide Tables       │
 ├─────────────────────────────────────────────────────────────────┤
 │        Database (SQLite/PostgreSQL + Parquet + Alembic)          │
-│  55+ tables: OHLCV, Wide TI, Risk Metrics, ML Labels, Scores,    │
+│  90 tables: OHLCV, Wide TI, Risk Metrics, ML Labels, Scores,     │
 │  Model Performance History, Strategy Assignment, Banking Metrics │
 └─────────────────────────────────────────────────────────────────┘
 ```
@@ -277,11 +277,11 @@ market/
 │   ├── risk/             # Risk manager (VaR, position sizing)
 │   └── social/           # Robo advisor, NLP sentiment
 ├── frontend/             # Next.js 14 dashboard (10 pages, TailwindCSS, TypeScript)
-├── tests/                # Pytest unit + integration tests (1370+ tests, 70+ files)
-├── alembic/              # Database migrations (0001-0015)
+├── tests/                # Pytest unit + integration tests (90+ files)
+├── alembic/              # Database migrations (0001-0021)
 ├── data/                 # Local SQLite, Parquet seeds/exports
-├── scripts/              # Automation scripts (55+ scripts: backfill, seed, pipeline, migration)
-├── pustaka/              # Knowledge base (99 Markdown docs, 00-98)
+├── scripts/              # Automation scripts (95+ scripts: backfill, seed, pipeline, migration)
+├── pustaka/              # Knowledge base (103 Markdown docs, 00-102)
 ├── docs/                 # ADRs, audit findings, database issues
 └── .github/workflows/    # CI (lint + test)
 ```
@@ -298,23 +298,46 @@ Aplikasi menangani corporate events IDX secara komprehensif sebagai memory untuk
 - **Trading Suspension**: Tabel `trading_suspensions` dengan `suspend_date`, `resume_date`, `reason`.
 - **DTS (Daily Trading Stats)**: Data bid/offer, frequency, value, listed_shares dari GitHub Dataset-Saham-IDX (Jul 2019–Feb 2025) + derived dari OHLCV untuk IPO baru.
 
-### Database Stats (10 Agustus 2026)
+### Database Stats (15 Agustus 2026 — PostgreSQL)
 
 | Tabel | Rows | Tickers | Periode |
 |-------|------|---------|--------|
-| `instrument_master` | 1,054 | 923 active, 62 delisted, 57 indeks | — |
-| `ohlcv` | 3,215,048 | 1,030 | 1990–2026-08-07 |
+| `instrument_master` | 1,099 | 1,048 active, 66 delisted | — |
+| `stock_prices` (OHLCV) | 3,434,540 | 1,096 | 1927–2026-08-14 |
 | `daily_trading_stats` | 1,082,968 | 983 | 2019–2026-08-05 |
-| `foreign_flow` | 1,253,802 | — | 2019–2026-08-03 |
-| `technical_indicators_wide` | 3,049,358 | 1,030 | time series (10 indikator) |
-| `daily_risk_metrics` | 8,919,950 | 1,024 | rolling 252-day |
-| `ml_labels` | 9,853,230 | 980 | triple-barrier labeled |
-| `fundamental_data` | 5,753 | 1,007 | snapshot + quarterly |
-| `corporate_actions` | 6,367 | — | dividend 5,974, split 391, merger 2 |
+| `foreign_flow` | 1,253,802 | 983 | 2019–2026-08-03 |
+| `technical_indicators_wide` | 3,053,274 | 1,024 | time series (10 indikator) |
+| `daily_risk_metrics` | 8,925,230 | 1,024 | 2000–2026-08-12 (rolling 252-day) |
+| `ml_labels` | 9,870,548 | 985 | triple-barrier labeled (4 horizons) |
+| `fundamental_data` | 5,903 | 1,007 | 2024–2026-08-15 |
+| `corporate_actions` | 5,974 | — | DIVIDEND |
 | `stock_prediction` | 1,020 | 1,020 | per-ticker strategy profile |
 | `ai_weights` | 50 | 50 | LightGBM 3-class trained |
+| `fear_greed` | 11,938 | — | 1990–2026-08-14 |
+| `market_regimes` | 8,645 | — | 1991–2026-08-10 |
+| `scores` | 5,874 | — | recomputed 2026-08-15 |
+| `stock_personality` | 985 | — | recomputed 2026-08-15 |
+| `relationship_matrix` | 4,865 | — | recomputed 2026-08-15 |
+| `technical_indicators` | 15,630 | — | 2026-08-14 |
+| `valuation_cache` | 2,158 | — | 2026-08-15 |
+| `pattern_analysis` | 1,243 | — | 2026-08-15 |
+| `market_sessions` | 8,379 | — | 2026-08-14 |
+| `astronacci_cycles` | 14,242 | — | 1927–2027 |
+| `broker_flow` | 15,830 | — | 2026-08-03 |
+| `broker_transactions` | 347,344 | — | 2026-08-08 |
+| `satellite_observations` | 11,568 | — | 2026-08-11 |
+| `macro_data` | 72,242 | — | multi-source |
+| `news` / `news_sentiment` | 3,107 | — | — |
+| `causal_relationships` | 198 | — | 26 strong, 54 moderate, 118 weak |
+| `seasonal_patterns` | 9,696 | — | — |
+| `earnings_calendar` | 4,120 | — | — |
+| `esg_scores` | 236 | — | — |
+| `corporate_governance` | 294 | — | — |
+| `exchange_holidays` | 4,609 | — | — |
+| `market_calendar` | 27,305 | — | — |
+| `trading_suspensions` | 64 | — | — |
 
-**Ukuran database:** `market_research.db` ~10 GB, `market_paper.db` ~8.3 GB, `market_live.db` ~460 KB (kosong, sesuai).
+**Database:** PostgreSQL 16, ~6.6 GB, 90 tables. Migration head: 0021.
 
 ### Migration History
 
@@ -335,6 +358,7 @@ Aplikasi menangani corporate events IDX secara komprehensif sebagai memory untuk
 | 0013 | Add app_notifications table for daily signal notifications |
 | 0014 | Drop redundant tables (emiten, instrumen, sektor, bursa_efek, indeks_pasar, fx_rates, regulator, transaksi_investor) |
 | 0015 | Add banking metrics (NPL, CAR, LDR, NIM) to fundamental_data + model_performance_history + strategy_assignment tables |
+| 0016-0021 | Additional tables: ablation_runs/scorecards, seasonal_patterns, earnings_calendar, dcc_garch_results, commodity_to_stock_map, satellite tables |
 
 ---
 
