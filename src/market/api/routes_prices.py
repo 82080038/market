@@ -213,11 +213,11 @@ async def intraday_trigger(
     Optionally specify tickers in request body:
         {"tickers": ["^JKSE", "^GSPC", "BBCA.JK"]}
 
-    If no tickers specified, uses default INTRADAY_TICKERS.
+    If no tickers specified, uses default intraday ticker list.
     """
-    from market.scheduler_tasks import INTRADAY_TICKERS
+    from market.scheduler_tasks import INTRADAY_TICKER_MIC
 
-    tickers = (body or {}).get("tickers", INTRADAY_TICKERS)
+    tickers = (body or {}).get("tickers", list(INTRADAY_TICKER_MIC.keys()))
 
     event = broker.emit("data.fetch.intraday.requested", {
         "source": "manual",

@@ -324,29 +324,39 @@ class MarketSession:
     def is_open_at(self, ts: pd.Timestamp) -> bool:
         """Check if market is open at given UTC timestamp.
 
-        Note: DST adjustment is approximate (±1 hour).
-        For backtesting, this is sufficient since we use daily bars.
+        Uses zoneinfo for accurate DST transition detection (not approximate
+        month-range). Also checks weekends and fixed-date holidays.
         """
+        from datetime import datetime
+
+        from market.data.timestamp_validation import (
+            EXPECTED_OPEN_UTC,
+            FIXED_HOLIDAYS,
+            _is_fixed_holiday,
+            get_expected_close_utc,
+            get_expected_open_utc,
+        )
+
         ts = ts.tz_localize("UTC") if ts.tzinfo is None else ts.tz_convert("UTC")
+        dt = ts.to_pydatetime()
 
+        # Weekend check
+        if dt.weekday() >= 5:
+            return False
+
+        # Fixed holiday check
+        if _is_fixed_holiday(self.mic_code, dt):
+            return False
+
+        # Use accurate DST-aware open/close from timestamp_validation
+        if self.mic_code in EXPECTED_OPEN_UTC:
+            expected_open = get_expected_open_utc(self.mic_code, dt)
+            expected_close = get_expected_close_utc(self.mic_code, dt)
+            return expected_open <= dt < expected_close
+
+        # Fallback: use session's own UTC times without DST
         hour = ts.hour + ts.minute / 60.0
-        # Approximate DST: if US market and between March-November, shift +1h
-        if self.supports_dst:
-            month = ts.month
-            if 3 <= month <= 11:
-                hour_adj = hour - 1  # UTC open is 1h earlier during DST
-                open_h = self.open_hour_utc - 1
-                close_h = self.close_hour_utc - 1
-            else:
-                hour_adj = hour
-                open_h = self.open_hour_utc
-                close_h = self.close_hour_utc
-        else:
-            hour_adj = hour
-            open_h = self.open_hour_utc
-            close_h = self.close_hour_utc
-
-        return open_h <= hour_adj <= close_h
+        return self.open_hour_utc <= hour <= self.close_hour_utc
 
 
 # Pre-defined market sessions (standard time UTC offsets)

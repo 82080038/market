@@ -36,6 +36,67 @@ EXPECTED_CLOSE_UTC: dict[str, tuple[int, int]] = {
     "XSHG": (7, 0),     # Shanghai close 15:00 CST = 07:00 UTC (no DST)
 }
 
+# Expected UTC open times per MIC — STANDARD TIME (winter, non-DST)
+# Used by is_market_open() for accurate open/close window checking
+EXPECTED_OPEN_UTC: dict[str, tuple[int, int]] = {
+    "XIDX": (2, 0),     # IDX open 09:00 WIB = 02:00 UTC (no DST)
+    "XNYS": (14, 30),   # NYSE open 09:30 EST = 14:30 UTC (STD) / 13:30 UTC (DST)
+    "XNAS": (14, 30),   # NASDAQ same as NYSE
+    "XTSE": (0, 0),     # Tokyo open 09:00 JST = 00:00 UTC (no DST)
+    "XHKG": (1, 30),    # HK open 09:30 HKT = 01:30 UTC (no DST)
+    "XLON": (8, 0),     # London open 08:00 GMT = 08:00 UTC (STD) / 07:00 UTC (DST)
+    "XFRA": (8, 0),     # Xetra open 09:00 CET = 08:00 UTC (STD) / 07:00 UTC (DST)
+    "XCEC": (13, 20),   # COMEX gold open 08:20 EST = 13:20 UTC (STD) / 12:20 UTC (DST)
+    "XFXS": (22, 0),    # FX market 24h (use Sunday 22:00 UTC as weekly open)
+    "XKLSE": (1, 0),    # Bursa Malaysia open 09:00 MYT = 01:00 UTC (no DST, UTC+8)
+    "XSHG": (1, 0),     # Shanghai open 09:00 CST = 01:00 UTC (no DST)
+}
+
+# Simple holiday check — fixed-date holidays for major markets.
+# This is a lightweight check; floating holidays (Good Friday, Easter Monday,
+# Lunar New Year, Eid al-Fitr, etc.) are NOT covered. For production-grade
+# holiday handling, use exchange-calendars or pandas-market-calendars.
+# Source: exchange websites, verified Aug 2026.
+FIXED_HOLIDAYS: dict[str, set[tuple[int, int]]] = {
+    "XIDX": {  # Indonesia — fixed national holidays
+        (1, 1),   # New Year
+        (8, 17),  # Independence Day
+        (12, 25), # Christmas
+        (12, 26), # Boxing Day (post-Christmas)
+    },
+    "XNYS": {  # NYSE — fixed holidays
+        (1, 1),   # New Year
+        (7, 4),   # Independence Day
+        (12, 25), # Christmas
+    },
+    "XNAS": {  # NASDAQ — same as NYSE
+        (1, 1), (7, 4), (12, 25),
+    },
+    "XTSE": {  # Tokyo — fixed holidays
+        (1, 1),   # New Year
+        (1, 2),   # Market holiday
+        (1, 3),   # Market holiday
+        (12, 31), # Market holiday
+    },
+    "XHKG": {  # HKEX — fixed holidays
+        (1, 1),   # New Year
+        (12, 25), # Christmas
+        (12, 26), # Boxing Day
+    },
+    "XLON": {  # LSE — fixed holidays
+        (1, 1),   # New Year
+        (12, 25), # Christmas
+        (12, 26), # Boxing Day
+    },
+    "XFRA": {  # Xetra — fixed holidays
+        (1, 1),   # New Year
+        (12, 24), # Christmas Eve
+        (12, 25), # Christmas
+        (12, 26), # Boxing Day / St. Stephen's
+        (12, 31), # New Year's Eve
+    },
+}
+
 # Ticker → MIC mapping for common global tickers
 TICKER_MIC: dict[str, str] = {
     "^JKSE": "XIDX", "^JKLQ45": "XIDX",
@@ -166,8 +227,51 @@ def validate_ohlcv_timestamp(
     )
 
 
+def _is_fixed_holiday(mic: str, dt: datetime) -> bool:
+    """Check if a date is a fixed-date holiday for the given market.
+
+    Only covers fixed-date holidays (New Year, Christmas, etc.).
+    Floating holidays (Easter, Lunar New Year, Eid, etc.) are NOT
+    covered — for production use, install exchange-calendars.
+    """
+    holidays = FIXED_HOLIDAYS.get(mic)
+    if not holidays:
+        return False
+    return (dt.month, dt.day) in holidays
+
+
+def get_expected_open_utc(mic: str, dt: datetime) -> datetime:
+    """Get expected UTC market open time for a given MIC and date.
+
+    Handles DST for US and European markets.
+    """
+    if dt.tzinfo is None:
+        dt = dt.replace(tzinfo=UTC)
+    else:
+        dt = dt.astimezone(UTC)
+
+    base = EXPECTED_OPEN_UTC.get(mic)
+    if base is None:
+        return dt  # Unknown MIC
+
+    hour, minute = base
+
+    if mic in ("XNYS", "XNAS", "XCEC", "XFXS"):
+        if is_us_dst(dt):
+            hour -= 1
+    elif mic in ("XLON", "XFRA"):
+        if is_eu_dst(dt):
+            hour -= 1
+
+    return datetime(dt.year, dt.month, dt.day, hour, minute, 0, tzinfo=UTC)
+
+
 def is_market_open(mic: str, now: datetime | None = None) -> bool:
     """Check if a market is currently open (for ingestion gating).
+
+    Uses actual open/close times per MIC with DST adjustment and
+    fixed-date holiday checking. For FX markets (XFXS), returns True
+    on weekdays (24h trading).
 
     Args:
         mic: Market MIC code.
@@ -186,13 +290,19 @@ def is_market_open(mic: str, now: datetime | None = None) -> bool:
     if mic not in EXPECTED_CLOSE_UTC:
         return False  # Unknown market, assume closed
 
-    expected_close = get_expected_close_utc(mic, now)
-    # Market is open if we're before the close time on the same day
-    # and it's a weekday (simplified — doesn't check holidays)
-    if now.weekday() >= 5:  # Saturday/Sunday
+    # Weekend check
+    if now.weekday() >= 5:
         return False
 
-    # Open time: typically close_time - 6.5 hours for stock exchanges
-    # For simplicity, check if we're within 8 hours before close
-    open_window = expected_close - now
-    return timedelta(0) < open_window <= timedelta(hours=8)
+    # Fixed holiday check
+    if _is_fixed_holiday(mic, now):
+        return False
+
+    # FX market: 24h on weekdays
+    if mic == "XFXS":
+        return True
+
+    expected_open = get_expected_open_utc(mic, now)
+    expected_close = get_expected_close_utc(mic, now)
+
+    return expected_open <= now < expected_close

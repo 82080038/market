@@ -333,6 +333,16 @@ class DailyScheduler:
         A task is due if it has never run, or if enough time has
         passed since its last run (catch-up for missed executions).
 
+        For daily/EOD/weekly/monthly tasks, time_of_day is enforced as a
+        wall-clock trigger in WIB (Asia/Jakarta, UTC+7). The task will not
+        run before its scheduled time_of_day on the current calendar day,
+        even if enough time has elapsed since last_run. This prevents
+        tasks from running at unexpected hours when the machine boots
+        mid-day after being off.
+
+        For every_15min/hourly tasks, only the elapsed-time check applies
+        (no wall-clock gating) since these are interval-based.
+
         Args:
             task: Task to check.
             now: Current UTC time.
@@ -349,7 +359,20 @@ class DailyScheduler:
             return (now - last) >= timedelta(minutes=15)
         elif task.schedule == "hourly":
             return (now - last) >= timedelta(hours=1)
-        elif task.schedule in ("daily", "EOD"):
+
+        # For daily/EOD/weekly/monthly: check both elapsed time AND wall-clock
+        elapsed_ok = self._check_elapsed(task, now, last)
+        if not elapsed_ok:
+            return False
+
+        # Wall-clock check: is current WIB time >= scheduled time_of_day?
+        return self._is_past_scheduled_time(task, now)
+
+    def _check_elapsed(
+        self, task: ScheduledTask, now: datetime, last: datetime,
+    ) -> bool:
+        """Check if enough time has elapsed since last run."""
+        if task.schedule in ("daily", "EOD"):
             return (now - last) >= timedelta(hours=20)
         elif task.schedule == "weekly":
             return (now - last) >= timedelta(days=6)
@@ -357,6 +380,37 @@ class DailyScheduler:
             return (now - last) >= timedelta(days=28)
         else:
             return (now - last) >= timedelta(hours=24)
+
+    def _is_past_scheduled_time(
+        self, task: ScheduledTask, now: datetime,
+    ) -> bool:
+        """Check if current WIB time is at or past the task's time_of_day.
+
+        Uses zoneinfo for accurate timezone conversion (handles UTC offset
+        correctly). time_of_day is in HH:MM format, interpreted as WIB
+        (Asia/Jakarta, UTC+7 — no DST in Indonesia).
+
+        For the startup_catchup task (time_of_day="00:00"), this always
+        returns True so catch-up runs immediately on boot.
+        """
+        from zoneinfo import ZoneInfo
+
+        try:
+            wib = ZoneInfo("Asia/Jakarta")
+            now_wib = now.astimezone(wib)
+        except Exception:
+            # Fallback: UTC+7 manual offset
+            now_wib = now + timedelta(hours=7)
+
+        try:
+            hour, minute = map(int, task.time_of_day.split(":"))
+        except (ValueError, AttributeError):
+            return True  # Can't parse time, allow run
+
+        scheduled_min = hour * 60 + minute
+        current_min = now_wib.hour * 60 + now_wib.minute
+
+        return current_min >= scheduled_min
 
     def get_task(self, task_id: str) -> ScheduledTask | None:
         """Get a task by ID."""

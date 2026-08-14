@@ -50,23 +50,40 @@ def _task_fetch_macro() -> None:
     broker.emit("data.fetch_macro.requested", {"source": "macro"})
 
 
-# Tickers for intraday polling — key indices + commodities + user watchlist
-INTRADAY_TICKERS = [
-    "^JKSE", "^GSPC", "^IXIC", "^DJI", "^HSI", "^N225", "^FTSE", "^GDAXI",
-    "^TNX", "^VIX", "GC=F", "CL=F", "SI=F",
-]
+# Tickers for intraday polling — mapped to their market MIC for hours filtering
+INTRADAY_TICKER_MIC: dict[str, str] = {
+    "^JKSE": "XIDX",
+    "^GSPC": "XNYS", "^IXIC": "XNAS", "^DJI": "XNYS",
+    "^VIX": "XNYS", "^TNX": "XNYS",
+    "^HSI": "XHKG", "^N225": "XTSE",
+    "^FTSE": "XLON", "^GDAXI": "XFRA",
+    "GC=F": "XCEC", "CL=F": "XCEC", "SI=F": "XCEC",
+}
 
 
 def _task_fetch_intraday() -> None:
     """Emit intraday fetch request — poll yfinance for key tickers every 15 min.
 
-    Only runs during active market hours (IDX: 09:00-15:50 WIB, or global
-    market hours). Fetches latest price snapshot for ~40 tickers, stores
-    to DB with timeframe='15m'. Does NOT trigger full recompute.
+    Only fetches tickers whose market is currently open (checked via
+    is_market_open() with DST-aware open/close times + holiday check).
+    If no markets are open, skips the fetch entirely to avoid wasted
+    yfinance API calls.
     """
+    from market.data.timestamp_validation import is_market_open
+
+    # Filter to only tickers whose market is currently open
+    active_tickers = [
+        ticker for ticker, mic in INTRADAY_TICKER_MIC.items()
+        if is_market_open(mic)
+    ]
+
+    if not active_tickers:
+        logger.debug("Intraday fetch: all markets closed — skipping")
+        return
+
     broker.emit("data.fetch.intraday.requested", {
         "source": "intraday",
-        "tickers": INTRADAY_TICKERS,
+        "tickers": active_tickers,
     })
 
 
