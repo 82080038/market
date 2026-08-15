@@ -508,6 +508,104 @@ def _task_export_parquet() -> None:
     broker.emit("data.export.requested", {"source": "scheduled"})
 
 
+def _task_backup_postgresql() -> None:
+    """Run PostgreSQL backup via scripts/backup_postgresql.sh.
+
+    Gap B.1 #4 (AUDIT-KAPABILITAS-GAP-2026-08-16.md): automated backup.
+    Runs daily after export_parquet. Reads DATABASE_URL + BACKUP_DIR from env.
+    Non-fatal: logs warning on failure, does not raise (scheduler continues).
+
+    See:
+        - scripts/backup_postgresql.sh — bash script with retention policy
+        - .env.example — BACKUP_DIR, BACKUP_RETENTION_DAYS, BACKUP_FORMAT
+    """
+    import os
+    import subprocess
+    from pathlib import Path
+
+    project_root = Path(__file__).resolve().parents[2]
+    script = project_root / "scripts" / "backup_postgresql.sh"
+
+    if not script.exists():
+        logger.warning("backup_postgresql: script not found at %s", script)
+        return
+
+    db_url = os.environ.get("DATABASE_URL", "")
+    if not db_url.startswith("postgresql://"):
+        logger.warning(
+            "backup_postgresql: DATABASE_URL not postgresql:// (skipped). "
+            "Set DATABASE_URL in .env to enable automated backup.",
+        )
+        return
+
+    try:
+        result = subprocess.run(
+            [str(script)],
+            check=False,
+            capture_output=True,
+            text=True,
+            timeout=1800,  # 30 min max for 6GB DB
+            env=os.environ.copy(),
+        )
+        if result.returncode == 0:
+            logger.info("backup_postgresql: success\n%s", result.stdout[-500:])
+        else:
+            logger.error(
+                "backup_postgresql: exit %d\nstderr: %s",
+                result.returncode,
+                result.stderr[-500:],
+            )
+    except subprocess.TimeoutExpired:
+        logger.error("backup_postgresql: timed out after 30 min")
+    except Exception as e:
+        logger.error("backup_postgresql: %s", e)
+
+
+def _task_track_kpi() -> None:
+    """Run KPI tracking via scripts/track_kpi.py.
+
+    Gap B.1 #3 (AUDIT-KAPABILITAS-GAP-2026-08-16.md): KPI automated tracking.
+    Queries DB/system metrics, compares against targets in pustaka/19,
+    persists results to kpi_history table, emits alert if KPI misses target.
+
+    See:
+        - scripts/track_kpi.py — KPI measurement script
+        - pustaka/19-flow-logic-testing-kpi.md:988-1123 — KPI targets
+    """
+    import os
+    import subprocess
+    from pathlib import Path
+
+    project_root = Path(__file__).resolve().parents[2]
+    script = project_root / "scripts" / "track_kpi.py"
+
+    if not script.exists():
+        logger.warning("track_kpi: script not found at %s", script)
+        return
+
+    try:
+        result = subprocess.run(
+            ["python", str(script)],
+            check=False,
+            capture_output=True,
+            text=True,
+            timeout=600,  # 10 min max
+            env=os.environ.copy(),
+        )
+        if result.returncode == 0:
+            logger.info("track_kpi: success\n%s", result.stdout[-500:])
+        else:
+            logger.error(
+                "track_kpi: exit %d\nstderr: %s",
+                result.returncode,
+                result.stderr[-500:],
+            )
+    except subprocess.TimeoutExpired:
+        logger.error("track_kpi: timed out after 10 min")
+    except Exception as e:
+        logger.error("track_kpi: %s", e)
+
+
 def _task_startup_catchup() -> None:
     """Check data staleness on startup and catch up if needed.
 
@@ -1091,6 +1189,8 @@ def register_default_tasks(scheduler: DailyScheduler) -> None:
         18:45  drift_detection   — check model drift
         19:00  generate_reports  — daily reports
         19:30  export_parquet    — backup DB to parquet + WAL checkpoint (ONCE)
+        19:35  backup_postgresql — pg_dump automated backup with retention (gap #4)
+        Sat 13:30 track_kpi      — weekly KPI tracking vs targets pustaka/19 (gap #3)
         Sat 10:00 fetch_fundamental — weekly fundamental snapshot from yfinance
         Sat 10:00 weekly_hrp_recompute — HRP + Multi-Strategy portfolio weights
         Sat 11:00 strategy_assignment — weekly strategy re-evaluation per ticker
@@ -1177,6 +1277,13 @@ def register_default_tasks(scheduler: DailyScheduler) -> None:
         func=_task_fetch_satellite,
         schedule="weekly",
         time_of_day="13:00",
+    )
+    scheduler.register_task(
+        task_id="track_kpi",
+        name="Weekly KPI tracking vs targets (pustaka/19)",
+        func=_task_track_kpi,
+        schedule="weekly",
+        time_of_day="13:30",
     )
     scheduler.register_task(
         task_id="compute_astronacci_cycles",
@@ -1275,6 +1382,13 @@ def register_default_tasks(scheduler: DailyScheduler) -> None:
         func=_task_export_parquet,
         schedule="daily",
         time_of_day="19:30",
+    )
+    scheduler.register_task(
+        task_id="backup_postgresql",
+        name="PostgreSQL automated backup with retention (after export)",
+        func=_task_backup_postgresql,
+        schedule="daily",
+        time_of_day="19:35",
     )
     scheduler.register_task(
         task_id="scrape_news",

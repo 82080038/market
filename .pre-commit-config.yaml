@@ -1,0 +1,50 @@
+# Pre-commit hooks for market project (pustaka/AGENTS.md §B.5 gap 34)
+# Install: pre-commit install
+# Run manually: pre-commit run --all-files
+# Bypass: git commit --no-verify (use sparingly)
+
+repos:
+  - repo: https://github.com/astral-sh/ruff-pre-commit
+    rev: v0.5.7
+    hooks:
+      - id: ruff
+        args: [--fix, --exit-non-zero-on-fix]
+        files: ^src/market/|^tests/|^scripts/
+      - id: ruff-format
+        files: ^src/market/|^tests/|^scripts/
+
+  - repo: https://github.com/pre-commit/mirrors-mypy
+    rev: v1.11.1
+    hooks:
+      - id: mypy
+        files: ^src/market/
+        additional_dependencies:
+          - pydantic>=2.8
+          - pydantic-settings>=2.3
+          - types-pytz>=2024.1
+          - types-requests>=2.32
+        args: [--config-file=pyproject.toml]
+
+  - repo: https://github.com/pre-commit/pre-commit-hooks
+    rev: v4.6.0
+    hooks:
+      - id: trailing-whitespace
+        exclude: ^frontend/
+      - id: end-of-file-fixer
+        exclude: ^frontend/
+      - id: check-yaml
+        exclude: ^frontend/
+      - id: check-toml
+      - id: check-added-large-files
+        args: [--maxkb=2048]
+        exclude: ^data/|^docs/
+      - id: check-merge-conflict
+      - id: detect-private-key
+        exclude: ^tests/fixtures/
+
+  - repo: https://github.com/compilerla/conventional-pre-commit
+    rev: v3.4.0
+    hooks:
+      - id: conventional-pre-commit
+        stages: [commit-msg]
+        args: [feat, fix, docs, style, refactor, perf, test, chore, build, ci]

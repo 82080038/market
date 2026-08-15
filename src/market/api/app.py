@@ -52,6 +52,9 @@ Endpoint inventory:
     PATCH /api/notifications/{id}/read  — mark notification as READ
     GET  /api/notifications/signals/latest — latest unread daily signal payload
     GET  /api/scheduler/status           — scheduler task status, cron jobs, pipeline phases
+    GET  /docs                           — Swagger UI (interactive API docs)
+    GET  /redoc                          — ReDoc API documentation
+    GET  /openapi.json                   — OpenAPI 3.x schema
 """
 
 from __future__ import annotations
@@ -64,9 +67,9 @@ from fastapi import FastAPI
 
 from market.api.routes_analysis import router as analysis_router
 from market.api.routes_automation import router as automation_router
-from market.api.routes_cosmos import router as cosmos_router
 from market.api.routes_backtest import autonomous_router as autonomous_backtest_router
 from market.api.routes_backtest import router as backtest_router
+from market.api.routes_cosmos import router as cosmos_router
 from market.api.routes_data import router as data_router
 from market.api.routes_delisting import router as delisting_router
 from market.api.routes_instruments import router as instruments_router
@@ -113,6 +116,7 @@ _HEAVY_TASKS = frozenset({
     "weekly_hrp_recompute", "weekly_drift_check",
     "strategy_assignment", "compute_astronacci_cycles",
     "macro_correlation_analysis", "export_parquet",
+    "backup_postgresql", "track_kpi",
     "recompute", "generate_signals", "startup_catchup",
 })
 
@@ -178,6 +182,9 @@ def create_app() -> FastAPI:
         title="Market API",
         description="Single-user capital market decision-support API.",
         version="0.1.0",
+        docs_url="/docs",
+        redoc_url="/redoc",
+        openapi_url="/openapi.json",
     )
 
     app.include_router(system_router)

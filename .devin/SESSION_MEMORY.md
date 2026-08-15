@@ -1,5 +1,98 @@
 # Session Memory — Pustaka Pasar Modal
 
+## Checkpoint Sesi 2026-08-16 — Quick Wins Implementation (Audit Gap B)
+
+- **Alasan:** Implementasi 5 quick wins dari AUDIT-KAPABILITAS-GAP-2026-08-16.md section B.
+- **Topik aktif:** DSR integration, Swagger UI, pre-commit hooks, automated backup, KPI tracking.
+
+### Yang Selesai (5 Quick Wins)
+1. **DSR Integration** — `src/market/backtest/engine.py`:
+   - `BacktestEngine.run()` tambah param `n_trials` (default 1).
+   - `_compute_metrics()` panggil `deflated_sharpe_ratio()` dari `analysis.py` (lazy import, anti-circular).
+   - Metric `deflated_sharpe_ratio` selalu ada di result (0.0 jika n_trials=1).
+   - 3 test baru: `test_backtest_dsr_default_no_adjustment`, `test_backtest_dsr_with_multiple_trials`, metric check.
+2. **Swagger UI** — `src/market/api/app.py`:
+   - `create_app()` tambah `docs_url="/docs"`, `redoc_url="/redoc"`, `openapi_url="/openapi.json"`.
+   - Endpoint inventory docstring update.
+3. **Pre-commit Hooks** — `.pre-commit-config.yaml` (BARU):
+   - ruff (lint + format), mypy, pre-commit-hooks (whitespace, YAML, large files, private key),
+   - conventional-pre-commit (commit-msg: feat/fix/docs/style/refactor/perf/test/chore/build/ci).
+4. **Automated Backup PostgreSQL** — `scripts/backup_postgresql.sh` (BARU):
+   - pg_dump dengan kompresi, retention policy, OS-aware BACKUP_DIR default.
+   - Handle `postgresql://` (TCP) dan `postgresql+psycopg2:///db?host=socket` (Unix socket).
+   - Scheduler task `_task_backup_postgresql()` harian 19:35 WIB (setelah export_parquet).
+   - Tested: 648MB dump file berhasil dibuat (compress=1).
+5. **KPI Automated Tracking** — `scripts/track_kpi.py` (BARU):
+   - 19 KPI measurements (8 auto + 9 manual + 2 warn): Infrastructure, Data Quality, AI Learning, Decision Engine, Compliance.
+   - Persist ke `kpi_history` table (CREATE TABLE IF NOT EXISTS, no Alembic).
+   - Emit `app_notifications` alert jika KPI FAIL.
+   - Scheduler task `_task_track_kpi()` weekly Sabtu 13:30 WIB.
+   - Tested: 8 PASS, 2 WARN, 0 FAIL, 9 MANUAL, 0 ERROR.
+
+### File yang Diubah
+- `src/market/backtest/engine.py` — DSR integration (n_trials param, _compute_metrics)
+- `src/market/api/app.py` — Swagger UI (docs_url, redoc_url, openapi_url), _HEAVY_TASKS +2
+- `src/market/scheduler_tasks.py` — 2 task baru: _task_backup_postgresql, _task_track_kpi
+- `tests/test_backtest.py` — 3 test DSR baru
+- `tests/test_scheduler_tasks.py` — update count 24→26, ids +2
+- `tests/test_cli.py` — update "Total: 24 tasks"→"26 tasks"
+- `.env.example` — BACKUP_DIR, BACKUP_RETENTION_DAYS, BACKUP_FORMAT
+- `.pre-commit-config.yaml` (BARU) — ruff + mypy + pre-commit-hooks + conventional commits
+- `scripts/backup_postgresql.sh` (BARU) — pg_dump automation
+- `scripts/track_kpi.py` (BARU) — KPI tracking dengan kpi_history table
+- `docs/AUDIT-KAPABILITAS-GAP-2026-08-16.md` — section B rewrite dengan verifikasi batch
+
+### DB Table Baru
+- `kpi_history` (via CREATE TABLE IF NOT EXISTS di scripts/track_kpi.py, bukan Alembic):
+  id, measured_at, category, name, target, actual, status, detail, numeric_actual, numeric_target
+
+### Test Status
+- 383+ tests passed (test_cli, test_scheduler_tasks, test_backtest, test_backtest_analysis, test_api, test_notifications_api).
+- Full suite stopped at test_cli (fixed) — 383 passed before fix, 40 passed after fix.
+- Ruff: clean (1 pre-existing B023 di app.py scheduler loop closure, bukan dari perubahan ini).
+
+### Pending
+- Commit & push semua perubahan.
+- Install pre-commit hooks: `pre-commit install` (manual, user harus run).
+- Set BACKUP_DIR di .env ke path yang writable (saat ini default /media/petrick/Parquet tidak mounted).
+- Coverage gate 70% — perlu tambah test untuk modul low-coverage.
+
+## Checkpoint Sesi 2026-08-16 — Post-Sync GitHub: Analisis & Migrasi 0022+0023
+
+- **Alasan:** Setelah sync GitHub (5 commit baru, 85 file), analisis aplikasi & apply migrasi tertinggal.
+- **Topik aktif:** Database normalization (0022+0023), fix test suite port mismatch, fix audit script bug.
+
+### Yang Selesai
+- **Git sync:** Local `main` up-to-date dengan `origin/main` di `44e8fc3`.
+- **Migrasi 0022+0023 di-applied** ke DB lokal (alembic 0021→0023):
+  - Drop `broker`/`broker_bursa` (20 rows, data sudah di `brokers`).
+  - Merge `instrument_master` (1099 rows) → `instruments` (1066→1099 rows, +33 new).
+  - Merge `market_registry` (18 rows) → `exchanges` (18 rows, +7 kolom baru).
+  - Merge `market_calendar` (27K rows) → `exchange_holidays` (4609→7451 rows).
+  - Drop 9 prediction columns dari `stock_personality` (985 rows, sisa 7 kolom).
+  - 3 compatibility views dibuat: `instrument_master`, `market_registry`, `market_calendar`.
+  - Add FK constraints (NOT VALID) untuk 16 fact tables → `instruments(ticker)`.
+  - Fix migration bug: `COALESCE(im.created_at::timestamptz, now())` untuk 53 rows NULL created_at.
+- **conftest.py di-fix:** Load `.env` via python-dotenv, port fallback 5433→5432, handle socket URL (`?host=/var/run/postgresql`), cross-platform `pg_dump`/`psql` via `shutil.which`.
+- **`_audit_orm_vs_db.py` di-fix:** `psycopg2.connect(settings.database_url)` → `eng.raw_connection()` (handle SQLAlchemy URL format).
+- **AGENTS.md di-update:** Port 5433→5432, 90 tables→83 tables+5 views, alembic head 0023.
+- **Test suite:** 1827 passed, 15 skipped, 0 failed (813 detik). Coverage 64.47% (gate 70% — bukan test failure).
+- **ORM vs DB:** All match (0 mismatches setelah migrasi).
+
+### File yang Diubah
+- `alembic/versions/0022_normalize_duplicate_tables.py` — COALESCE fix untuk NULL created_at/updated_at
+- `tests/conftest.py` — load .env, socket URL, cross-platform pg_dump/psql, port 5432
+- `scripts/_audit_orm_vs_db.py` — use engine.raw_connection()
+- `AGENTS.md` — port 5432, 83 tables+5 views, alembic head 0023
+
+### Backup File Reference
+- `/media/petrick/DATA1/Projects/market/market_pg_dump.backup` (541 MB, alembic 0023) — backup pre-batch-scripts. Tidak di-restore karena DB lokal punya lebih banyak data (stock_prices 3.44M vs 3.24M) + 4 tabel batch scripts.
+
+### Pending
+- Commit & push perubahan (migration fix + conftest fix + AGENTS.md update).
+- Coverage gate 70% — perlu tambah test untuk modul low-coverage (scheduler_tasks 15%, pipelines/alerts 10%).
+- 8 ORM models tanpa tabel DB: `fx_rates`, `indeks_pasar`, `instrumen`, `model_performance_history`, `regulator`, `sektor`, `strategy_assignment`, `transaksi_investor`.
+
 ## Checkpoint Sesi 2026-08-10 — Migrasi SQLite → PostgreSQL
 
 - **Topik:** Migrasi database dari SQLite ke PostgreSQL (domino effect schema).

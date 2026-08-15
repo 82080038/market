@@ -12,6 +12,7 @@ from sqlalchemy import inspect as sqla_inspect
 
 from market.db.models import Base
 from market.config import settings
+from market.db.engine import get_engine
 
 logging.basicConfig(level=logging.INFO, format="%(levelname)s: %(message)s")
 logger = logging.getLogger(__name__)
@@ -32,7 +33,9 @@ for cls in list(Base.__subclasses__()):
             cols = {c.name for c in sub.__table__.columns}
             orm_tables[tbl] = cols
 
-conn = psycopg2.connect(settings.database_url)
+# Use raw connection from SQLAlchemy engine (handles SQLAlchemy URL format)
+eng = get_engine()
+conn = eng.raw_connection()
 cur = conn.cursor()
 
 # Get DB columns for each ORM table

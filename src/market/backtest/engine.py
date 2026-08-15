@@ -67,6 +67,7 @@ class BacktestEngine:
         strategy: Strategy,
         data: pd.DataFrame,
         ticker: str = "ASSET",
+        n_trials: int = 1,
     ) -> BacktestResult:
         """Run backtest on historical data.
 
@@ -74,6 +75,9 @@ class BacktestEngine:
             strategy: Strategy instance with generate_signals method.
             data: OHLCV DataFrame with columns: open, high, low, close, volume.
             ticker: Asset ticker for trade logging.
+            n_trials: Number of strategies tested in this experiment
+                (for Deflated Sharpe Ratio multiple-testing correction).
+                Default 1 = no multiple-testing adjustment.
 
         Returns:
             BacktestResult with equity curve, trades, and metrics.
@@ -162,7 +166,7 @@ class BacktestEngine:
             equity_curve, index=data.index[:len(equity_curve)],
         )
 
-        metrics = self._compute_metrics(equity_series, trades)
+        metrics = self._compute_metrics(equity_series, trades, n_trials=n_trials)
 
         return BacktestResult(
             equity_curve=equity_series,
@@ -174,8 +178,16 @@ class BacktestEngine:
         self,
         equity: pd.Series,
         trades: list[Trade] | None = None,
+        n_trials: int = 1,
     ) -> dict[str, float]:
-        """Compute performance metrics from equity curve."""
+        """Compute performance metrics from equity curve.
+
+        Args:
+            equity: Mark-to-market equity curve.
+            trades: Optional list of executed trades for win-rate calc.
+            n_trials: Number of strategies tested in this experiment
+                (for Deflated Sharpe Ratio). Default 1 = no adjustment.
+        """
         if equity.empty or len(equity) < 2:
             return {}
 
@@ -225,10 +237,32 @@ class BacktestEngine:
             if sells:
                 win_rate = wins / len(sells) * 100
 
+        # Deflated Sharpe Ratio (Bailey & López de Prado 2014)
+        # Adjusts Sharpe for multiple-testing bias and non-normality.
+        # Lazy import to avoid circular dependency (analysis imports engine).
+        dsr = 0.0
+        if n_trials > 1 and len(returns) >= 2 and returns.std() > 0:
+            try:
+                from market.backtest.analysis import deflated_sharpe_ratio
+
+                skew_val = float(returns.skew()) if len(returns) >= 3 else 0.0
+                kurt_val = float(returns.kurtosis()) + 3.0 if len(returns) >= 4 else 3.0
+                dsr = deflated_sharpe_ratio(
+                    sharpe=sharpe,
+                    n_trials=n_trials,
+                    sample_size=len(returns),
+                    skewness=skew_val,
+                    kurtosis=kurt_val,
+                )
+            except Exception:
+                # DSR is best-effort — never fail backtest on DSR error
+                dsr = 0.0
+
         return {
             "total_return_pct": round(total_return, 2),
             "annual_return_pct": round(annual_return, 2),
             "sharpe_ratio": round(sharpe, 3),
+            "deflated_sharpe_ratio": round(dsr, 4),
             "sortino_ratio": round(sortino, 3),
             "max_drawdown_pct": round(max_dd, 2),
             "win_rate_pct": round(win_rate, 2),

@@ -161,8 +161,8 @@ def upgrade() -> None:
             im.former_name::text,
             im.index_category::text,
             im.region::text,
-            im.created_at::timestamptz,
-            im.updated_at::timestamptz
+            COALESCE(im.created_at::timestamptz, now()),
+            COALESCE(im.updated_at::timestamptz, now())
         FROM instrument_master im
         WHERE NOT EXISTS (
             SELECT 1 FROM instruments i WHERE i.ticker = im.ticker::text

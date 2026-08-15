@@ -9,7 +9,7 @@ from market.scheduler_tasks import register_default_tasks
 def test_register_default_tasks_count():
     sched = DailyScheduler(persist=False)
     register_default_tasks(sched)
-    assert len(sched.tasks) == 24
+    assert len(sched.tasks) == 26
 
 
 def test_register_default_tasks_ids():
@@ -28,6 +28,8 @@ def test_register_default_tasks_ids():
         "macro_correlation_analysis", "compute_astronacci_cycles",
         # Added 2026-08-13: weekly scripts integrated to scheduler for catch-up
         "weekly_hrp_recompute", "weekly_drift_check",
+        # Added 2026-08-16: automated backup + KPI tracking (gap #3, #4)
+        "backup_postgresql", "track_kpi",
     }
 
 
@@ -50,7 +52,7 @@ def test_register_default_tasks_idempotent():
     register_default_tasks(sched)
     register_default_tasks(sched)
     # Re-registering overwrites, so count stays the same
-    assert len(sched.tasks) == 24
+    assert len(sched.tasks) == 26
 
 
 def test_register_default_tasks_order():

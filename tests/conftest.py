@@ -20,10 +20,19 @@ the schema via pg_dump rather than running alembic upgrade head.
 from __future__ import annotations
 
 import os
+import shutil
 import subprocess
+from urllib.parse import urlparse, parse_qs
 
 import pytest
 from sqlalchemy import create_engine, text
+
+# Load .env so DATABASE_URL is available (python-dotenv is a project dependency)
+try:
+    from dotenv import load_dotenv
+    load_dotenv()
+except ImportError:
+    pass
 
 
 # ── Constants ──────────────────────────────────────────────────────────────
@@ -32,17 +41,19 @@ def _test_db_url() -> str:
     """Build the test database URL from the production DATABASE_URL or default."""
     prod_url = os.environ.get("DATABASE_URL", "")
     if prod_url:
-        # Replace database name with market_test
-        if "/market" in prod_url:
-            return prod_url.rsplit("/market", 1)[0] + "/market_test"
-        base = prod_url.split("?")[0]
-        return base + "_test"
-    return "postgresql://petrick:market_dev@localhost:5433/market_test"
+        # Split URL and query string to preserve socket host params
+        base, _, query = prod_url.partition("?")
+        if "/market" in base:
+            test_base = base.rsplit("/market", 1)[0] + "/market_test"
+        else:
+            test_base = base + "_test"
+        return test_base + (f"?{query}" if query else "")
+    return "postgresql://petrick:market_dev@localhost:5432/market_test"
 
 
 def _prod_db_url() -> str:
     """Build the production database URL for schema source."""
-    return os.environ.get("DATABASE_URL", "postgresql://petrick:market_dev@localhost:5433/market")
+    return os.environ.get("DATABASE_URL", "postgresql://petrick:market_dev@localhost:5432/market")
 
 
 TEST_DB_URL = _test_db_url()
@@ -50,12 +61,17 @@ PROD_DB_URL = _prod_db_url()
 
 
 def _parse_pg_url(url: str) -> dict:
-    """Parse a PostgreSQL URL into connection params."""
-    from urllib.parse import urlparse
+    """Parse a PostgreSQL URL into connection params.
 
+    Handles both TCP URLs (postgresql://user:pass@host:port/db) and
+    socket URLs (postgresql+psycopg2:///db?host=/var/run/postgresql).
+    """
     parsed = urlparse(url)
+    query_params = parse_qs(parsed.query)
+    # Socket connections put host in query string (e.g. ?host=/var/run/postgresql)
+    socket_host = query_params.get("host", [None])[0]
     return {
-        "host": parsed.hostname or "localhost",
+        "host": parsed.hostname or socket_host or "localhost",
         "port": parsed.port or 5432,
         "user": parsed.username or "petrick",
         "password": parsed.password or "",
@@ -79,10 +95,14 @@ def _ensure_test_db():
     prod_params = _parse_pg_url(PROD_DB_URL)
 
     # Step 1: Create test database if missing
-    admin_url = (
-        f"postgresql://{test_params['user']}:{test_params['password']}"
-        f"@{test_params['host']}:{test_params['port']}/postgres"
-    )
+    # Build admin URL — handle socket connections (host is a path like /var/run/postgresql)
+    if test_params["host"].startswith("/"):
+        admin_url = f"postgresql+psycopg2:///postgres?host={test_params['host']}"
+    else:
+        admin_url = (
+            f"postgresql://{test_params['user']}:{test_params['password']}"
+            f"@{test_params['host']}:{test_params['port']}/postgres"
+        )
     admin_engine = create_engine(admin_url, isolation_level="AUTOCOMMIT")
     try:
         with admin_engine.connect() as conn:
@@ -116,8 +136,9 @@ def _ensure_test_db():
     # Step 3: If empty, clone schema from production via pg_dump
     if not schema_populated:
         print(f"[conftest] Cloning schema from {prod_params['dbname']} to {test_params['dbname']}...")
-        pg_dump = r"C:\Program Files\PostgreSQL\16\bin\pg_dump.exe"
-        psql = r"C:\Program Files\PostgreSQL\16\bin\psql.exe"
+        # Cross-platform: use PATH lookup, fallback to Windows default location
+        pg_dump = shutil.which("pg_dump") or r"C:\Program Files\PostgreSQL\16\bin\pg_dump.exe"
+        psql = shutil.which("psql") or r"C:\Program Files\PostgreSQL\16\bin\psql.exe"
 
         env = os.environ.copy()
         env["PGPASSWORD"] = prod_params["password"]

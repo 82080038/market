@@ -113,6 +113,29 @@ def test_backtest_metrics_computed():
     assert "sortino_ratio" in result.metrics
     assert "max_drawdown_pct" in result.metrics
     assert "annual_return_pct" in result.metrics
+    # DSR key always present (gap #1: DSR integration)
+    assert "deflated_sharpe_ratio" in result.metrics
+
+
+def test_backtest_dsr_default_no_adjustment():
+    """With n_trials=1 (default), DSR should be 0 (no multiple-testing)."""
+    engine = BacktestEngine(initial_capital=100_000_000)
+    strategy = BuyHoldStrategy()
+    data = _make_ohlcv(100, "up")
+    result = engine.run(strategy, data, "TEST.JK")
+    # Default n_trials=1 → DSR not computed (stays 0.0)
+    assert result.metrics["deflated_sharpe_ratio"] == 0.0
+
+
+def test_backtest_dsr_with_multiple_trials():
+    """With n_trials>1, DSR should be computed (may be negative if Sharpe low)."""
+    engine = BacktestEngine(initial_capital=100_000_000)
+    strategy = BuyHoldStrategy()
+    data = _make_ohlcv(100, "up")
+    result = engine.run(strategy, data, "TEST.JK", n_trials=10)
+    # DSR is computed — value depends on Sharpe, but key must exist
+    assert "deflated_sharpe_ratio" in result.metrics
+    assert isinstance(result.metrics["deflated_sharpe_ratio"], float)
 
 
 def test_backtest_ma_crossover():
