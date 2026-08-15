@@ -16,8 +16,7 @@ EXTERNAL_BASE="${EXTERNAL_BASE:-/media/petrick/Parquet/projects/market}"
 
 # Items to restore: destination path (relative to project) ← source subfolder
 declare -a RESTORE_ITEMS=(
-    "data/market_research.db:database"
-    "data/market_paper.db:database"
+    # SQLite legacy DBs (market_research.db & market_paper.db sudah tidak ada)
     "data/market_live.db:database"
     "data/dataset-saham-idx:dataset-saham-idx"
     "data/backups:database/backups"

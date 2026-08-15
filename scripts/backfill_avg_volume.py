@@ -4,8 +4,8 @@ Kolom avg_volume saat ini 100% NULL. Script ini menghitung
 AVG(volume) per ticker dari tabel ohlcv dan UPDATE stock_personality.
 
 Usage:
-  DB_PATH=data/market_research.db uv run python scripts/backfill_avg_volume.py
-  DB_PATH=data/market_research.db uv run python scripts/backfill_avg_volume.py --dry-run
+  DATABASE_URL=postgresql://petrick:market_dev@localhost:5433/market uv run python scripts/backfill_avg_volume.py
+  DATABASE_URL=postgresql://petrick:market_dev@localhost:5433/market uv run python scripts/backfill_avg_volume.py --dry-run
 """
 
 from __future__ import annotations
@@ -24,7 +24,8 @@ logger = logging.getLogger(__name__)
 
 
 def get_db_path() -> str:
-    return os.environ.get("DB_PATH", "data/market_research.db")
+    from market.config import settings as _settings
+    return os.environ.get("DB_PATH") or _settings.db_path
 
 
 def main() -> None:

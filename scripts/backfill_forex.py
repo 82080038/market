@@ -90,7 +90,7 @@ def get_engine():
     if db_url.startswith("postgresql"):
         return create_engine(db_url)
     else:
-        db_path = settings.db_path or "data/market_research.db"
+        db_path = settings.db_path
         return create_engine(f"sqlite:///{db_path}")
 
 

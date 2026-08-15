@@ -23,8 +23,7 @@ fi
 
 # Items to sync: source path (relative to project) → destination subfolder
 declare -a SYNC_ITEMS=(
-    "data/market_research.db:database"
-    "data/market_paper.db:database"
+    # SQLite legacy DBs (market_research.db & market_paper.db sudah tidak ada)
     "data/market_live.db:database"
     "data/dataset-saham-idx:dataset-saham-idx"
     "data/backups:database/backups"

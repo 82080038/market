@@ -45,13 +45,13 @@ Pipeline 4 modul:
 
 Usage:
     # Jalankan manual (dry-run, tanpa insert DB):
-    DB_PATH=data/market_research.db python scripts/daily_signal_cron.py --dry-run
+    DATABASE_URL=postgresql://petrick:market_dev@localhost:5433/market python scripts/daily_signal_cron.py --dry-run
 
     # Jalankan dengan notifikasi DB:
-    DB_PATH=data/market_research.db python scripts/daily_signal_cron.py
+    DATABASE_URL=postgresql://petrick:market_dev@localhost:5433/market python scripts/daily_signal_cron.py
 
     # Override config & modal:
-    DB_PATH=data/market_research.db \\
+    DATABASE_URL=postgresql://petrick:market_dev@localhost:5433/market \\
     PORTFOLIO_CAPITAL=100000000 \\
     python scripts/daily_signal_cron.py \\
         --config best_ticker_quant_config.json \\
@@ -60,7 +60,7 @@ Usage:
 Crontab (crontab -e):
     # Jalankan setiap hari Senin-Jumat pukul 16:15 WIB (09:15 UTC)
     # IDX close 16:00 WIB, beri 15 menit untuk EOD data settlement
-    15 9 * * 1-5 DB_PATH=/home/petrick/projects/market/data/market_research.db \\
+    15 9 * * 1-5 DATABASE_URL=postgresql://petrick:market_dev@localhost:5433/market \\
         PORTFOLIO_CAPITAL=100000000 \\
         /home/petrick/projects/market/.venv/bin/python3 \\
         /home/petrick/projects/market/scripts/daily_signal_cron.py \\
@@ -1682,7 +1682,7 @@ def main() -> None:
                         default="final_portfolio_verdict.json",
                         help="Path ke final_portfolio_verdict.json (filter sekunder)")
     parser.add_argument("--db", type=str, default=None,
-                        help="Path DB (default: env DB_PATH atau data/market_research.db)")
+                        help="Path DB (default: env DB_PATH atau settings.db_path dari .env)")
     parser.add_argument("--lookback", type=int, default=DEFAULT_LOOKBACK_DAYS,
                         help=f"Lookback hari bursa (default: {DEFAULT_LOOKBACK_DAYS})")
     parser.add_argument("--capital", type=float, default=None,
@@ -1698,7 +1698,8 @@ def main() -> None:
     load_env(str(project_root / ".env"))
 
     # Resolve paths
-    db_path = args.db or os.environ.get("DB_PATH", "data/market_research.db")
+    from market.config import settings as _settings
+    db_path = args.db or os.environ.get("DB_PATH") or _settings.db_path
     capital = args.capital or float(
         os.environ.get("PORTFOLIO_CAPITAL", DEFAULT_PORTFOLIO_CAPITAL)
     )

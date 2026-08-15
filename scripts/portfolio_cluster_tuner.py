@@ -28,7 +28,7 @@ optimasi per-ticker (bukan global) untuk mendorong Score >= 3.5 (KEEP):
       Hitung ulang Sharpe, Alpha, MaxDD, Score Card untuk portofolio ensemble.
 
 Usage:
-    DB_PATH=data/market_research.db python scripts/portfolio_cluster_tuner.py \
+    DATABASE_URL=postgresql://petrick:market_dev@localhost:5433/market python scripts/portfolio_cluster_tuner.py \
         [--tickers BBCA.JK,BBRI.JK] [--limit 20] \
         [--n-calls 25] [--output ticker_specific_config.json]
 

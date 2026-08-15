@@ -40,7 +40,7 @@ Pipeline:
   6. Output: weighted feature matrix + drift report
 
 Usage:
-    DB_PATH=data/market_research.db python scripts/feature_drift_remediation.py \
+    DATABASE_URL=postgresql://petrick:market_dev@localhost:5433/market python scripts/feature_drift_remediation.py \
         [--tickers BBCA,BBRI,TLKM] [--lambda 0.02] [--ref-end 2025-06-30] \
         [--cur-start 2025-07-01] [--output drift_remediation_report.json]
 

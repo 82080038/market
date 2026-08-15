@@ -15,7 +15,8 @@ import pandas as pd
 logging.basicConfig(level=logging.INFO, format="%(levelname)s: %(message)s")
 logger = logging.getLogger(__name__)
 
-DB_PATH = "data/market_research.db"
+from market.config import settings as _settings
+DB_PATH = _settings.db_path
 EXPORT_BASE = Path("E:/pustaka_data/archive/tables")
 
 

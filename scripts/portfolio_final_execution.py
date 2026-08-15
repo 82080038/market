@@ -30,7 +30,7 @@ Pipeline 4 modul:
       * Simpan verdict ke ``final_portfolio_verdict.json``.
 
 Usage:
-    DB_PATH=data/market_research.db python scripts/portfolio_final_execution.py \
+    DATABASE_URL=postgresql://petrick:market_dev@localhost:5433/market python scripts/portfolio_final_execution.py \
         [--config best_ticker_quant_config.json] \
         [--output final_portfolio_verdict.json] \
         [--oos-start 2024-01-01] [--oos-end 2026-08-31]
@@ -1037,14 +1037,15 @@ def main() -> None:
                         default="final_portfolio_verdict.json",
                         help="Output JSON verdict file")
     parser.add_argument("--db", type=str, default=None,
-                        help="Path DB (default: env DB_PATH atau data/market_research.db)")
+                        help="Path DB (default: env DB_PATH atau settings.db_path dari .env)")
     parser.add_argument("--oos-start", type=str, default="2024-01-01",
                         help="OOS period start date (default: 2024-01-01)")
     parser.add_argument("--oos-end", type=str, default="2026-08-31",
                         help="OOS period end date (default: 2026-08-31)")
     args = parser.parse_args()
 
-    db_path = args.db or os.environ.get("DB_PATH", "data/market_research.db")
+    from market.config import settings as _settings
+    db_path = args.db or os.environ.get("DB_PATH") or _settings.db_path
 
     if args.tickers:
         tickers = [t.strip() for t in args.tickers.split(",") if t.strip()]

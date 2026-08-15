@@ -6,7 +6,7 @@ Trains MultiFactorModel for top liquid tickers and saves:
 - Sample count
 
 Usage:
-    DB_PATH=data/market_research.db python scripts/persist_ai_weights.py [--tickers AAA,BBB] [--limit 50]
+    DATABASE_URL=postgresql://petrick:market_dev@localhost:5433/market python scripts/persist_ai_weights.py [--tickers AAA,BBB] [--limit 50]
 """
 
 from __future__ import annotations

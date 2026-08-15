@@ -13,8 +13,8 @@ Data already migrated to main tables:
 Also recreates broker_bursa without FK to bursa_efek (keeps data).
 
 Usage:
-  DB_PATH=data/market_research.db uv run python scripts/consolidate_redundant_tables.py
-  DB_PATH=data/market_research.db uv run python scripts/consolidate_redundant_tables.py --dry-run
+  DATABASE_URL=postgresql://petrick:market_dev@localhost:5433/market uv run python scripts/consolidate_redundant_tables.py
+  DATABASE_URL=postgresql://petrick:market_dev@localhost:5433/market uv run python scripts/consolidate_redundant_tables.py --dry-run
 """
 
 from __future__ import annotations
@@ -41,7 +41,8 @@ DROP_TABLES = [
 
 
 def get_db_path() -> str:
-    return os.environ.get("DB_PATH", "data/market_research.db")
+    from market.config import settings as _settings
+    return os.environ.get("DB_PATH") or _settings.db_path
 
 
 def migrate_fx_rates(conn: sqlite3.Connection) -> int:

@@ -40,7 +40,7 @@ DataFrame dengan kolom:
 Siap dimasukkan ke Ablation Study (pustaka/96 §3).
 
 Usage:
-    DB_PATH=data/market_research.db python scripts/signal_matrix_alignment.py \
+    DATABASE_URL=postgresql://petrick:market_dev@localhost:5433/market python scripts/signal_matrix_alignment.py \
         [--tickers BBCA,BBRI,TLKM] [--limit 20] [--ffill-limit 3] \
         [--output signal_matrix.parquet]
 

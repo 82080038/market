@@ -1,7 +1,7 @@
 """Database Inspector — Audit menyeluruh properti & struktur SQLite pasar modal.
 
 Skrip mandiri (standalone) untuk DBA/Lead Data Engineer. Membaca
-data/market_research.db dan mengekstrak metrik kritikal:
+database (PostgreSQL via DATABASE_URL atau SQLite via DB_PATH) dan mengekstrak metrik kritikal:
 
   1. Schema & Table Discovery  — daftar tabel + kolom & Dtype
   2. Data Coverage & Ticker Completeness — row count per tabel & per ticker,
@@ -18,8 +18,8 @@ mengimpor modul proyek agar benar-benar mandiri.
 
 Usage:
     python scripts/db_inspector.py
-    DB_PATH=data/market_research.db python scripts/db_inspector.py
-    python scripts/db_inspector.py --db data/market_research.db \
+    DATABASE_URL=postgresql://petrick:market_dev@localhost:5433/market python scripts/db_inspector.py
+    python scripts/db_inspector.py --db data/market_live.db \
         --tickers BBCA.JK,BBRI.JK --limit 20 \
         --output database_profile_report.json
 
@@ -691,7 +691,7 @@ def main() -> int:
     )
     parser.add_argument(
         "--db", type=str, default=None,
-        help="Path file SQLite (default: env DB_PATH atau <project>/data/market_research.db)",
+        help="Path file SQLite (default: env DB_PATH atau settings.db_path dari .env)",
     )
     parser.add_argument(
         "--tickers", type=str, default=None,
@@ -707,11 +707,9 @@ def main() -> int:
     )
     args = parser.parse_args()
 
-    # Resolusi path DB: arg > env DB_PATH > <project_root>/data/market_research.db
-    # project_root = parent dari direktori scripts/
-    project_root = Path(__file__).resolve().parent.parent
-    db_path_str = args.db or os.environ.get("DB_PATH") or \
-        str(project_root / "data" / "market_research.db")
+    # Resolusi path DB: arg > env DB_PATH > settings.db_path (dari .env)
+    from market.config import settings as _settings
+    db_path_str = args.db or os.environ.get("DB_PATH") or _settings.db_path
     db_path = Path(db_path_str)
 
     if not db_path.exists():

@@ -9,7 +9,7 @@ Usage:
     python scripts/smoke_test_data_fetch.py
 
     # SQLite
-    DB_PATH=data/market_research.db python scripts/smoke_test_data_fetch.py
+    DATABASE_URL=postgresql://petrick:market_dev@localhost:5433/market python scripts/smoke_test_data_fetch.py
 
     # Custom tickers
     python scripts/smoke_test_data_fetch.py --tickers BBCA.JK,BBRI.JK

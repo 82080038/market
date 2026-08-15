@@ -12,7 +12,7 @@ Strategy:
   timeline analysis, derived from real OHLCV volume and real broker names.
 
 Usage:
-  DB_PATH=data/market_research.db uv run python scripts/backfill_broker_transactions.py \
+  DATABASE_URL=postgresql://petrick:market_dev@localhost:5433/market uv run python scripts/backfill_broker_transactions.py \
       --pg-url "postgresql://petrick:market_dev@localhost:5432/market" \
       --start-date 2024-01-01 --top-tickers 50
 """
@@ -35,7 +35,8 @@ logger = logging.getLogger(__name__)
 
 
 def get_db_path() -> str:
-    return os.environ.get("DB_PATH", "data/market_research.db")
+    from market.config import settings as _settings
+    return os.environ.get("DB_PATH") or _settings.db_path
 
 
 def sql_escape(val: str | None) -> str:

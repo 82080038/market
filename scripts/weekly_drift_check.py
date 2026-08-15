@@ -23,7 +23,8 @@ logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(levelname)s] %(me
 logger = logging.getLogger(__name__)
 
 PROJECT_DIR = Path(__file__).resolve().parent.parent
-DB_PATH = PROJECT_DIR / "data" / "market_research.db"
+from market.config import settings as _settings
+DB_PATH = _settings.db_path
 LOG_DIR = PROJECT_DIR / "logs"
 
 DRIFT_FEATURES = ["rsi", "macd", "atr14", "bb_lower", "volume_sma20"]

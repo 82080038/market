@@ -250,7 +250,7 @@ def save_to_db(
 
 def main() -> None:
     parser = argparse.ArgumentParser(description="Batch compute predictions for all tickers")
-    parser.add_argument("--db", default="data/market_research.db", help="Database path")
+    parser.add_argument("--db", default=None, help="Database path (default: env DB_PATH atau settings.db_path)")
     parser.add_argument("--tickers", default="", help="Comma-separated tickers (default: all)")
     parser.add_argument("--limit", type=int, default=0, help="Limit number of tickers (0=all)")
     parser.add_argument("--as-of", default="", help="As-of date (default: latest OHLCV date)")
@@ -258,8 +258,8 @@ def main() -> None:
     parser.add_argument("--skip-pred", action="store_true", help="Skip prediction computation")
     args = parser.parse_args()
 
-    db_path = args.db
     from market.config import settings as _settings
+    db_path = args.db or os.environ.get("DB_PATH") or _settings.db_path
     if _settings.db_backend == "postgresql":
         import psycopg2
         from market.db.raw import _PgConnWrapper

@@ -7,7 +7,7 @@ Extends audit_ai_utility.py with:
   4. Automated AI Utility Score Card (KEEP / MARGINAL / REMOVE verdict per component)
 
 Usage:
-    DB_PATH=data/market_research.db python scripts/audit_ai_advanced.py [--tickers BBCA,BBRI] [--limit 20]
+    DATABASE_URL=postgresql://petrick:market_dev@localhost:5433/market python scripts/audit_ai_advanced.py [--tickers BBCA,BBRI] [--limit 20]
 
 Requires: scipy, statsmodels, pandas, numpy, lightgbm
 """

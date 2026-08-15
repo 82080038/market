@@ -8,7 +8,7 @@ Classification scheme:
 Also sets sector for sectoral indices (maps to equity sector names).
 
 Usage:
-    DB_PATH=data/market_research.db python scripts/classify_instruments.py
+    DATABASE_URL=postgresql://petrick:market_dev@localhost:5433/market python scripts/classify_instruments.py
 """
 
 from __future__ import annotations

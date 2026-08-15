@@ -98,6 +98,23 @@ class Settings(BaseSettings):
         return f"sqlite:///{self.resolved_db_path}"
 
     @property
+    def script_db_path(self) -> str | None:
+        """Resolve DB path for legacy scripts that accept --db / DB_PATH.
+
+        Priority: DATABASE_URL (PostgreSQL) > DB_PATH env > settings.db_path.
+        Returns None if no DB is configured (caller should error or use PG).
+
+        Scripts that already check ``settings.db_backend`` can ignore the
+        return value when it's None — ``open_db()`` / ``get_raw_connection()``
+        will route to PostgreSQL automatically.
+        """
+        if self.database_url:
+            return None  # PostgreSQL active; db_path not needed
+        if self.db_path:
+            return str(self.db_path)
+        return None
+
+    @property
     def live_approved(self) -> bool:
         """Return True only if a non-empty live approval token file exists."""
         if not self.is_live:

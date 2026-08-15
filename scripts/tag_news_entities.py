@@ -4,7 +4,7 @@ Matches news headlines against IDX ticker codes and company names.
 Updates the `entities` field in the news table with comma-separated tickers.
 
 Usage:
-    DB_PATH=data/market_research.db python scripts/tag_news_entities.py
+    DATABASE_URL=postgresql://petrick:market_dev@localhost:5433/market python scripts/tag_news_entities.py
 """
 
 from __future__ import annotations

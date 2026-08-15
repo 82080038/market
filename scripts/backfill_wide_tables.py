@@ -8,7 +8,8 @@ import sys
 import time
 from pathlib import Path
 
-DB_PATH = Path(__file__).resolve().parent.parent / "data" / "market_research.db"
+from market.config import settings as _settings
+DB_PATH = _settings.db_path
 
 WIDE_COLUMNS = [
     "ma20", "ma50", "rsi", "macd", "macd_signal",

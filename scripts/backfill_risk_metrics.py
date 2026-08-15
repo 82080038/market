@@ -4,7 +4,7 @@ Computes risk metrics from OHLCV daily returns using a 252-day rolling window.
 Uses historical simulation method for VaR/CVaR.
 
 Usage:
-    DB_PATH=data/market_research.db python scripts/backfill_risk_metrics.py [--tickers AAA,BBB] [--batch-size 200]
+    DATABASE_URL=postgresql://petrick:market_dev@localhost:5433/market python scripts/backfill_risk_metrics.py [--tickers AAA,BBB] [--batch-size 200]
 """
 
 from __future__ import annotations

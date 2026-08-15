@@ -39,7 +39,7 @@ bukan pada data input, melainkan pada **arsitektur pengambilan keputusan
       (KEEP/MARGINAL/REMOVE). Target promosi: Sharpe > 1.0, Alpha > 0.
 
 Usage:
-    DB_PATH=data/market_research.db python scripts/alpha_rescue_pipeline.py \
+    DATABASE_URL=postgresql://petrick:market_dev@localhost:5433/market python scripts/alpha_rescue_pipeline.py \
         [--tickers BBCA,BBRI] [--limit 20] [--output alpha_rescue_report.json]
 
 Requires: scipy, pandas, numpy, lightgbm  (statsmodels optional)

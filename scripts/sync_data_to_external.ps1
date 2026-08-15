@@ -41,8 +41,7 @@ $MODE = if ($Move) { "move" } else { "copy" }
 
 # Items to sync: source path (relative to project) -> destination subfolder
 $SYNC_ITEMS = @(
-    @{ Src = "data\market_research.db";        Dest = "database" }
-    @{ Src = "data\market_paper.db";           Dest = "database" }
+    # SQLite legacy DBs (market_research.db & market_paper.db sudah tidak ada)
     @{ Src = "data\market_live.db";            Dest = "database" }
     @{ Src = "data\dataset-saham-idx";         Dest = "dataset-saham-idx" }
     @{ Src = "data\backups";                   Dest = "database\backups" }

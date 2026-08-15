@@ -13,8 +13,8 @@ Tables populated:
  10. transaksi_investor — placeholder: no IDX transaction API, insert 0 rows
 
 Usage:
-  DB_PATH=data/market_research.db uv run python scripts/populate_ghost_tables.py
-  DB_PATH=data/market_research.db uv run python scripts/populate_ghost_tables.py --dry-run
+  DATABASE_URL=postgresql://petrick:market_dev@localhost:5433/market uv run python scripts/populate_ghost_tables.py
+  DATABASE_URL=postgresql://petrick:market_dev@localhost:5433/market uv run python scripts/populate_ghost_tables.py --dry-run
 """
 
 from __future__ import annotations
@@ -61,7 +61,8 @@ BROKER_NAMES = {
 
 
 def get_db_path() -> str:
-    return os.environ.get("DB_PATH", "data/market_research.db")
+    from market.config import settings as _settings
+    return os.environ.get("DB_PATH") or _settings.db_path
 
 
 def populate_broker(conn: sqlite3.Connection) -> int:

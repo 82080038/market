@@ -162,7 +162,7 @@ class TradingSimulator:
         self,
         tickers: list[str],
         initial_capital: float = INITIAL_CAPITAL,
-        db_path: str = "data/market_research.db",
+        db_path: str | None = None,
     ) -> None:
         self.tickers = tickers
         self.initial_capital = initial_capital
@@ -784,7 +784,7 @@ def main() -> None:
     parser = argparse.ArgumentParser(description="Autonomous trading simulation 2025-2026")
     parser.add_argument("--tickers", default="", help="Comma-separated tickers")
     parser.add_argument("--capital", type=float, default=INITIAL_CAPITAL, help="Initial capital in IDR")
-    parser.add_argument("--db", default="data/market_research.db", help="Database path")
+    parser.add_argument("--db", default=None, help="Database path (default: env DB_PATH atau settings.db_path)")
     parser.add_argument("--output", default="data/autonomous_trading_report.json", help="Output report path")
     args = parser.parse_args()
 
@@ -799,7 +799,9 @@ def main() -> None:
     logger.info("Max positions: %d | Rebalance: every %d days", MAX_POSITIONS, REBALANCE_FREQ)
     logger.info("")
 
-    sim = TradingSimulator(tickers=tickers, initial_capital=args.capital, db_path=args.db)
+    from market.config import settings as _settings
+    db_path = args.db or os.environ.get("DB_PATH") or _settings.db_path
+    sim = TradingSimulator(tickers=tickers, initial_capital=args.capital, db_path=db_path)
     report = sim.run()
 
     # Save report

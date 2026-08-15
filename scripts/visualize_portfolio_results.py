@@ -20,7 +20,7 @@ Membaca output dari ``portfolio_final_execution.py`` dan menampilkan 4 visualisa
 Usage:
     python scripts/visualize_portfolio_results.py \\
         [--input final_portfolio_verdict.json] \\
-        [--db data/market_research.db] \\
+        [--db data/market_live.db] \\
         [--no-show]
 
 Requires: matplotlib, pandas, numpy
@@ -51,7 +51,7 @@ if _scripts_dir not in sys.path:
 
 # ── Constants ──────────────────────────────────────────────────────────────
 DEFAULT_VERDICT_PATH = "final_portfolio_verdict.json"
-DEFAULT_DB_PATH = "data/market_research.db"
+DEFAULT_DB_PATH = None  # Resolved at runtime via settings.db_path
 TRADING_DAYS = 252
 RISK_FREE_RATE = 0.0
 
@@ -698,7 +698,7 @@ def main() -> None:
             "Contoh:\n"
             "  python scripts/visualize_portfolio_results.py\n"
             "  python scripts/visualize_portfolio_results.py "
-            "--input final_portfolio_verdict.json --db data/market_research.db\n"
+            "--input final_portfolio_verdict.json --db data/market_live.db\n"
             "  python scripts/visualize_portfolio_results.py --no-show "
             "--save dashboard.png"
         ),
@@ -709,7 +709,7 @@ def main() -> None:
     )
     parser.add_argument(
         "--db", type=str, default=None,
-        help="Path DB untuk fallback benchmark (default: env DB_PATH atau data/market_research.db)",
+        help="Path DB untuk fallback benchmark (default: env DB_PATH atau settings.db_path)",
     )
     parser.add_argument(
         "--save", type=str, default=None,
@@ -732,7 +732,8 @@ def main() -> None:
         matplotlib.use("Agg")
 
     # Resolve DB path
-    db_path = args.db or os.environ.get("DB_PATH", DEFAULT_DB_PATH)
+    from market.config import settings as _settings
+    db_path = args.db or os.environ.get("DB_PATH") or _settings.db_path
 
     # Load verdict
     try:

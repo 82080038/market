@@ -32,8 +32,8 @@ $ErrorActionPreference = 'Stop'
 # ── Config ──────────────────────────────────────────────────────────
 # Items to restore: destination path (relative to project) <- source subfolder
 $RESTORE_ITEMS = @(
-    @{ Dest = "data\market_research.db";  Src = "database" }
-    @{ Dest = "data\market_paper.db";     Src = "database" }
+    # SQLite legacy DBs (market_research.db & market_paper.db sudah tidak ada,
+    # tapi tetap restore jika backup ada di external drive untuk backward compat)
     @{ Dest = "data\market_live.db";      Src = "database" }
     @{ Dest = "data\dataset-saham-idx";   Src = "dataset-saham-idx" }
     @{ Dest = "data\backups";             Src = "database\backups" }

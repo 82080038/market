@@ -42,7 +42,7 @@ Desain memori (DB 9.23 GB):
     setelah diproses — tidak menahan seluruh tabel di RAM.
 
 Usage:
-    DB_PATH=data/market_research.db python scripts/portfolio_data_remediation.py \
+    DATABASE_URL=postgresql://petrick:market_dev@localhost:5433/market python scripts/portfolio_data_remediation.py \
         [--tickers KPIG.JK,TRIM.JK] [--limit 20] [--n-calls 20] \
         [--output best_ticker_quant_config.json] [--dry-run]
 
@@ -1402,13 +1402,14 @@ def main() -> None:
                         default="best_ticker_quant_config.json",
                         help="Output JSON config per ticker")
     parser.add_argument("--db", type=str, default=None,
-                        help="Path DB (default: env DB_PATH atau data/market_research.db)")
+                        help="Path DB (default: env DB_PATH atau settings.db_path dari .env)")
     parser.add_argument("--dry-run", action="store_true",
                         help="Hanya jalankan Module A+B (remediation+cluster), "
                              "skip tuning & validation")
     args = parser.parse_args()
 
-    db_path = args.db or os.environ.get("DB_PATH", "data/market_research.db")
+    from market.config import settings as _settings
+    db_path = args.db or os.environ.get("DB_PATH") or _settings.db_path
 
     if args.tickers:
         tickers = [t.strip() for t in args.tickers.split(",") if t.strip()]

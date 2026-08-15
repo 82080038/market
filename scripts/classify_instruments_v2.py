@@ -14,7 +14,7 @@ Commodity-driven subsectors:
   Agri-PalmOil (for Consumer Non-Cyclicals plantation companies)
 
 Usage:
-    python scripts/classify_instruments_v2.py [--db data/market_research.db] [--dry-run]
+    python scripts/classify_instruments_v2.py [--db data/market_live.db] [--dry-run]
 """
 from __future__ import annotations
 
@@ -329,13 +329,15 @@ def run_classification(db_path: str, dry_run: bool = False) -> None:
 
 def main() -> None:
     parser = argparse.ArgumentParser(description="Classify instruments into 4 ML-ready segments")
-    parser.add_argument("--db", default="data/market_research.db", help="Database path")
+    parser.add_argument("--db", default=None, help="Database path (default: env DB_PATH atau settings.db_path)")
     parser.add_argument("--dry-run", action="store_true", help="Print stats without updating DB")
     args = parser.parse_args()
 
-    logger.info("Database: %s", args.db)
+    from market.config import settings as _settings
+    db_path = args.db or os.environ.get("DB_PATH") or _settings.db_path
+    logger.info("Database: %s", db_path)
     logger.info("Dry run: %s", args.dry_run)
-    run_classification(args.db, dry_run=args.dry_run)
+    run_classification(db_path, dry_run=args.dry_run)
 
 
 if __name__ == "__main__":

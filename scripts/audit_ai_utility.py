@@ -7,7 +7,7 @@ Implements the 4-pillar audit framework from pustaka/96-ai-ml-audit-framework.md
   4. Feature Importance & Drift Audit
 
 Usage:
-    DB_PATH=data/market_research.db python scripts/audit_ai_utility.py [--tickers BBCA,BBRI] [--limit 20]
+    DATABASE_URL=postgresql://petrick:market_dev@localhost:5433/market python scripts/audit_ai_utility.py [--tickers BBCA,BBRI] [--limit 20]
 
 Output: JSON report + console summary.
 """

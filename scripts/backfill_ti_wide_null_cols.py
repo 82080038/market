@@ -15,8 +15,8 @@ Strategi:
   4. Batch UPDATE ke technical_indicators_wide
 
 Usage:
-  DB_PATH=data/market_research.db uv run python scripts/backfill_ti_wide_null_cols.py
-  DB_PATH=data/market_research.db uv run python scripts/backfill_ti_wide_null_cols.py --dry-run
+  DATABASE_URL=postgresql://petrick:market_dev@localhost:5433/market uv run python scripts/backfill_ti_wide_null_cols.py
+  DATABASE_URL=postgresql://petrick:market_dev@localhost:5433/market uv run python scripts/backfill_ti_wide_null_cols.py --dry-run
 """
 
 from __future__ import annotations
@@ -40,7 +40,8 @@ logger = logging.getLogger(__name__)
 
 def get_db_path() -> str:
     import os
-    db_path = os.environ.get("DB_PATH", "data/market_research.db")
+    from market.config import settings as _settings
+    db_path = os.environ.get("DB_PATH") or _settings.db_path
     return db_path
 
 

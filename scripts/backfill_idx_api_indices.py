@@ -8,8 +8,8 @@ Only inserts rows for tickers that don't already have OHLCV data.
 Does NOT overwrite existing yfinance data (^JKSE, ^JKLQ45, etc.).
 
 Usage:
-    DB_PATH=data/market_research.db python scripts/backfill_idx_api_indices.py
-    DB_PATH=data/market_research.db python scripts/backfill_idx_api_indices.py --start-year 2024
+    DATABASE_URL=postgresql://petrick:market_dev@localhost:5433/market python scripts/backfill_idx_api_indices.py
+    DATABASE_URL=postgresql://petrick:market_dev@localhost:5433/market python scripts/backfill_idx_api_indices.py --start-year 2024
 """
 
 from __future__ import annotations

@@ -24,7 +24,7 @@ mengotomatisasi 4 jalur optimasi untuk mencapai promosi KEEP (Score >= 3.5):
       penyimpanan best_quant_config.json.
 
 Usage:
-    DB_PATH=data/market_research.db python scripts/alpha_hyper_tuner.py \
+    DATABASE_URL=postgresql://petrick:market_dev@localhost:5433/market python scripts/alpha_hyper_tuner.py \
         [--tickers BBCA.JK,BBRI.JK] [--limit 20] \
         [--mode grid|bayesian] [--output best_quant_config.json]
 

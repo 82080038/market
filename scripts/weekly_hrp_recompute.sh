@@ -9,7 +9,8 @@ set -euo pipefail
 
 PROJECT_DIR="/home/petrick/projects/market"
 PYTHON="${PROJECT_DIR}/.venv/bin/python3"
-DB_PATH="${PROJECT_DIR}/data/market_research.db"
+# DB_PATH tidak lagi hardcoded ke market_research.db (sudah migrasi ke PostgreSQL).
+# Set DATABASE_URL di .env untuk koneksi PostgreSQL.
 LOG_DIR="${PROJECT_DIR}/logs"
 LOG_FILE="${LOG_DIR}/weekly_hrp_recompute.log"
 
@@ -20,9 +21,7 @@ echo "Weekly HRP Recompute — $(date)" | tee -a "${LOG_FILE}"
 echo "========================================" | tee -a "${LOG_FILE}"
 
 # Run fast_portfolio_pipeline with top 100 tickers by data volume
-# (917 eligible tickers would work but 100 is sufficient for HRP diversification
-# and completes in ~65 seconds vs ~10 minutes for all)
-DB_PATH="${DB_PATH}" "${PYTHON}" "${PROJECT_DIR}/scripts/fast_portfolio_pipeline.py" \
+"${PYTHON}" "${PROJECT_DIR}/scripts/fast_portfolio_pipeline.py" \
     --limit 100 \
     2>&1 | tee -a "${LOG_FILE}"
 

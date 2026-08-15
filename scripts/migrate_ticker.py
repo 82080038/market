@@ -258,12 +258,13 @@ def main() -> int:
         help="Show what would change without applying"
     )
     parser.add_argument(
-        "--db-path", default="data/market_research.db",
-        help="Database path"
+        "--db-path", default=None,
+        help="Database path (default: env DB_PATH atau settings.db_path)"
     )
     args = parser.parse_args()
 
-    db_path = Path(args.db_path)
+    from market.config import settings as _settings
+    db_path = Path(args.db_path or os.environ.get("DB_PATH") or _settings.db_path)
     if not db_path.exists():
         logger.error("Database not found: %s", db_path)
         return 1

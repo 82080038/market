@@ -20,7 +20,7 @@ Usage:
 
 Environment:
     DATABASE_URL=postgresql://petrick:market_dev@localhost:5432/market
-    or SQLite default: data/market_research.db
+    or SQLite default: data/market_live.db (via settings.db_path)
 """
 
 from __future__ import annotations

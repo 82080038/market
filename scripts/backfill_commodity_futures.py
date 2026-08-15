@@ -12,9 +12,9 @@ Data range: January 2023 → August 2026 (or latest available).
 All data stored in ``ohlcv`` table with ``timeframe='1d'`` and ``source='yfinance'``.
 
 Usage:
-    DB_PATH=data/market_research.db python scripts/backfill_commodity_futures.py
-    DB_PATH=data/market_research.db python scripts/backfill_commodity_futures.py --dry-run
-    DB_PATH=data/market_research.db python scripts/backfill_commodity_futures.py --start 2023-01-01
+    DATABASE_URL=postgresql://petrick:market_dev@localhost:5433/market python scripts/backfill_commodity_futures.py
+    DATABASE_URL=postgresql://petrick:market_dev@localhost:5433/market python scripts/backfill_commodity_futures.py --dry-run
+    DATABASE_URL=postgresql://petrick:market_dev@localhost:5433/market python scripts/backfill_commodity_futures.py --start 2023-01-01
 """
 
 from __future__ import annotations
@@ -190,7 +190,7 @@ def main() -> None:
         description="Backfill global commodity futures OHLCV from yfinance",
     )
     parser.add_argument("--db", type=str, default=None,
-                        help="Path to DB (default: env DB_PATH or data/market_research.db)")
+                        help="Path to DB (default: env DB_PATH or settings.db_path from .env)")
     parser.add_argument("--start", type=str, default=DEFAULT_START,
                         help=f"Start date (default: {DEFAULT_START})")
     parser.add_argument("--dry-run", action="store_true",
@@ -199,7 +199,8 @@ def main() -> None:
                         help="Comma-separated tickers to backfill (default: all)")
     args = parser.parse_args()
 
-    db_path = args.db or os.environ.get("DB_PATH", "data/market_research.db")
+    from market.config import settings as _settings
+    db_path = args.db or os.environ.get("DB_PATH") or _settings.db_path
     logger.info("Commodity Futures Backfill — DB: %s", db_path)
     logger.info("Date range: %s → today", args.start)
 

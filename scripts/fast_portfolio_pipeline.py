@@ -35,7 +35,8 @@ logging.basicConfig(
 logger = logging.getLogger(__name__)
 
 PROJECT_DIR = Path(__file__).resolve().parent.parent
-DB_PATH = PROJECT_DIR / "data" / "market_research.db"
+from market.config import settings as _settings
+DB_PATH = _settings.db_path
 OUTPUT_CONFIG = PROJECT_DIR / "best_ticker_quant_config.json"
 OUTPUT_VERDICT = PROJECT_DIR / "final_portfolio_verdict.json"
 
