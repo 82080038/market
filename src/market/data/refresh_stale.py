@@ -21,6 +21,30 @@ logger = logging.getLogger(__name__)
 STALE_THRESHOLD_HOURS = 24
 
 
+def _is_sqlite_conn(conn: object) -> bool:
+    """Detect whether a DBAPI connection is sqlite3 or psycopg2.
+
+    Used to pick the correct placeholder style (? for SQLite, %s for PG)
+    without relying on global settings — important for unit tests that
+    pass a sqlite3.Connection directly regardless of DATABASE_URL.
+    """
+    # sqlite3.Connection has attribute `isolation_level` (str|None) and
+    # does NOT have `get_parameters` (psycopg2-specific).
+    # Most reliable: check module name of the connection class.
+    cls_module = type(conn).__module__
+    if "sqlite3" in cls_module:
+        return True
+    if "psycopg2" in cls_module:
+        return False
+    # Fallback: duck-typing — sqlite3 has `isolation_level`, psycopg2 has `encoding`
+    return hasattr(conn, "isolation_level") and not hasattr(conn, "encoding")
+
+
+def _placeholder(conn: object) -> str:
+    """Return the correct SQL placeholder for the connection type."""
+    return "?" if _is_sqlite_conn(conn) else "%s"
+
+
 @dataclass
 class StaleTableReport:
     """Stale data report for a single table."""
@@ -52,13 +76,20 @@ class RefreshReport:
 
 def get_excluded_tickers(conn: object) -> list[str]:
     """Get tickers that should NOT be refreshed (suspended/delisted/inactive)."""
-    from market.config import settings
-    _ph = "%s" if settings.db_backend == "postgresql" else "?"
+    _ph = _placeholder(conn)
+    _is_sqlite = _is_sqlite_conn(conn)
     _now = datetime.now().strftime("%Y-%m-%d")
 
+    # In PG, instrument_master is a compatibility view where is_active is text.
+    # In SQLite (tests), is_active is INTEGER. Use appropriate comparison.
+    if _is_sqlite:
+        active_cond = "is_active = 0"
+    else:
+        active_cond = "is_active::text = '0' OR is_active::text = 'false'"
+
     rows = conn.execute(
-        "SELECT ticker FROM instrument_master "
-        "WHERE is_active = 0 OR delisting_date IS NOT NULL OR suspension_date IS NOT NULL"
+        f"SELECT ticker FROM instrument_master "
+        f"WHERE {active_cond} OR delisting_date IS NOT NULL OR suspension_date IS NOT NULL"
     ).fetchall()
     excluded = [r[0] for r in rows]
     try:
@@ -99,7 +130,7 @@ def detect_stale_tables(
     ]
 
     from market.config import settings
-    _ph = "%s" if settings.db_backend == "postgresql" else "?"
+    _ph = _placeholder(conn)
 
     for table, ts_col in table_configs:
         try:
@@ -152,8 +183,9 @@ def _refresh_stock_personality(
     """Refresh stale rows in stock_personality by recomputing from OHLCV."""
     from market.analysis.recompute import recompute_technical_indicators
 
-    from market.config import settings
-    _ph = "%s" if settings.db_backend == "postgresql" else "?"
+    _ph = _placeholder(conn)
+    _is_sqlite = _is_sqlite_conn(conn)
+    _active_cond = "im.is_active = 1" if _is_sqlite else "im.is_active::text IN ('1', 'true')"
     _yesterday = (datetime.now() - timedelta(days=1)).strftime("%Y-%m-%d %H:%M:%S")
 
     excluded_placeholder = ",".join(_ph * len(excluded_tickers)) if excluded_tickers else "''"
@@ -162,7 +194,7 @@ def _refresh_stock_personality(
         FROM stock_personality sp
         JOIN instrument_master im ON sp.ticker = im.ticker
         WHERE (sp.updated_at IS NULL OR sp.updated_at < {_ph})
-        AND im.is_active = 1
+        AND {_active_cond}
         AND im.delisting_date IS NULL
         AND sp.ticker NOT IN ({excluded_placeholder})
         LIMIT 50
@@ -187,8 +219,7 @@ def _refresh_stock_prediction(
     excluded_tickers: list[str],
 ) -> tuple[int, str]:
     """Refresh stale predictions by running batch compute on stale tickers."""
-    from market.config import settings
-    _ph = "%s" if settings.db_backend == "postgresql" else "?"
+    _ph = _placeholder(conn)
     _yesterday = (datetime.now() - timedelta(days=1)).strftime("%Y-%m-%d %H:%M:%S")
 
     if excluded_tickers:
@@ -235,7 +266,9 @@ def _refresh_technical_indicators(
         return 0, "no OHLCV data"
 
     from market.config import settings
-    _ph = "%s" if settings.db_backend == "postgresql" else "?"
+    _ph = _placeholder(conn)
+    _is_sqlite = _is_sqlite_conn(conn)
+    _active_cond = "im.is_active = 1" if _is_sqlite else "im.is_active::text IN ('1', 'true')"
 
     if excluded_tickers:
         excluded_placeholder = ",".join(_ph * len(excluded_tickers))
@@ -248,7 +281,7 @@ def _refresh_technical_indicators(
         FROM technical_indicators_wide tiw
         JOIN instrument_master im ON tiw.ticker = im.ticker
         WHERE tiw.date < {_ph}
-        AND im.is_active = 1
+        AND {_active_cond}
         AND im.delisting_date IS NULL
         AND tiw.ticker NOT IN ({excluded_placeholder})
         GROUP BY tiw.ticker
@@ -278,28 +311,50 @@ def refresh_stale_data(
     """Detect and refresh stale data in the database.
 
     Args:
-        db_path: Path to SQLite database.
+        db_path: Path to SQLite database, or "postgresql" to use the configured
+                 PostgreSQL connection from settings. If the file does not exist
+                 and is not "postgresql", FileNotFoundError is raised.
         threshold_hours: Stale threshold in hours (default 24).
         dry_run: If True, only detect — don't refresh.
 
     Returns:
         RefreshReport with details.
     """
+    import sqlite3 as _sqlite3
+    from pathlib import Path as _Path
+
     from market.config import settings
 
     report = RefreshReport()
 
-    from market.db.raw import get_raw_connection
-    conn_ctx = get_raw_connection()
-    conn = conn_ctx.__enter__()
-    _owns_conn = True
+    # Decide connection source: explicit SQLite path vs configured backend.
+    use_sqlite_file = False
+    if db_path and db_path != "postgresql":
+        # If a SQLite file path is given, use it directly.
+        # This supports unit tests that pass a temp .db path.
+        if db_path.endswith(".db") or _Path(db_path).suffix == ".db":
+            if not _Path(db_path).exists():
+                raise FileNotFoundError(f"Database not found: {db_path}")
+            use_sqlite_file = True
 
-    if settings.db_backend == "sqlite":
+    if use_sqlite_file:
+        conn = _sqlite3.connect(db_path)
         try:
             conn.execute("PRAGMA journal_mode=WAL")
             conn.execute("PRAGMA synchronous=NORMAL")
         except Exception:
             pass
+    else:
+        from market.db.raw import get_raw_connection
+        conn_ctx = get_raw_connection()
+        conn = conn_ctx.__enter__()
+
+        if settings.db_backend == "sqlite":
+            try:
+                conn.execute("PRAGMA journal_mode=WAL")
+                conn.execute("PRAGMA synchronous=NORMAL")
+            except Exception:
+                pass
 
     try:
         # Get excluded tickers (suspended/delisted)

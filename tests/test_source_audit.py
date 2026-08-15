@@ -143,7 +143,7 @@ class TestSourceClassification:
     @pytest.mark.parametrize("table_name", [
         "market_registry", "exchanges", "instrument_master", "instruments",
         "sector_master", "regulator", "bursa_efek", "sektor",
-        "emiten", "instrumen", "indeks_pasar", "broker", "broker_bursa",
+        "emiten", "instrumen", "indeks_pasar", "brokers",
     ])
     def test_reference_tables(self, table_name):
         """These tables MUST be classified as Reference (semi-static)."""
@@ -180,7 +180,7 @@ class TestUpdateMethod:
     @pytest.mark.parametrize("table_name", [
         "market_registry", "exchanges", "instrument_master",
         "sector_master", "regulator", "bursa_efek", "sektor",
-        "emiten", "instrumen", "indeks_pasar", "broker",
+        "emiten", "instrumen", "indeks_pasar", "brokers",
     ])
     def test_statis_tables(self, table_name):
         """These tables are semi-static (rarely change)."""

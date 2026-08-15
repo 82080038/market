@@ -162,7 +162,13 @@ class NewsSentimentAnalyzer:
             self._try_load_transformer()
 
     def _try_load_transformer(self) -> bool:
-        """Try to load IndoBERT/FinBERT transformer model."""
+        """Try to load IndoBERT/FinBERT transformer model.
+
+        Falls back to keyword backend if:
+        - transformers/torch not installed
+        - model fails to load
+        - model is a base language model (not fine-tuned for sentiment)
+        """
         try:
             import torch
             from transformers import AutoModelForSequenceClassification, AutoTokenizer
@@ -171,6 +177,24 @@ class NewsSentimentAnalyzer:
             self._transformer = AutoModelForSequenceClassification.from_pretrained(
                 self._model_name,
             )
+
+            # Detect base language models (not fine-tuned for sentiment).
+            # Base models have default id2label like {0: 'LABEL_0', 1: 'LABEL_1'}
+            # and random classification heads → meaningless sentiment scores.
+            id2label = getattr(self._transformer.config, "id2label", {})
+            is_base_model = all(
+                str(v).startswith("LABEL_") for v in id2label.values()
+            ) if id2label else True
+
+            if is_base_model:
+                logger.warning(
+                    "NewsSentiment: %s appears to be a base model (not fine-tuned "
+                    "for sentiment) — falling back to keyword backend",
+                    self._model_name,
+                )
+                self._transformer = None
+                self._tokenizer = None
+                return False
 
             if torch.cuda.is_available() and self._device.startswith("cuda"):
                 dev = torch.device(self._device)

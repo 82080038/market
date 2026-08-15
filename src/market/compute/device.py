@@ -380,6 +380,44 @@ def select_device(
     return PREFERRED_GPU
 
 
+# ── LightGBM device helper ───────────────────────────────────────────────
+
+
+_LGBM_DEVICE_CACHE: str | None = None
+
+
+def lgbm_device() -> str:
+    """Return the device parameter for LightGBM models ('gpu' or 'cpu').
+
+    Detects whether the installed LightGBM build was compiled with GPU support
+    by attempting a tiny GPU fit. Caches the result for subsequent calls.
+
+    Usage:
+        from market.compute.device import lgbm_device
+        model = lgb.LGBMClassifier(..., device=lgbm_device())
+    """
+    global _LGBM_DEVICE_CACHE
+    if _LGBM_DEVICE_CACHE is not None:
+        return _LGBM_DEVICE_CACHE
+
+    try:
+        import lightgbm as lgb  # type: ignore[import-not-found]
+
+        try:
+            _test = lgb.LGBMClassifier(n_estimators=1, device="gpu", verbose=-1)
+            _test.fit([[0], [1]], [0, 1])
+            _LGBM_DEVICE_CACHE = "gpu"
+            logger.info("LightGBM GPU support detected")
+            return "gpu"
+        except Exception:
+            _LGBM_DEVICE_CACHE = "cpu"
+            logger.info("LightGBM GPU tidak tersedia — fallback ke CPU")
+            return "cpu"
+    except ImportError:
+        _LGBM_DEVICE_CACHE = "cpu"
+        return "cpu"
+
+
 # ── Benchmarking ─────────────────────────────────────────────────────────
 def benchmark_workload(
     fn: Callable[..., T],

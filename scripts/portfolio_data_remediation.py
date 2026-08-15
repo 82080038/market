@@ -105,6 +105,7 @@ from alpha_rescue_pipeline import (  # noqa: E402
     ReformConfig,
     build_meta_label_features,
     detect_regime,
+    _lgbm_device as lgbm_device,
 )
 from alpha_hyper_tuner import (  # noqa: E402
     HyperParamSpace,
@@ -788,7 +789,7 @@ def _generate_regime_invariant_meta_signals(
             reg_alpha=0.1,
             reg_lambda=1.0,
             is_unbalance=True,
-            device='gpu',
+            device=lgbm_device(),
         )
         model.fit(
             X_tr, y_tr,

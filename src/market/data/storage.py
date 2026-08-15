@@ -109,7 +109,6 @@ class DataRepository:
                     existing.close = r.close
                     existing.volume = r.volume
                     existing.adjusted_close = r.adjusted_close
-                    existing.data_quality_score = r.data_quality_score
                     existing.source = r.source
                 else:
                     self._session.add(
@@ -123,7 +122,6 @@ class DataRepository:
                             close=r.close,
                             volume=r.volume,
                             adjusted_close=r.adjusted_close,
-                            data_quality_score=r.data_quality_score,
                             source=r.source,
                         )
                     )

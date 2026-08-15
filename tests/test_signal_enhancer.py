@@ -72,8 +72,10 @@ class TestSignalEnhancerBasic:
         astro_sig = next(s for s in result.signals if s.source == "astronacci")
         assert astro_sig.available
         # Other 6 signals require module instances → unavailable.
+        # Note: cross_market may also be available if CrossMarketTimezone module
+        # auto-loads from default config — include it in the "available" set.
         for sig in result.signals:
-            if sig.source not in ("volume", "astronacci"):
+            if sig.source not in ("volume", "astronacci", "cross_market"):
                 assert not sig.available
 
     def test_empty_dataframe(self, base_prediction):

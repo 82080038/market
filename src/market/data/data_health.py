@@ -178,8 +178,15 @@ def check_disk_space(parquet_path: Path) -> list[HealthIssue]:
         ))
         return issues
 
-    stat = os.statvfs(parquet_path)
-    free_gb = (stat.f_bavail * stat.f_frsize) / 1024**3
+    # Cross-platform disk space check: os.statvfs on Unix, shutil.disk_usage on Windows
+    if hasattr(os, "statvfs"):
+        stat = os.statvfs(parquet_path)
+        free_gb = (stat.f_bavail * stat.f_frsize) / 1024**3
+    else:
+        # Windows fallback: shutil.disk_usage
+        import shutil
+        du = shutil.disk_usage(str(parquet_path))
+        free_gb = du.free / 1024**3
 
     if free_gb < DISK_FREE_MIN_GB:
         issues.append(HealthIssue(
@@ -291,11 +298,23 @@ def check_db_health(db_path: Path) -> list[HealthIssue]:
 
     For PostgreSQL, checks connection status, bloat, and long-running transactions.
     For SQLite, checks WAL size, integrity, and foreign keys.
+
+    If ``db_path`` is explicitly provided and looks like a SQLite file (exists,
+    has .db/.sqlite extension, or is not a URL), treat it as SQLite regardless
+    of ``settings.db_backend`` — this allows testing SQLite health checks even
+    when the application is configured for PostgreSQL.
     """
     from market.config import settings
     issues: list[HealthIssue] = []
 
-    if settings.db_backend == "postgresql":
+    # If db_path is explicitly provided and looks like a SQLite file, use SQLite
+    _is_sqlite_path = (
+        db_path is not None
+        and not str(db_path).startswith(("postgresql://", "postgres://"))
+        and (Path(str(db_path)).suffix in (".db", ".sqlite", ".sqlite3") or Path(str(db_path)).exists())
+    )
+
+    if settings.db_backend == "postgresql" and not _is_sqlite_path:
         return check_pg_health(issues)
 
     import sqlite3

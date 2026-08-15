@@ -261,6 +261,12 @@ def _auto_isolated_db(request, monkeypatch):
 
     yield
 
+    # Teardown: truncate again for isolated_db tests to prevent data leakage
+    if "isolated_db" in request.keywords:
+        test_engine = create_engine(TEST_DB_URL)
+        _truncate_all_tables(test_engine)
+        test_engine.dispose()
+
     dispose_engine()
     import gc
     gc.collect()

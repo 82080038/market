@@ -18,13 +18,14 @@ def _seed_intraday_ohlcv(session) -> None:
     """Seed 15-min OHLCV bars for testing."""
     base_time = datetime(2026, 8, 6, 9, 0, tzinfo=UTC)
     bars = [
-        ("^JKSE", base_time, 7900, 7950, 7880, 7920, 100000),
-        ("^GSPC", base_time, 5500, 5510, 5490, 5505, 200000),
-        ("GC=F", base_time, 2400, 2410, 2395, 2405, 50000),
+        ("^JKSE", "XIDX", base_time, 7900, 7950, 7880, 7920, 100000),
+        ("^GSPC", "XNYS", base_time, 5500, 5510, 5490, 5505, 200000),
+        ("GC=F", "XCME", base_time, 2400, 2410, 2395, 2405, 50000),
     ]
-    for ticker, ts, o, h, lo, c, v in bars:
+    for ticker, mic, ts, o, h, lo, c, v in bars:
         session.add(OHLCV(
             ticker=ticker,
+            exchange_mic=mic,
             timestamp=ts,
             timeframe="15m",
             open=Decimal(str(o)),
@@ -45,6 +46,7 @@ def _seed_daily_ohlcv(session, ticker: str = "BBCA.JK", n: int = 60) -> None:
         close = 8000 + i * 50
         session.add(OHLCV(
             ticker=ticker,
+            exchange_mic="XIDX",
             timestamp=ts,
             timeframe="1d",
             open=Decimal(str(close - 20)),
@@ -76,6 +78,8 @@ def test_intraday_task_registered():
 
 def test_intraday_task_emits_event():
     """_task_fetch_intraday emits data.fetch.intraday.requested."""
+    from unittest.mock import patch
+
     from market.scheduler_tasks import _task_fetch_intraday
 
     received: list[dict] = []
@@ -85,7 +89,9 @@ def test_intraday_task_emits_event():
 
     broker.subscribe("data.fetch.intraday.requested", handler)
     try:
-        _task_fetch_intraday()
+        # Mock is_market_open to return True so the task emits the event
+        with patch("market.data.timestamp_validation.is_market_open", return_value=True):
+            _task_fetch_intraday()
     finally:
         broker.unsubscribe("data.fetch.intraday.requested", handler)
 

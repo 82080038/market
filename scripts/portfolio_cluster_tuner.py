@@ -92,6 +92,7 @@ from alpha_rescue_pipeline import (  # noqa: E402
     build_meta_label_features,
     generate_meta_labeled_signals,
     detect_regime,
+    _lgbm_device as lgbm_device,
 )
 from alpha_hyper_tuner import (  # noqa: E402
     HyperParamSpace,
@@ -498,7 +499,7 @@ def _generate_vol_targeted_with_baseline_ticker(
             subsample=0.8, colsample_bytree=0.8,
             n_jobs=1, min_data_in_leaf=30,
             reg_alpha=0.1, reg_lambda=1.0,
-            device='gpu',
+            device=lgbm_device(),
         )
         model.fit(
             X_tr, y_tr,

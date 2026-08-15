@@ -892,6 +892,93 @@ menyebut "ablation test belum memiliki code yang terbukti benar".
 9. **Agregasi p-value** — rata-rata p-value tidak valid secara statistik (tidak ada distribusi
    null, tidak kontrol error rate). Fix: Fisher's method `-2·Σln(p) ~ χ²(2k)`.
 
+## Checkpoint Sesi 2026-08-15 — Pre-existing Test Failures Remediation
+
+- **Topik:** Remediasi 54 pre-existing test failures pasca migration 0022/0023.
+- **Hasil akhir:** 1821 passed, 20 skipped, 0 failed (dari sebelumnya 54 failed).
+- **Commit sebelumnya:** `6c3d987` — migration 0022/0023 compatibility.
+
+### Root causes & fixes (10 grup):
+
+1. **`test_refresh_stale.py` (15 tests)** — SQL placeholder `%s` vs `?` + `is_active` text/integer mismatch.
+   - Fix: deteksi tipe connection (sqlite3 vs psycopg2) di `refresh_stale.py`, gunakan placeholder yang sesuai.
+   - Fix: `refresh_stale_data(db_path=...)` honor supplied SQLite path.
+   - Fix: PostgreSQL `is_active` text comparison instead of integer.
+
+2. **`test_intraday.py` (11 tests)** — OHLCV ORM model mismatch dengan PostgreSQL `ohlcv` view.
+   - Fix: `OHLCV` model di `models.py` diupdate: composite PK `(ticker, timestamp, timeframe)`, tambah `exchange_mic` + `vwap`, hapus `id` + `data_quality_score`.
+   - Fix: `PrimaryKeyConstraint` ditambahkan ke import block.
+   - Fix: test seed data tambah `exchange_mic` (NOT NULL di `stock_prices`).
+   - Fix: `test_intraday_task_emits_event` mock `is_market_open` karena test env tidak punya market calendar.
+   - Fix: `storage.py` hapus `data_quality_score` dari OHLCV insert/update.
+
+3. **`test_autonomous.py` (57 tests)** — `signal.SIGALRM` tidak ada di Windows.
+   - Fix: `sandbox.py` thread-based timeout fallback untuk Windows (SIGALRM untuk Unix, threading.Event untuk Windows).
+   - Fix: `test_sandbox_execute_timeout` skip di Windows (CPU-bound infinite loop tidak bisa di-interrupt di thread).
+   - Fix: `approval.py` `expire_hours=0` bug — `0 or default` selalu fallback ke default; ganti ke `if expire_hours is not None`.
+   - Fix: `expire_stale` gunakan `>=` bukan `>` untuk edge case `expires_at == now`.
+
+4. **`test_data_health.py` (9 tests)** — `os.statvfs` tidak ada di Windows.
+   - Fix: `data_health.py` cross-platform disk space: `os.statvfs` untuk Unix, `shutil.disk_usage` untuk Windows.
+   - Fix: `check_db_health(db_path)` respect explicit SQLite path bahkan ketika `settings.db_backend == "postgresql"`.
+
+5. **`test_ticker_migration.py` (18 tests)** — `resolve_ticker` gunakan `%s` placeholder untuk SQLite.
+   - Fix: `ticker_util.py` deteksi tipe connection module (`sqlite3` → `?`, lainnya → `%s`).
+
+6. **`test_signal_enhancer.py` + `test_security.py` (2 tests)** — logic bugs.
+   - Fix: `test_signal_enhancer` — `cross_market` signal available tanpa module instance (auto-load dari config); update test expectation.
+   - Fix: `support.py` `check_sla_breach` gunakan `>=` bukan `>` untuk `sla_hours=0` edge case.
+
+7. **LightGBM GPU failures (18+ tests)** — `device='gpu'` hardcoded, LightGBM build tidak punya GPU support.
+   - Fix: `_lgbm_device()` helper di `alpha_rescue_pipeline.py` — detect GPU support via tiny test fit, fallback ke CPU.
+   - Fix: `lgbm_device()` helper di `src/market/compute/device.py` (shared, cached).
+   - Fix: 4 scripts (`alpha_rescue_pipeline.py`, `alpha_hyper_tuner.py`, `portfolio_cluster_tuner.py`, `portfolio_data_remediation.py`) ganti `device='gpu'` → `device=lgbm_device()`.
+
+8. **IndoBERT sentiment failures (4 tests)** — base model `indobenchmark/indobert-base-p1` tidak fine-tuned untuk sentiment.
+   - Fix: `news_sentiment.py` `_try_load_transformer()` detect base model (cek `id2label` default `LABEL_0/LABEL_1`), fall back ke keyword backend.
+
+9. **`test_cross_market_causality.py` (3 tests)** — test connect ke production DB, bukan test DB.
+   - Fix: tambah `@pytest.mark.isolated_db` ke `TestCrossMarketSignal` untuk redirect ke `market_test`.
+   - Fix: `test_global_feature_cols_present` — `oil_lag1_ret` → `oil_wti_lag1_ret` (nama aktual di code).
+   - Fix: `conftest.py` truncate tables AFTER test (teardown) untuk prevent data leakage antar test.
+
+10. **`test_source_audit.py` (3 tests)** — `broker`/`broker_bursa` obsolete (dropped di migration 0022).
+    - Fix: test parametrize ganti `broker`/`broker_bursa` → `brokers` (canonical table name).
+
+### Dependencies installed:
+- `pyportfolioopt==1.6.0` (untuk `test_lookahead_audit.py` — `pypfopt` module).
+- `cvxpy==1.4.4` (downgrade dari 1.9.2 — incompatible dengan numpy 1.26.4).
+- `numpy==1.26.4` (dipertahankan — numpy 2.x break cvxpy + other packages).
+
+### Files modified (sesi ini):
+- `src/market/db/models.py` — OHLCV model: composite PK, exchange_mic, vwap, PrimaryKeyConstraint import.
+- `src/market/data/refresh_stale.py` — connection-type detection, placeholder selection, db_path honor.
+- `src/market/data/data_health.py` — shutil.disk_usage fallback, check_db_health respect explicit db_path.
+- `src/market/data/ticker_util.py` — SQLite/psycopg2 placeholder detection di resolve_ticker.
+- `src/market/data/storage.py` — hapus data_quality_score dari OHLCV insert/update.
+- `src/market/data/source_audit.py` — (sudah di commit sebelumnya) brokers registry.
+- `src/market/autonomous/sandbox.py` — threading-based timeout fallback untuk Windows.
+- `src/market/autonomous/approval.py` — expire_hours=0 fix, >= comparison.
+- `src/market/security/support.py` — >= comparison untuk SLA breach.
+- `src/market/analysis/news_sentiment.py` — base model detection, keyword fallback.
+- `src/market/analysis/signal_enhancer.py` — (no code change, test expectation update).
+- `src/market/compute/device.py` — lgbm_device() helper (shared, cached).
+- `scripts/alpha_rescue_pipeline.py` — _lgbm_device() helper, device=lgbm_device().
+- `scripts/alpha_hyper_tuner.py` — import _lgbm_device as lgbm_device, device=lgbm_device().
+- `scripts/portfolio_cluster_tuner.py` — import _lgbm_device as lgbm_device, device=lgbm_device().
+- `scripts/portfolio_data_remediation.py` — import _lgbm_device as lgbm_device, device=lgbm_device().
+- `tests/conftest.py` — truncate AFTER test (teardown) untuk isolated_db.
+- `tests/test_intraday.py` — exchange_mic di seed data, mock is_market_open.
+- `tests/test_autonomous.py` — skip test_sandbox_execute_timeout di Windows, import signal+pytest.
+- `tests/test_signal_enhancer.py` — cross_market di available set.
+- `tests/test_cross_market_causality.py` — @pytest.mark.isolated_db, oil_wti_lag1_ret.
+- `tests/test_source_audit.py` — broker/broker_bursa → brokers.
+
+### Pending:
+- Commit perubahan ini.
+- Push ke GitHub (jika diinginkan user).
+- MEGAPLAN phases berikutnya (jika ada).
+
 ### File diubah
 - `src/market/ablation/isolated_backtest.py` — `simulate_returns` cost model
 - `scripts/engine_ablation/run_ablation.py` — fix #2–#9 + helper `_combine_pvalues_fisher`

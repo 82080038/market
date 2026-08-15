@@ -122,7 +122,7 @@ def _resolve_device() -> str:
 
     LightGBM pada pipeline ini berjalan di CPU (n_jobs=1) karena model sudah
     dipruning ke ≤80 trees; fungsi ini hanya untuk logging transparansi dan
-    hook jika di masa depan diaktifkan `device='gpu'`.
+    hook jika di masa depan diaktifkan `device=_lgbm_device()`.
     """
     try:
         import torch  # type: ignore[import-not-found]
@@ -135,6 +135,33 @@ def _resolve_device() -> str:
         pass
     logger.info("CUDA tidak tersedia — LightGBM berjalan di CPU")
     return "cpu"
+
+
+def _lgbm_device() -> str:
+    """Return the device parameter for LightGBM models.
+
+    Checks whether the installed LightGBM build was compiled with GPU support.
+    If not, falls back to 'cpu' to avoid LightGBMError at fit time.
+    """
+    try:
+        import lightgbm as lgb  # type: ignore[import-not-found]
+
+        # LightGBM exposes GPU support via lgb.LGBMClassifier(device=_lgbm_device()).
+        # The error "GPU Tree Learner was not enabled in this build" occurs
+        # when the build lacks GPU support. We detect this by checking the
+        # build info string.
+        try:
+            build_info = lgb.__version__  # noqa: F841
+            # Try a tiny GPU fit to detect support — if it fails, use CPU.
+            # This is cheaper than parsing build flags.
+            _test = lgb.LGBMClassifier(n_estimators=1, device="gpu", verbose=-1)
+            _test.fit([[0], [1]], [0, 1])
+            return "gpu"
+        except Exception:
+            logger.info("LightGBM GPU tidak tersedia — fallback ke CPU")
+            return "cpu"
+    except ImportError:
+        return "cpu"
 
 
 # ═══════════════════════════════════════════════════════════════════════════
@@ -420,7 +447,7 @@ def generate_volatility_targeted_signals(
             min_data_in_leaf=30,
             reg_alpha=0.1,
             reg_lambda=1.0,
-            device='gpu',
+            device=_lgbm_device(),
         )
         model.fit(
             X_tr, y_tr,
@@ -616,7 +643,7 @@ def generate_meta_labeled_signals(
             reg_alpha=0.1,
             reg_lambda=1.0,
             is_unbalance=True,  # handle class imbalance (HOLD dominan)
-            device='gpu',
+            device=_lgbm_device(),
         )
         model.fit(
             X_tr, y_tr,
@@ -728,7 +755,7 @@ def select_clustered_features(
         n_estimators=50, max_depth=3, learning_rate=0.1,
         verbose=-1, subsample=0.8, colsample_bytree=0.8,
         n_jobs=1, min_data_in_leaf=50, reg_alpha=0.1, reg_lambda=1.0,
-        device='gpu',
+        device=_lgbm_device(),
     )
     imp_model.fit(X, y)
     imp_dict = dict(zip(feature_names, imp_model.feature_importances_, strict=False))
@@ -900,7 +927,7 @@ def generate_pruned_multifactor_signals(
             reg_lambda=config.mf_reg_lambda,
             num_classes=3,
             objective="multiclass",
-            device='gpu',
+            device=_lgbm_device(),
         )
         model.fit(
             X_tr, y_tr,

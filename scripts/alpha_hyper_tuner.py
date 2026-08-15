@@ -95,6 +95,7 @@ from alpha_rescue_pipeline import (  # noqa: E402
     cluster_features_by_correlation,
     select_clustered_features,
     verify_reform,
+    _lgbm_device as lgbm_device,
 )
 
 logging.basicConfig(
@@ -439,7 +440,7 @@ def _generate_vol_targeted_with_baseline(
             min_data_in_leaf=30,
             reg_alpha=0.1,
             reg_lambda=1.0,
-            device='gpu',
+            device=lgbm_device(),
         )
         model.fit(
             X_tr, y_tr,
@@ -726,7 +727,7 @@ def _generate_adaptive_meta_labeled_signals(
             reg_alpha=0.1,
             reg_lambda=1.0,
             is_unbalance=True,
-            device='gpu',
+            device=lgbm_device(),
         )
         model.fit(
             X_tr, y_tr,

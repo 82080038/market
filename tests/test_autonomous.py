@@ -2,8 +2,11 @@
 
 from __future__ import annotations
 
+import signal
 import tempfile
 from pathlib import Path
+
+import pytest
 
 from market.autonomous.agent import (
     ActionStatus,
@@ -285,6 +288,18 @@ def test_sandbox_execute_success():
 
 
 def test_sandbox_execute_timeout():
+    """Timeout test — SIGALRM-based on Unix, skipped on Windows.
+
+    Windows doesn't support signal.SIGALRM, and thread-based timeout cannot
+    interrupt a tight loop (while True: pass) in the same process. The sandbox
+    falls back to thread-based timeout on Windows, which works for I/O-bound
+    code but not CPU-bound infinite loops. This test is Unix-only.
+    """
+    import sys
+
+    if not hasattr(signal, "SIGALRM"):
+        pytest.skip("signal.SIGALRM not available on Windows — timeout test is Unix-only")
+
     sandbox = Sandbox(SandboxConfig(timeout_seconds=0.1))
     result = sandbox.execute("while True:\n    pass")
     assert not result.success

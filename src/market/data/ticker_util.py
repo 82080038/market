@@ -241,17 +241,23 @@ def resolve_ticker(
     try:
         # DBAPI2 connection (sqlite3 or psycopg2) — use cursor
         if hasattr(conn, 'cursor'):
+            # Detect placeholder style: sqlite3 uses ?, psycopg2 uses %s
+            _cls_mod = type(conn).__module__
+            _ph = "?" if "sqlite3" in _cls_mod else "%s"
+
             cur = conn.cursor()
+            # First: if ticker is a current ticker with former_ticker set, return as-is
             cur.execute(
-                "SELECT ticker FROM instrument_master WHERE ticker = %s AND former_ticker IS NOT NULL",
+                f"SELECT ticker FROM instrument_master WHERE ticker = {_ph} AND former_ticker IS NOT NULL",
                 (ticker,),
             )
             row = cur.fetchone()
             if row:
                 cur.close()
                 return row[0]
+            # Second: if ticker is a former_ticker, return the current ticker
             cur.execute(
-                "SELECT ticker FROM instrument_master WHERE former_ticker = %s",
+                f"SELECT ticker FROM instrument_master WHERE former_ticker = {_ph}",
                 (ticker,),
             )
             row = cur.fetchone()

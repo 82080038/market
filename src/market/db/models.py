@@ -18,6 +18,7 @@ from sqlalchemy import (
     Index,
     Integer,
     Numeric,
+    PrimaryKeyConstraint,
     String,
     Text,
     UniqueConstraint,
@@ -87,16 +88,24 @@ class InstrumentMaster(Base):
 
 
 class OHLCV(Base):
-    """OHLCV price data (pustaka/18 §13 #1)."""
+    """OHLCV price data — compatibility view over stock_prices (PG schema).
+
+    In PostgreSQL, `ohlcv` is a view: SELECT ticker, exchange_mic, timestamp,
+    timeframe, open, high, low, close, volume, vwap, adjusted_close, source,
+    created_at FROM stock_prices. It does NOT have `id` or `data_quality_score`.
+    The composite PK (ticker, timestamp, timeframe) matches the unique constraint
+    on the underlying stock_prices table.
+    """
 
     __tablename__ = "ohlcv"
     __table_args__ = (
-        UniqueConstraint("ticker", "timestamp", "timeframe", name="uq_ohlcv_pk"),
+        # Composite PK matches uq_stock_prices_ticker_ts_tf on stock_prices
+        PrimaryKeyConstraint("ticker", "timestamp", "timeframe", name="uq_ohlcv_pk"),
         Index("ix_ohlcv_ticker_ts", "ticker", "timestamp"),
     )
 
-    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
     ticker: Mapped[str] = mapped_column(String(30), nullable=False, index=True)
+    exchange_mic: Mapped[str | None] = mapped_column(String(10), nullable=True)
     timestamp: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, index=True)
     timeframe: Mapped[str] = mapped_column(String(10), nullable=False, default="1d")
     open: Mapped[Decimal] = mapped_column(Numeric(20, 4), nullable=False)
@@ -104,8 +113,8 @@ class OHLCV(Base):
     low: Mapped[Decimal] = mapped_column(Numeric(20, 4), nullable=False)
     close: Mapped[Decimal] = mapped_column(Numeric(20, 4), nullable=False)
     volume: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    vwap: Mapped[Decimal | None] = mapped_column(Numeric(20, 6), nullable=True)
     adjusted_close: Mapped[Decimal | None] = mapped_column(Numeric(20, 4), nullable=True)
-    data_quality_score: Mapped[float | None] = mapped_column(Numeric(5, 2), nullable=True)
     source: Mapped[str] = mapped_column(String(50), default="yahoo_finance")
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_utcnow)
 

@@ -279,7 +279,7 @@ class SupportManager:
                 continue
             if ticket.sla_deadline:
                 deadline = datetime.fromisoformat(ticket.sla_deadline)
-                if now > deadline:
+                if now >= deadline:
                     breached.append(ticket)
 
         return breached

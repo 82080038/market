@@ -14,6 +14,7 @@ import ast
 import logging
 import signal
 import textwrap
+import threading
 from dataclasses import dataclass, field
 from typing import Any
 
@@ -261,15 +262,36 @@ class Sandbox:
         # Step 3: Execute with timeout
         start_time = time.time()
 
+        # Windows doesn't have signal.SIGALRM/setitimer — use thread-based
+        # timeout fallback for cross-platform compatibility.
+        _use_sigalrm = hasattr(signal, "SIGALRM") and hasattr(signal, "setitimer")
+
         def _timeout_handler(signum: int, frame: Any) -> None:
             raise TimeoutError(f"Execution exceeded {self.config.timeout_seconds}s")
 
-        old_handler = signal.getsignal(signal.SIGALRM)
+        old_handler = signal.getsignal(signal.SIGALRM) if _use_sigalrm else None
+
+        # Thread-based timeout for Windows (and fallback)
+        _timeout_event = threading.Event()
+        _timeout_thread: threading.Thread | None = None
+
+        def _thread_timeout() -> None:
+            if _timeout_event.wait(self.config.timeout_seconds):
+                return  # cancelled
+            # Timeout expired — inject TimeoutError via _thread_exception
+            _thread_exception.append(TimeoutError(f"Execution exceeded {self.config.timeout_seconds}s"))
+
+        _thread_exception: list[BaseException] = []
 
         try:
             if self.config.enable_timeout:
-                signal.signal(signal.SIGALRM, _timeout_handler)
-                signal.setitimer(signal.ITIMER_REAL, self.config.timeout_seconds)
+                if _use_sigalrm:
+                    signal.signal(signal.SIGALRM, _timeout_handler)
+                    signal.setitimer(signal.ITIMER_REAL, self.config.timeout_seconds)
+                else:
+                    # Windows fallback: thread-based timeout
+                    _timeout_thread = threading.Thread(target=_thread_timeout, daemon=True)
+                    _timeout_thread.start()
 
             # Capture stdout
             import io
@@ -282,6 +304,10 @@ class Sandbox:
 
             with redirect_stdout(buf):
                 exec(cleaned_code, safe_globals)
+
+            # Check if timeout fired during exec
+            if _thread_exception:
+                raise _thread_exception[0]
 
             output = buf.getvalue()
             if len(output) > self.config.max_output_chars:
@@ -313,5 +339,10 @@ class Sandbox:
             )
         finally:
             if self.config.enable_timeout:
-                signal.signal(signal.SIGALRM, old_handler or signal.SIG_DFL)
-                signal.setitimer(signal.ITIMER_REAL, 0)
+                if _use_sigalrm:
+                    signal.signal(signal.SIGALRM, old_handler or signal.SIG_DFL)
+                    signal.setitimer(signal.ITIMER_REAL, 0)
+                else:
+                    _timeout_event.set()  # cancel thread
+                    if _timeout_thread:
+                        _timeout_thread.join(timeout=0.1)

@@ -108,7 +108,11 @@ class ApprovalBot:
         """
         self._counter += 1
         req_id = f"approval_{self._counter:04d}"
-        hours = expire_hours or self.auto_expire_hours
+        # Use expire_hours if explicitly provided (including 0), else fall back to default
+        if expire_hours is not None:
+            hours = expire_hours
+        else:
+            hours = self.auto_expire_hours
 
         request = ApprovalRequest(
             request_id=req_id,
@@ -232,7 +236,7 @@ class ApprovalBot:
             if request.status != ApprovalStatus.PENDING:
                 continue
             expires = datetime.fromisoformat(request.expires_at)
-            if now > expires:
+            if now >= expires:
                 request.status = ApprovalStatus.EXPIRED
                 request.decided_at = now.isoformat()
                 self._log.append(ApprovalLog(

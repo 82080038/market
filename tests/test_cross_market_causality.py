@@ -238,6 +238,7 @@ class TestCrossMarketEngine:
 # ── 3. SignalEnhancer cross_market signal ────────────────────────────────
 
 
+@pytest.mark.isolated_db
 class TestCrossMarketSignal:
     """Test the cross-market domino signal in SignalEnhancer."""
 
@@ -345,7 +346,7 @@ class TestMLFeatureColumns:
 
         # Commodities (T-1)
         assert "gold_lag1_ret" in cols
-        assert "oil_lag1_ret" in cols
+        assert "oil_wti_lag1_ret" in cols
         assert "cpo_lag1_ret" in cols
 
         # Non-market features
