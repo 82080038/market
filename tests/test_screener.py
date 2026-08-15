@@ -10,7 +10,7 @@ from sqlalchemy.orm import Session
 from market.data.screener import TickerScreener
 from market.data.seed import seed_markets
 from market.db.engine import get_sessionmaker
-from market.db.models import InstrumentMaster, StockPersonality, TradingSuspension
+from market.db.models import Instrument, StockPersonality, TradingSuspension
 
 
 def _seed_instruments(session: Session) -> None:
@@ -18,41 +18,41 @@ def _seed_instruments(session: Session) -> None:
     seed_markets(session)
     instruments = [
         # Active, normal — should pass
-        InstrumentMaster(
-            ticker="BBCA.JK", market_mic="XIDX", asset_class="EQUITY_INDIVIDUAL",
+        Instrument(
+            ticker="BBCA.JK", exchange_mic="XIDX", asset_class="EQUITY_INDIVIDUAL",
             name="Bank Central Asia", is_active=True,
         ),
-        InstrumentMaster(
-            ticker="BBRI.JK", market_mic="XIDX", asset_class="EQUITY_INDIVIDUAL",
+        Instrument(
+            ticker="BBRI.JK", exchange_mic="XIDX", asset_class="EQUITY_INDIVIDUAL",
             name="Bank Rakyat Indonesia", is_active=True,
         ),
-        InstrumentMaster(
-            ticker="TLKM.JK", market_mic="XIDX", asset_class="EQUITY_INDIVIDUAL",
+        Instrument(
+            ticker="TLKM.JK", exchange_mic="XIDX", asset_class="EQUITY_INDIVIDUAL",
             name="Telkom Indonesia", is_active=True,
         ),
         # Active but delisting_date set — should be excluded
-        InstrumentMaster(
-            ticker="DEAD.JK", market_mic="XIDX", asset_class="EQUITY_INDIVIDUAL",
+        Instrument(
+            ticker="DEAD.JK", exchange_mic="XIDX", asset_class="EQUITY_INDIVIDUAL",
             name="Delisted Company", is_active=True, delisting_date=date(2025, 1, 1),
         ),
         # Inactive — should be excluded (not in query at all)
-        InstrumentMaster(
-            ticker="INACT.JK", market_mic="XIDX", asset_class="EQUITY_INDIVIDUAL",
+        Instrument(
+            ticker="INACT.JK", exchange_mic="XIDX", asset_class="EQUITY_INDIVIDUAL",
             name="Inactive Company", is_active=False,
         ),
         # Non-equity — should be excluded
-        InstrumentMaster(
-            ticker="BOND01", market_mic="XIDX", asset_class="bond",
+        Instrument(
+            ticker="BOND01", exchange_mic="XIDX", asset_class="bond",
             name="Bond Fund", is_active=True,
         ),
         # Index — should be excluded from EQUITY_INDIVIDUAL filter
-        InstrumentMaster(
-            ticker="^JKSE", market_mic="XIDX", asset_class="INDEX_COMPOSITE",
+        Instrument(
+            ticker="^JKSE", exchange_mic="XIDX", asset_class="INDEX_COMPOSITE",
             name="Jakarta Composite Index", is_active=True,
         ),
         # Commodity futures — should be excluded
-        InstrumentMaster(
-            ticker="CL=F", market_mic="XIDX", asset_class="COMMODITY_FUTURES",
+        Instrument(
+            ticker="CL=F", exchange_mic="XIDX", asset_class="COMMODITY_FUTURES",
             name="Crude Oil Futures", is_active=True,
         ),
     ]

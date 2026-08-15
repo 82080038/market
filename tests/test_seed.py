@@ -7,7 +7,7 @@ from sqlalchemy import create_engine
 from sqlalchemy.orm import Session
 
 from market.data.seed import DEFAULT_MARKETS, seed_markets
-from market.db.models import Base, MarketRegistry
+from market.db.models import Base, Exchange
 
 
 @pytest.fixture()
@@ -24,12 +24,12 @@ def test_seed_markets_inserts_all(db_session):
     count = seed_markets(db_session)
     assert count == len(DEFAULT_MARKETS)
 
-    idx = db_session.get(MarketRegistry, "XIDX")
+    idx = db_session.get(Exchange, "XIDX")
     assert idx is not None
     assert idx.currency == "IDR"
     assert idx.lot_size == 100
 
-    nys = db_session.get(MarketRegistry, "XNYS")
+    nys = db_session.get(Exchange, "XNYS")
     assert nys is not None
     assert nys.currency == "USD"
     assert nys.supports_dst is True

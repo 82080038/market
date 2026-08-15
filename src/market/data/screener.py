@@ -139,7 +139,11 @@ class TickerScreener:
         """
         result = ScreeningResult()
 
-        # Layer 1: Active instruments — try PG instruments first, fallback to InstrumentMaster
+        # Layer 1: Active instruments — use Instrument (canonical model after migration 0022).
+        # Instrument now has delisting_date, underlying_ticker, and all other columns
+        # that were previously only in InstrumentMaster.
+        # Fallback to InstrumentMaster only if the instruments table doesn't exist
+        # (e.g., old SQLite DB without migration 0022).
         try:
             from market.db.models import Instrument
 
@@ -151,31 +155,35 @@ class TickerScreener:
                 )
             ).scalars().all()
             if active_tickers:
-                # PG instruments table doesn't have delisting_date/underlying_ticker.
-                # Query InstrumentMaster (which exists in PG too) for those filters.
+                # Instrument has delisting_date and underlying_ticker (merged in migration 0022)
                 delisted = set(
                     session.execute(
-                        select(InstrumentMaster.ticker).where(
-                            InstrumentMaster.ticker.in_(active_tickers),
-                            InstrumentMaster.delisting_date.is_not(None),
+                        select(Instrument.ticker).where(
+                            Instrument.ticker.in_(active_tickers),
+                            Instrument.delisting_date.is_not(None),
                         )
                     ).scalars().all()
                 )
                 merged = set(
                     session.execute(
-                        select(InstrumentMaster.ticker).where(
-                            InstrumentMaster.ticker.in_(active_tickers),
-                            InstrumentMaster.underlying_ticker.is_not(None),
+                        select(Instrument.ticker).where(
+                            Instrument.ticker.in_(active_tickers),
+                            Instrument.underlying_ticker.is_not(None),
                         )
                     ).scalars().all()
                 )
             else:
-                raise Exception("No rows in PG instruments, trying SQLite")
+                # No active tickers for this asset_class — return empty result
+                logger.info("Screener: 0 active %s tickers in instruments", asset_class)
+                return result
         except Exception:
             try:
                 session.rollback()
             except Exception:
                 pass
+            # Fallback: InstrumentMaster (real table in old SQLite DBs without migration 0022)
+            # Note: In PG, instrument_master is a compatibility view with text columns,
+            # so this fallback only works on SQLite.
             active_tickers = session.execute(
                 select(InstrumentMaster.ticker).where(
                     InstrumentMaster.is_active == True,  # noqa: E712

@@ -482,15 +482,15 @@ async def cosmos_exchanges(
 
     Status buka/tutup dihitung real-time berdasarkan timezone bursa dan jam perdagangan.
     """
-    from market.db.models import MarketRegistry
+    from market.db.models import Exchange
     from sqlalchemy import text as sql_text
 
     now = datetime.now(UTC)
     exchanges: list[dict[str, Any]] = []
 
     # Query semua market dari DB
-    db_markets = session.query(MarketRegistry).filter(
-        MarketRegistry.trading_status == "active",
+    db_markets = session.query(Exchange).filter(
+        Exchange.trading_status == "active",
     ).all()
 
     # Query latest index prices in one batch

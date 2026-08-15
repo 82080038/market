@@ -21,7 +21,7 @@ from functools import lru_cache
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from market.db.models import MarketRegistry
+from market.db.models import Exchange
 
 logger = logging.getLogger(__name__)
 
@@ -60,8 +60,8 @@ def get_suffix(market_mic: str, session: Session | None = None) -> str | None:
     if session is not None:
         try:
             result = session.execute(
-                select(MarketRegistry.data_suffix).where(
-                    MarketRegistry.mic_code == market_mic
+                select(Exchange.data_suffix).where(
+                    Exchange.mic_code == market_mic
                 )
             ).scalar_one_or_none()
             if result is not None:
@@ -71,7 +71,7 @@ def get_suffix(market_mic: str, session: Session | None = None) -> str | None:
                 session.rollback()
             except Exception:
                 pass
-            logger.debug("Could not query market_registry for %s, using fallback", market_mic)
+            logger.debug("Could not query exchanges for %s, using fallback", market_mic)
 
     return _get_suffix(market_mic)
 

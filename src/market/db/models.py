@@ -37,65 +37,50 @@ def _utcnow() -> datetime:
 # ── Registry tables ──────────────────────────────────────────────────────
 
 
-class MarketRegistry(Base):
-    """ISO 10383 market registry (pustaka/92 §3.1)."""
-
-    __tablename__ = "market_registry"
-
-    mic_code: Mapped[str] = mapped_column(String(10), primary_key=True)
-    country_code: Mapped[str] = mapped_column(String(3), nullable=False)
-    timezone: Mapped[str] = mapped_column(String(50), nullable=False)
-    trading_hours: Mapped[str] = mapped_column(Text, nullable=False)
-    supports_dst: Mapped[bool] = mapped_column(Boolean, default=False)
-    settlement_cycle: Mapped[int] = mapped_column(Integer, default=2)
-    tick_size_rule: Mapped[str] = mapped_column(Text, nullable=True)
-    lot_size: Mapped[int | None] = mapped_column(Integer, nullable=True)
-    currency: Mapped[str] = mapped_column(String(3), nullable=False)
-    data_suffix: Mapped[str | None] = mapped_column(String(10), nullable=True)
-    trading_status: Mapped[str] = mapped_column(String(20), default="active")
-    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_utcnow)
-    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_utcnow, onupdate=_utcnow)
+# NOTE: MarketRegistry and InstrumentMaster tables were merged into exchanges/instruments
+# in migration 0022. Compatibility views remain in PG for backward compatibility.
+# Use Exchange and Instrument models below for new code.
 
 
 class InstrumentMaster(Base):
-    """Extended instrument master (pustaka/92 §3.3, pustaka/18 §13 D17)."""
+    """Compatibility view — delegates to instruments table (migration 0022).
+
+    The original instrument_master table was merged into instruments.
+    A view with the old column names is maintained for backward compatibility.
+    New code should use the Instrument model instead.
+    """
 
     __tablename__ = "instrument_master"
 
     ticker: Mapped[str] = mapped_column(String(30), primary_key=True)
-    market_mic: Mapped[str] = mapped_column(
-        String(10),
-        ForeignKey("market_registry.mic_code"),
-        nullable=False,
-    )
-    asset_class: Mapped[str] = mapped_column(String(30), nullable=False, default="equity")
+    market_mic: Mapped[str | None] = mapped_column(String(10), nullable=True)
+    asset_class: Mapped[str | None] = mapped_column(String(30), nullable=True)
     name: Mapped[str | None] = mapped_column(String(200), nullable=True)
-    base_currency: Mapped[str] = mapped_column(String(3), nullable=False, default="IDR")
-    reporting_currency: Mapped[str] = mapped_column(String(3), nullable=False, default="IDR")
+    base_currency: Mapped[str | None] = mapped_column(String(3), nullable=True)
+    reporting_currency: Mapped[str | None] = mapped_column(String(3), nullable=True)
     lot_size: Mapped[int | None] = mapped_column(Integer, nullable=True)
-    tick_size: Mapped[float | None] = mapped_column(Numeric(10, 4), nullable=True)
-    is_active: Mapped[bool] = mapped_column(Boolean, default=True)
+    tick_size: Mapped[str | None] = mapped_column(Text, nullable=True)
+    is_active: Mapped[str | None] = mapped_column(Text, nullable=True)
     sector: Mapped[str | None] = mapped_column(String(100), nullable=True)
     subsector: Mapped[str | None] = mapped_column(String(100), nullable=True)
     underlying_ticker: Mapped[str | None] = mapped_column(String(30), nullable=True)
-    listing_date: Mapped[date | None] = mapped_column(Date, nullable=True)
-    suspension_date: Mapped[date | None] = mapped_column(Date, nullable=True)
-    delisting_date: Mapped[date | None] = mapped_column(Date, nullable=True)
+    listing_date: Mapped[str | None] = mapped_column(Text, nullable=True)
+    delisting_date: Mapped[str | None] = mapped_column(Text, nullable=True)
+    created_at: Mapped[str | None] = mapped_column(Text, nullable=True)
+    updated_at: Mapped[str | None] = mapped_column(Text, nullable=True)
     board: Mapped[str | None] = mapped_column(String(20), nullable=True)
-    free_float: Mapped[float | None] = mapped_column(Numeric(10, 4), nullable=True)
-    market_cap: Mapped[float | None] = mapped_column(Numeric(20, 2), nullable=True)
-    listed_shares: Mapped[float | None] = mapped_column(Numeric(20, 2), nullable=True)
-    tradeable_shares: Mapped[float | None] = mapped_column(Numeric(20, 2), nullable=True)
-    delisting_risk_score: Mapped[float | None] = mapped_column(Numeric(5, 2), nullable=True, default=0)
+    free_float: Mapped[str | None] = mapped_column(Text, nullable=True)
+    market_cap: Mapped[str | None] = mapped_column(Text, nullable=True)
+    listed_shares: Mapped[str | None] = mapped_column(Text, nullable=True)
+    tradeable_shares: Mapped[str | None] = mapped_column(Text, nullable=True)
+    delisting_risk_score: Mapped[str | None] = mapped_column(Text, nullable=True)
     delisting_risk_reason: Mapped[str | None] = mapped_column(Text, nullable=True)
     former_ticker: Mapped[str | None] = mapped_column(String(30), nullable=True)
     former_name: Mapped[str | None] = mapped_column(String(200), nullable=True)
     index_category: Mapped[str | None] = mapped_column(String(30), nullable=True)
     region: Mapped[str | None] = mapped_column(String(10), nullable=True)
-    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_utcnow)
-    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_utcnow, onupdate=_utcnow)
-
-    market: Mapped[MarketRegistry] = relationship(foreign_keys=[market_mic])
+    suspension_date: Mapped[str | None] = mapped_column(Text, nullable=True)
+    trading_status: Mapped[str | None] = mapped_column(Text, nullable=True)
 
 
 # ── Market data tables ───────────────────────────────────────────────────
@@ -167,20 +152,21 @@ class Dividend(Base):
 
 
 class MarketCalendar(Base):
-    """Market calendar (pustaka/18 §13 D25)."""
+    """Compatibility view — delegates to exchange_holidays (migration 0023).
+
+    The original market_calendar table was merged into exchange_holidays.
+    A view remains for backward compatibility. Only holiday rows are visible
+    (is_trading_day=false). New code should query exchange_holidays directly.
+    """
 
     __tablename__ = "market_calendar"
-    __table_args__ = (
-        UniqueConstraint("date", "exchange", name="uq_cal_pk"),
-    )
 
-    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
-    date: Mapped[date] = mapped_column(Date, nullable=False, index=True)
-    exchange: Mapped[str] = mapped_column(String(10), nullable=False, default="XIDX")
-    is_trading_day: Mapped[bool] = mapped_column(Boolean, default=True)
+    date: Mapped[date] = mapped_column(Date, primary_key=True)
+    exchange: Mapped[str] = mapped_column(String(10), nullable=False)
+    is_trading_day: Mapped[bool] = mapped_column(Boolean, default=False)
     holiday_name: Mapped[str | None] = mapped_column(String(200), nullable=True)
     half_day: Mapped[bool] = mapped_column(Boolean, default=False)
-    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_utcnow)
+    created_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
 
 
 class FXRate(Base):
@@ -326,6 +312,10 @@ class FundamentalData(Base):
     car: Mapped[float | None] = mapped_column(Numeric(10, 4), nullable=True)
     loan_to_deposit: Mapped[float | None] = mapped_column(Numeric(10, 4), nullable=True)
     nim: Mapped[float | None] = mapped_column(Numeric(10, 4), nullable=True)
+    fiscal_year: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    quarter: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    total_liabilities: Mapped[float | None] = mapped_column(Numeric(20, 2), nullable=True)
+    cash_flow: Mapped[float | None] = mapped_column(Numeric(20, 2), nullable=True)
     sector: Mapped[str | None] = mapped_column(String(100), nullable=True)
     industry: Mapped[str | None] = mapped_column(String(100), nullable=True)
     source: Mapped[str] = mapped_column(String(50), default="yfinance")
@@ -514,7 +504,12 @@ class TechnicalIndicator(Base):
 
 
 class StockPersonality(Base):
-    """Stock personality classification (pustaka/18 §13 D30)."""
+    """Stock personality classification (pustaka/18 §13 D30).
+
+    Prediction columns were moved to stock_prediction in migration 0022
+    to reduce write amplification (personality = weekly profile,
+    prediction = daily forecast).
+    """
 
     __tablename__ = "stock_personality"
 
@@ -694,11 +689,12 @@ class NewsSentiment(Base):
     sentiment_label: Mapped[str | None] = mapped_column(String(20), nullable=True)
     relevance_score: Mapped[float | None] = mapped_column(Numeric(5, 2), nullable=True)
     source: Mapped[str | None] = mapped_column(String(100), nullable=True)
+    url: Mapped[str | None] = mapped_column(Text, nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_utcnow)
 
 
 class Instrument(Base):
-    """Instrument master matching PG instruments table."""
+    """Instrument master — merged with instrument_master in migration 0022."""
 
     __tablename__ = "instruments"
 
@@ -711,6 +707,26 @@ class Instrument(Base):
     is_active: Mapped[bool] = mapped_column(Boolean, default=True)
     listed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_utcnow)
+    # Columns merged from instrument_master (migration 0022)
+    reporting_currency: Mapped[str] = mapped_column(String(3), default="IDR")
+    lot_size: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    tick_size: Mapped[float | None] = mapped_column(Numeric(20, 8), nullable=True)
+    subsector: Mapped[str | None] = mapped_column(String(100), nullable=True)
+    underlying_ticker: Mapped[str | None] = mapped_column(String(30), nullable=True)
+    suspension_date: Mapped[date | None] = mapped_column(Date, nullable=True)
+    delisting_date: Mapped[date | None] = mapped_column(Date, nullable=True)
+    board: Mapped[str | None] = mapped_column(String(20), nullable=True)
+    free_float: Mapped[float | None] = mapped_column(Numeric(20, 4), nullable=True)
+    market_cap: Mapped[float | None] = mapped_column(Numeric(20, 2), nullable=True)
+    listed_shares: Mapped[float | None] = mapped_column(Numeric(20, 2), nullable=True)
+    tradeable_shares: Mapped[float | None] = mapped_column(Numeric(20, 2), nullable=True)
+    delisting_risk_score: Mapped[float | None] = mapped_column(Numeric(5, 2), nullable=True, default=0)
+    delisting_risk_reason: Mapped[str | None] = mapped_column(Text, nullable=True)
+    former_ticker: Mapped[str | None] = mapped_column(String(30), nullable=True)
+    former_name: Mapped[str | None] = mapped_column(String(200), nullable=True)
+    index_category: Mapped[str | None] = mapped_column(String(30), nullable=True)
+    region: Mapped[str | None] = mapped_column(String(10), nullable=True)
+    updated_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
 
 
 class StockPrice(Base):
@@ -730,12 +746,17 @@ class StockPrice(Base):
     volume: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
     vwap: Mapped[float | None] = mapped_column(Numeric(20, 6), nullable=True)
     adjusted_close: Mapped[float | None] = mapped_column(Numeric(20, 6), nullable=True)
+    bid: Mapped[float | None] = mapped_column(Numeric(20, 6), nullable=True)
+    bid_volume: Mapped[float | None] = mapped_column(Numeric(20, 2), nullable=True)
+    ask: Mapped[float | None] = mapped_column(Numeric(20, 6), nullable=True)
+    ask_volume: Mapped[float | None] = mapped_column(Numeric(20, 2), nullable=True)
+    trade_count: Mapped[int | None] = mapped_column(Integer, nullable=True)
     source: Mapped[str] = mapped_column(String(50), default="yahoo_finance")
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_utcnow)
 
 
 class Exchange(Base):
-    """Exchange registry matching PG exchanges table."""
+    """Exchange registry — merged with market_registry in migration 0022."""
 
     __tablename__ = "exchanges"
 
@@ -748,6 +769,14 @@ class Exchange(Base):
     tick_size: Mapped[float] = mapped_column(Numeric(10, 6), nullable=False, default=0.01)
     is_active: Mapped[bool] = mapped_column(Boolean, default=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_utcnow)
+    # Columns merged from market_registry (migration 0022)
+    trading_hours: Mapped[str | None] = mapped_column(Text, nullable=True)
+    supports_dst: Mapped[bool] = mapped_column(Boolean, default=False)
+    settlement_cycle: Mapped[int] = mapped_column(Integer, default=2)
+    tick_size_rule: Mapped[str | None] = mapped_column(Text, nullable=True)
+    data_suffix: Mapped[str | None] = mapped_column(String(10), nullable=True)
+    trading_status: Mapped[str] = mapped_column(String(20), default="active")
+    updated_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
 
 
 class BrokerFlow(Base):
@@ -1198,27 +1227,23 @@ class IndeksPasar(Base):
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_utcnow)
 
 
+# NOTE: Broker and BrokerBursa tables were dropped in migration 0022.
+# The `brokers` table (migration 0013) is the canonical broker registry.
+
+
 class Broker(Base):
-    """Broker — securities broker."""
+    """Securities broker — canonical broker registry (brokers table)."""
 
-    __tablename__ = "broker"
+    __tablename__ = "brokers"
 
-    id_broker: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
-    nama_broker: Mapped[str] = mapped_column(String(200), nullable=False, unique=True)
+    id: Mapped[str] = mapped_column(String(36), primary_key=True)  # UUID
+    code: Mapped[str] = mapped_column(String(20), nullable=False)
+    name: Mapped[str] = mapped_column(String(200), nullable=False)
+    exchange_mic: Mapped[str | None] = mapped_column(
+        String(10), ForeignKey("exchanges.mic_code", ondelete="SET NULL"), nullable=True
+    )
+    is_active: Mapped[bool] = mapped_column(Boolean, default=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_utcnow)
-
-
-class BrokerBursa(Base):
-    """Broker-Bursa — many-to-many junction (broker ↔ bursa membership)."""
-
-    __tablename__ = "broker_bursa"
-
-    id_broker: Mapped[int] = mapped_column(
-        Integer, ForeignKey("broker.id_broker", ondelete="CASCADE"), primary_key=True
-    )
-    id_bursa: Mapped[int] = mapped_column(
-        Integer, ForeignKey("bursa_efek.id_bursa", ondelete="CASCADE"), primary_key=True
-    )
 
 
 class TransaksiInvestor(Base):
@@ -1232,7 +1257,7 @@ class TransaksiInvestor(Base):
         Integer, ForeignKey("instrumen.id_instrumen", ondelete="RESTRICT"), nullable=False
     )
     id_broker: Mapped[int | None] = mapped_column(
-        Integer, ForeignKey("broker.id_broker", ondelete="SET NULL"), nullable=True
+        Integer, ForeignKey("brokers.id", ondelete="SET NULL"), nullable=True
     )
     tipe_transaksi: Mapped[str] = mapped_column(String(20), nullable=False)
     jumlah_lot: Mapped[int] = mapped_column(Integer, nullable=False, default=0)

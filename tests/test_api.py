@@ -82,6 +82,24 @@ def test_portfolio():
 def test_watchlist_add_get_remove():
     client = TestClient(create_app())
 
+    # Seed instrument first (FK constraint fk_watchlist_ticker from migration 0022)
+    from market.db.engine import get_sessionmaker
+    from market.db.models import Exchange, Instrument
+    from market.data.seed import seed_markets
+
+    session = get_sessionmaker()()
+    try:
+        seed_markets(session)
+        existing = session.get(Instrument, "BBCA.JK")
+        if existing is None:
+            session.add(Instrument(
+                ticker="BBCA.JK", exchange_mic="XIDX", asset_class="EQUITY_INDIVIDUAL",
+                name="Bank Central Asia", is_active=True,
+            ))
+            session.commit()
+    finally:
+        session.close()
+
     # Clean up any existing entry for this ticker
     client.delete("/api/watchlist/BBCA.JK")
 

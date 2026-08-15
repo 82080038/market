@@ -30,7 +30,6 @@ from market.db.models import (
     InstrumentMaster,
     MLLabel,
     MacroData,
-    MarketCalendar,
     MarketRegime,
     RelationshipMatrix,
     Score,
@@ -310,7 +309,7 @@ def migrate_foreign_flow(session: Session, dry_run: bool = False) -> int:
 
 
 def migrate_market_calendar(session: Session, dry_run: bool = False) -> int:
-    """Migrate market_calendar.parquet."""
+    """Migrate market_calendar.parquet into exchange_holidays (migration 0023)."""
     path = ARCHIVE_TABLES / "market_calendar.parquet"
     if not path.exists() and not (ARCHIVE_TABLES / "market_calendar").is_dir():
         return 0
@@ -319,19 +318,32 @@ def migrate_market_calendar(session: Session, dry_run: bool = False) -> int:
     if df is None or df.empty:
         return 0
 
+    # Only migrate holidays (non-trading days with a name)
+    holidays = df[df.get("is_trading_day", True) == False].copy()
+    if holidays.empty:
+        return 0
+
     if dry_run:
-        return len(df)
+        return len(holidays)
+
+    from sqlalchemy import text as sql_text
+
+    # Map old exchange codes to MIC codes
+    code_map = {"IDX": "XIDX", "XEUC": "XEUC", "XHKG": "XHKG",
+                "XLON": "XLON", "XNAS": "XNAS", "XNYS": "XNYS", "XTKS": "XTSE"}
 
     count = 0
-    for _, row in df.iterrows():
-        session.add(
-            MarketCalendar(
-                date=_d(row, "date") or date.min,
-                exchange=str(row.get("exchange", "XIDX")),
-                is_trading_day=bool(row.get("is_trading_day", True)),
-                holiday_name=_s(row, "holiday_name"),
-                half_day=bool(row.get("half_day", False)),
-            )
+    for _, row in holidays.iterrows():
+        mic = code_map.get(str(row.get("exchange", "XIDX")), str(row.get("exchange", "XIDX")))
+        session.execute(
+            sql_text("""
+                INSERT INTO exchange_holidays (mic_code, holiday_date, holiday_name, is_half_day)
+                VALUES (:mic, :dt, :name, :half)
+                ON CONFLICT (mic_code, holiday_date) DO UPDATE SET
+                    holiday_name = COALESCE(EXCLUDED.holiday_name, exchange_holidays.holiday_name)
+            """),
+            {"mic": mic, "dt": _d(row, "date"), "name": _s(row, "holiday_name"),
+             "half": bool(row.get("half_day", False))},
         )
         count += 1
 

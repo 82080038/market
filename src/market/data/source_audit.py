@@ -359,17 +359,11 @@ _TABLE_REGISTRY: dict[str, dict] = {
         "connector": "manual",
         "description": "Market index hierarchy",
     },
-    "broker": {
+    "brokers": {
         "source_type": SourceType.REFERENCE,
         "update_method": UpdateMethod.STATIS,
         "connector": "manual",
-        "description": "Broker registry",
-    },
-    "broker_bursa": {
-        "source_type": SourceType.REFERENCE,
-        "update_method": UpdateMethod.STATIS,
-        "connector": "manual",
-        "description": "Broker-exchange junction",
+        "description": "Broker registry (canonical, migration 0022 merged broker/broker_bursa here)",
     },
 
     # ── Local Logic (Recompute) ──────────────────────────────────────────

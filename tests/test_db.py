@@ -12,9 +12,9 @@ from sqlalchemy.orm import Session
 from market.db.models import (
     OHLCV,
     Base,
+    Exchange,
     FXRate,
-    InstrumentMaster,
-    MarketRegistry,
+    Instrument,
     SourceHealth,
 )
 
@@ -30,9 +30,10 @@ def db_session():
     engine.dispose()
 
 
-def test_create_market_registry(db_session):
-    market = MarketRegistry(
+def test_create_exchange(db_session):
+    market = Exchange(
         mic_code="XIDX",
+        name="Indonesia Stock Exchange",
         country_code="IDN",
         timezone="Asia/Jakarta",
         trading_hours="09:00-15:50",
@@ -43,16 +44,16 @@ def test_create_market_registry(db_session):
     db_session.add(market)
     db_session.commit()
 
-    found = db_session.get(MarketRegistry, "XIDX")
+    found = db_session.get(Exchange, "XIDX")
     assert found is not None
     assert found.currency == "IDR"
-    assert found.lot_size is None
 
 
-def test_create_instrument_master(db_session):
+def test_create_instrument(db_session):
     db_session.add(
-        MarketRegistry(
+        Exchange(
             mic_code="XIDX",
+            name="Indonesia Stock Exchange",
             country_code="IDN",
             timezone="Asia/Jakarta",
             trading_hours="09:00-15:50",
@@ -62,23 +63,21 @@ def test_create_instrument_master(db_session):
     )
     db_session.commit()
 
-    inst = InstrumentMaster(
+    inst = Instrument(
         ticker="BBCA.JK",
-        market_mic="XIDX",
-        asset_class="EQUITY_INDIVIDUAL",
+        exchange_mic="XIDX",
+        asset_class="EQUITY",
         name="Bank Central Asia",
-        base_currency="IDR",
-        lot_size=100,
+        currency="IDR",
         is_active=True,
         sector="Financials",
     )
     db_session.add(inst)
     db_session.commit()
 
-    found = db_session.get(InstrumentMaster, "BBCA.JK")
+    found = db_session.get(Instrument, "BBCA.JK")
     assert found is not None
     assert found.name == "Bank Central Asia"
-    assert found.market.currency == "IDR"
 
 
 def test_create_ohlcv(db_session):

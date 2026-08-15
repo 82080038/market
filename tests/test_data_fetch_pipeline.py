@@ -18,7 +18,7 @@ from sqlalchemy.orm import Session, sessionmaker
 
 from market.core.events import Event, EventBroker
 from market.data.seed import seed_markets
-from market.db.models import Base, InstrumentMaster, MacroData, OHLCV
+from market.db.models import Base, Instrument, MacroData, OHLCV
 
 
 # ── Fixtures ────────────────────────────────────────────────────────────
@@ -86,12 +86,12 @@ def _seed_test_instruments(session: Session) -> None:
     """Seed minimal instruments for EOD fetch test."""
     seed_markets(session)
     instruments = [
-        InstrumentMaster(
-            ticker="BBCA.JK", market_mic="XIDX", asset_class="EQUITY_INDIVIDUAL",
+        Instrument(
+            ticker="BBCA.JK", exchange_mic="XIDX", asset_class="EQUITY_INDIVIDUAL",
             name="Bank Central Asia", is_active=True,
         ),
-        InstrumentMaster(
-            ticker="BBRI.JK", market_mic="XIDX", asset_class="EQUITY_INDIVIDUAL",
+        Instrument(
+            ticker="BBRI.JK", exchange_mic="XIDX", asset_class="EQUITY_INDIVIDUAL",
             name="Bank Rakyat Indonesia", is_active=True,
         ),
     ]
@@ -226,8 +226,8 @@ def test_e2e_global_fetch_with_db_instruments(mock_download, mock_open, patched_
     session = patched_sessionmaker()
     try:
         seed_markets(session)
-        session.add(InstrumentMaster(
-            ticker="^GSPC", market_mic="XNYS", asset_class="INDEX_COMPOSITE",
+        session.add(Instrument(
+            ticker="^GSPC", exchange_mic="XNYS", asset_class="INDEX_COMPOSITE",
             name="S&P 500", is_active=True,
         ))
         session.commit()

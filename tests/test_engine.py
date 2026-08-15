@@ -5,15 +5,16 @@ from __future__ import annotations
 from sqlalchemy.orm import Session
 
 from market.db.engine import _make_sqlite_engine, get_session
-from market.db.models import Base, MarketRegistry
+from market.db.models import Base, Exchange
 
 
 def test_make_engine_creates_tables():
     engine = _make_sqlite_engine(":memory:")
     Base.metadata.create_all(engine)
     with Session(engine) as session:
-        market = MarketRegistry(
+        market = Exchange(
             mic_code="XIDX",
+            name="Indonesia Stock Exchange",
             country_code="IDN",
             timezone="Asia/Jakarta",
             trading_hours="09:00-15:50",
@@ -22,7 +23,7 @@ def test_make_engine_creates_tables():
         )
         session.add(market)
         session.commit()
-        found = session.get(MarketRegistry, "XIDX")
+        found = session.get(Exchange, "XIDX")
         assert found is not None
     Base.metadata.drop_all(engine)
     engine.dispose()

@@ -943,3 +943,95 @@ finalisasi, commit, push, shutdown.
 - Git commit & push semua perubahan (ablation fix + batch scripts + DB normalization docs)
 - Shutdown komputer
 
+## Checkpoint Sesi 2026-08-15 (3) — Sync GitHub + Audit & Update Konfigurasi
+
+- **Topik:** Sync aplikasi dari GitHub (reset ke remote) + audit menyeluruh seluruh aplikasi + update konfigurasi Devin/Cascade (rules, skills, memory, workflows).
+- **Trigger:** User request: "ganti isi proyek ini, menggunakan isi dari github" → reset ke `origin/main` (c3ed426) → "analisa seluruh aplikasi, dari kode awal sampai akhir, termasuk baca .devin; dan update konfigurasi: skills, memories, rules, workflows".
+
+### Sync GitHub
+- `git fetch origin` + `git reset --hard origin/main` → HEAD: `c3ed426` (fix: data staleness recompute + PostgreSQL compatibility fixes)
+- 4 commit baru tersinkron (dari `3309bf1` ke `c3ed426`)
+- 5 file lokal yang modified dibuang, working tree bersih
+
+### Audit Struktur Aplikasi (post-sync)
+- **Pustaka:** 103 file .md (00-README + 01-102) ✅
+- **Migrations:** 0001-0021 (alembic head = 0021) ✅
+- **src/market/:** 163 file .py across 17 sub-packages:
+  - `analysis/` (38 files), `data/` (24 files), `api/` (18 files), `ablation/` (7 files)
+  - `backtest/` (6), `compute/` (2), `core/` (3), `db/` (4), `execution/` (6)
+  - `autonomous/` (7), `mlops/` (7), `multi_asset/` (5), `security/` (9), `social/` (7)
+  - `pipelines/` (8), `risk/` (3), `cli/` (2), `scheduler.py` + `scheduler_tasks.py` + `config.py` + `paths.py`
+- **Scripts:** 80 file .py (was 73)
+- **Tests:** 90 file .py (was 76)
+- **Frontend:** Next.js 16.3.0, 13 halaman (dashboard, portfolio, stock, screener, signals, scheduler, backtest, cosmos, data, reports, scan, settings, automation)
+
+### Engine Ablation Framework — Verifikasi Aktual
+- **Total engine:** 42 (was 38 in AGENTS.md)
+  - SignalEnhancer: 25 (11 enabled + 14 disabled)
+  - MarketContext: 13 (all enabled)
+  - PredictionCore: 4 (all enabled)
+- **Enabled:** 28 (was 24)
+- **Disabled:** 14 ✅
+- **Tests:** 93 (was 31 in AGENTS.md)
+- **Engine baru sejak last update:** vta_reasoning, causal_discovery, denoised_news, spillover_lab (Global Market AI engines), mc_sentiment, mc_flow, mc_cross_market, mc_astronacci (missing MC factors), multi_factor (MultiFactorModel)
+
+### Update yang Dilakukan Sesi Ini
+- `AGENTS.md` §6: Fix engine count 38→42, enabled 24→28, SE 22→25, MC 12→13, tests 31→93, tambah Fisher's method + turnover cost model
+- `.devin/SESSION_MEMORY.md`: Checkpoint ini
+- Memory entries: Create/update via `create_memory`
+
+### Skills & Workflows — Status
+- `context-checkpoint/SKILL.md`: ✅ up-to-date (103 docs, 00-102)
+- `knowledge-base-curator/SKILL.md`: ✅ up-to-date (103 docs, new doc from 103)
+- `megaplan-executor/SKILL.md`: ✅ up-to-date (migration 0021, 103 docs, Next.js 16+)
+- `run-tests.md`: ✅ up-to-date
+- `sync-github.md`: ✅ up-to-date
+- `update-config.md`: ✅ up-to-date
+
+### Pending
+- Git commit & push untuk update AGENTS.md
+- Tidak ada perubahan kode Python
+
+## Checkpoint Sesi 2026-08-15 (4) — Test DB Migration ke PostgreSQL + Code Fixes
+
+- **Topik:** Migrasi test DB dari SQLite ke PostgreSQL + fix code yang bergantung pada model lama (MarketRegistry/InstrumentMaster) pasca migration 0022/0023.
+- **Trigger:** User melanjutkan sesi "Recompute Pipeline and Code Fixes" dan menanyakan kenapa tests pakai SQLite padahal aplikasi produksi pakai PG.
+
+### Test DB Strategy (PostgreSQL)
+- **Keputusan user:** Tests pakai PostgreSQL test DB (`market_test`), bukan SQLite.
+- **Grant CREATEDB:** `ALTER ROLE petrick CREATEDB` (dijalankan sebagai superuser `postgres`).
+- **Database `market_test`** dibuat di PG instance yang sama (port 5433).
+- **Schema clone:** `pg_dump --schema-only` dari `market` ke `market_test` (141 KB SQL).
+  - Alembic migrations 0001-0006 punya SQLite-isms (e.g. `BOOLEAN DEFAULT 0`) yang gagal di PG.
+  - Production `market` DB dibuat via `docs/domino_effect_schema.sql`, bukan alembic.
+  - Oleh karena itu, schema test DB di-clone dari produksi via pg_dump, bukan `alembic upgrade head`.
+- **Isolation per test:** `TRUNCATE all tables RESTART IDENTITY CASCADE` sebelum setiap `isolated_db` test.
+- **Session-scoped fixture:** `_ensure_test_db` (autouse) — create DB if missing, clone schema if empty.
+
+### Code Fixes (Migration 0022/0023 Compatibility)
+1. **`tests/conftest.py`** — Rewrite total: PG test DB via pg_dump + truncate isolation (sebelumnya SQLite + alembic).
+2. **`tests/test_screener.py`** — `InstrumentMaster` → `Instrument` model untuk seeding (8 instruments).
+3. **`tests/test_data_fetch_pipeline.py`** — `InstrumentMaster` → `Instrument` (3 lokasi: import, _seed_test_instruments, ^GSPC seed).
+4. **`src/market/data/screener.py`** — Fix fallback logic: ketika `instruments` table kosong, return empty result (jangan fallback ke InstrumentMaster view di PG yang punya text columns).
+5. **`src/market/data/source_audit.py`** — Registry: hapus `broker`/`broker_bursa` (dropped di migration 0022), tambah `brokers` (canonical).
+6. **`tests/test_api.py::test_watchlist_add_get_remove`** — Seed instrument `BBCA.JK` sebelum add ke watchlist (FK constraint `fk_watchlist_ticker` dari migration 0022).
+
+### Test Results
+- **Sebelum fix:** 10 screener tests FAILED (insert ke view non-updatable), 3 data_fetch tests FAILED (query Instrument dapat kosong karena seed ke InstrumentMaster), 1 source_audit FAILED (registry missing `brokers`), 1 API test FAILED (FK violation).
+- **Sesudah fix:** 11/11 screener PASS, 16/16 data_fetch PASS, 4/4 source_audit PASS, 1/1 API watchlist PASS.
+- **Full suite:** 1661 passed, 54 failed (39 pre-existing + 15 baru terkait migration 0022 yang sudah diperbaiki di sesi ini).
+- **Pre-existing failures (39):** test_intraday (6, ohlcv view column mismatch), test_refresh_stale (12+2, SQL placeholder %s vs ?), test_autonomous (5), test_alpha_* (11), test_cross_market (3), test_data_health (2), test_news_sentiment (2, IndoBERT), test_portfolio_* (4), test_security (1), test_sentiment (4), test_signal_enhancer (1), test_ticker_migration (2).
+
+### Files Changed
+- `tests/conftest.py` — Rewrite: PG test DB strategy
+- `tests/test_screener.py` — InstrumentMaster → Instrument
+- `tests/test_data_fetch_pipeline.py` — InstrumentMaster → Instrument
+- `tests/test_api.py` — Seed instrument for watchlist FK
+- `src/market/data/screener.py` — Fix empty instruments fallback
+- `src/market/data/source_audit.py` — Registry: broker → brokers
+- `scripts/_tmp_check_db.py`, `scripts/_check_sp_schema.py`, `scripts/_fix_sp.py` — Deleted (temp scripts)
+
+### Pending
+- Git commit & push semua perubahan
+- 39 pre-existing test failures (bukan akibat migration 0022/0023)
+
