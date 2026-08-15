@@ -10,7 +10,7 @@ Membuat satu aplikasi desktop/web single-user untuk analisis, rekomendasi, simul
 
 ## 2. Acceptance Criteria Utama
 
-1. **Data Pipeline:** Setiap hari aplikasi mengambil data EOD Yahoo Finance/IDX, membersihkannya, mendeteksi corporate actions, dan menyimpannya ke SQLite dalam <30 menit untuk ~923 saham aktif.
+1. **Data Pipeline:** Setiap hari aplikasi mengambil data EOD Yahoo Finance/IDX, membersihkannya, mendeteksi corporate actions, dan menyimpannya ke PostgreSQL dalam <30 menit untuk ~923 saham aktif.
 2. **Decision Engine:** Endpoint `/api/recommend/{ticker}` mengembalikan skor 0-100, sinyal, VaR 95%, position size, dan narasi XAI Bahasa Indonesia.
 3. **Backtest Valid:** Event-driven, next-bar-open, realistic cost/slippage, walk-forward, tidak ada look-ahead bias.
 4. **Paper Trading:** Simulasi order memperhitungkan lot IDX (100), biaya broker, PPh final 0.1%, dividen 10%.
@@ -24,9 +24,9 @@ Membuat satu aplikasi desktop/web single-user untuk analisis, rekomendasi, simul
 
 ### In Scope
 - Seluruh topik yang dibahas di 98 dokumen `pustaka/` (00-97), dikelompokkan ke dalam 12 fase berikut.
-- Tech stack: Python 3.11+ (FastAPI, uv, Alembic, SQLite WAL, pandas, PyTorch cu121), Next.js 14+ (TypeScript, Tailwind).
+- Tech stack: Python 3.11+ (FastAPI, uv, Alembic, PostgreSQL 16, pandas, PyTorch cu121), Next.js 14+ (TypeScript, Tailwind).
 - Single-user deployment lokal (Linux/WSL) dan Docker.
-- Migrasi data dari Parquet archive (read-only) ke SQLite lokal. Lihat `src/market/paths.py` untuk path OS-aware.
+- Migrasi data dari Parquet archive (read-only) ke PostgreSQL lokal. Lihat `src/market/paths.py` untuk path OS-aware. Migrasi SQLite → PostgreSQL selesai (lihat `pustaka/98-migrasi-sqlite-ke-postgresql.md`).
 - Bahasa Indonesia UI + tooltip untuk istilah teknis.
 - GPU `cuda:1` untuk LSTM, walk-forward, Monte Carlo, NLP/IndoBERT.
 
@@ -65,7 +65,7 @@ Membuat satu aplikasi desktop/web single-user untuk analisis, rekomendasi, simul
 - [x] Struktur direktori `src/market/`, `frontend/`, `tests/`, `alembic/`, `data/`, `scripts/`.
 - [x] Tooling: ruff, mypy, pytest, pre-commit hook.
 - [x] Environment selector: `ENV=research|paper|live` via CLI/API.
-- [x] Database isolation: `market_research.db`, `market_paper.db`, `market_live.db`.
+- [x] Database isolation: PostgreSQL `market` (research/paper), `data/market_live.db` SQLite (live).
 - [x] Broker adapter skeleton: `MockBroker`, `PaperBroker`, `RealBroker` (interface akan dibuat Fase 5).
 - [x] `.env` templates per environment.
 - [x] GitHub Actions CI: lint + test skeleton.
@@ -89,7 +89,7 @@ Membuat satu aplikasi desktop/web single-user untuk analisis, rekomendasi, simul
 - [x] `market_calendar` table + timezone/DST engine.
 - [x] `fx_rates` table + FX engine (USDIDR, HKDIDR, JPYIDR, dll.).
 - [x] Corporate action detection & backward adjustment.
-- [x] Migration 8 dataset parquet ke SQLite (ohlcv, corporate_actions, dividends, macro_data, foreign_flow, market_calendar, fundamental_data, stock_personality).
+- [x] Migration 8 dataset parquet ke PostgreSQL (ohlcv, corporate_actions, dividends, macro_data, foreign_flow, market_calendar, fundamental_data, stock_personality).
 - [x] Daily scheduler skeleton.
 
 **Acceptance:** `market_paper.db` terisi OHLCV ≥2.9M rows, commodity, sentiment, shareholders; `fetch --universe idx` sukses tanpa FAIL major.
@@ -434,7 +434,7 @@ AI wajib berhenti dan minta approval jika:
 Semua fase 0–11 sudah selesai dari sisi kode dan test (1274 tests, 64 files, coverage 76%+). Data enrichment, batch AI/ML backfill, DB normalization, fast portfolio pipeline, dan 7 modul strategi alternatif juga selesai. Langkah nyata berikutnya adalah validasi strategi dan memulai paper trading sungguhan:
 
 1. **Persiapan Environment**: ✅ Selesai — `.env` dengan `ENV=paper`, `BROKER_ADAPTER=paper`.
-2. **Database**: ✅ Selesai — `market_research.db` (~10 GB) & `market_paper.db` (~8.3 GB) ter-seed penuh, alembic head 0012.
+2. **Database**: ✅ Selesai — PostgreSQL `market` (~6.6 GB, 90 tables, alembic head 0023) & `market_test` (test isolation). Migrasi SQLite → PG selesai.
 3. **Scheduler**: ✅ Selesai — 11+ tasks terdaftar + crontab aktif (daily signal, weekly HRP recompute, weekly drift check).
 4. **Frontend Security**: ✅ Selesai (Next.js 16.3.0, 0 vulnerabilities, 10 pages).
 5. **Wire-up API**: ✅ Selesai — `/api/portfolio`, `/api/watchlist`, `/api/backtest/run` terhubung ke DB.

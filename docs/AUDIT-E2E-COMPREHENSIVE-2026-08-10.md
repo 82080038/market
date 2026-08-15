@@ -1,9 +1,11 @@
 # Laporan Audit End-to-End Komprehensif — Aplikasi Pasar Modal
 
+> **Update 2026-08-15:** Database utama sekarang PostgreSQL 16 di `localhost:5433/market` (alembic head 0023). File `data/market_research.db` (SQLite) sudah tidak ada. Laporan ini ditulis saat masih SQLite dan dipertahankan untuk konteks historis.
+
 **Tanggal audit:** 10 Agustus 2026 (Senin)
 **Auditor:** Senior Solutions Architect / Principal Quant Researcher / Expert Database Engineer
 **Source of truth:** `MEGAPLAN.md` (801 baris), `pustaka/00-95` (96 dokumen)
-**Database audited:** `data/market_research.db` (10 GB, alembic head `0013`)
+**Database audited (saat itu):** `data/market_research.db` (10 GB, alembic head `0013`) — sekarang PostgreSQL `market`
 **Metodologi:** Audit 4-layer (Database → ML/Infrastructure → Application → DevOps)
 
 ---

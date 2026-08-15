@@ -6,7 +6,7 @@
 - Basis pengetahuan berada di `<PROJECT_DIR>/pustaka/` — 103 dokumen Markdown bernomor `00-README.md` sampai `102-*.md`. Lihat §7 untuk padanan path per-OS.
 - Pustaka ini mendukung pengembangan aplikasi **single-user (personal)**; fitur multi-user, KYC, RBAC, deployment publik, dan enterprise security adalah **tidak relevan** kecuali secara eksplisit diminta.
 - Sumber implementasi referensi: `trading-system` v0.1.11 (asalnya `/home/petrick/projects/global/`; di Windows backup ada di `E:\trading_data\` — baca saja, jangan tulis/modifikasi).
-- Path aplikasi: `<PROJECT_DIR>/` — database utama: PostgreSQL 16 (`postgresql://petrick:market_dev@localhost:5432/market`), ~6.6 GB, 90 tables. Backup SQLite: `data/market_research.db` (~6 GB). Set `DATABASE_URL` di `.env` untuk switch backend.
+- Path aplikasi: `<PROJECT_DIR>/` — database utama: PostgreSQL 16 (`postgresql://petrick:market_dev@localhost:5433/market`), ~6.6 GB, 90 tables. Migrasi SQLite → PostgreSQL selesai (lihat `pustaka/98-migrasi-sqlite-ke-postgresql.md`); file `data/market_research.db` sudah tidak ada. Set `DATABASE_URL` di `.env` untuk koneksi PG. SQLite fallback hanya untuk unit test fixture scratch.
 
 ## 2. Keputusan Desain Tetap
 
@@ -113,7 +113,7 @@ Berlaku saat `sys.platform == 'win32'` (machine ini: `C:\xampp\htdocs\market\`).
 1. **Path selalu pakai single quote** — backslash aman di dalam single quote tanpa escaping:
    ```powershell
    python 'C:\xampp\htdocs\market\scripts\foo.py'
-   Get-Content 'C:\xampp\htdocs\market\data\market_research.db'   # contoh
+   Get-Content 'C:\xampp\htdocs\market\.env'   # contoh
    ```
    JANGAN: `python "C:\xampp\htdocs\market\scripts\foo.py"` kecuali benar-benar butuh ekspansi variabel.
 

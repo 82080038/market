@@ -1,6 +1,8 @@
 # Laporan Audit Aplikasi Pasar Modal
 
-**Tanggal audit:** 5 Agustus 2026 (update pasca-implementasi rekomendasi)  
+> **Update 2026-08-15:** Database utama sekarang PostgreSQL 16 di `localhost:5433/market` (alembic head 0023). File `data/market_research.db` (SQLite) sudah tidak ada. Laporan ini ditulis saat masih SQLite dan dipertahankan untuk konteks historis.
+
+**Tanggal audit:** 5 Agustus 2026 (update pasca-implementasi rekomendasi)
 **Repository:** https://github.com/82080038/market.git  
 **Path:** `/opt/lampp/htdocs/market`  
 **Python:** 3.12 (via uv venv) — target `>=3.11`  

@@ -1,12 +1,14 @@
 # Migrasi SQLite → PostgreSQL (Domino Effect Schema)
 
 > **Dokumen ini mendokumentasikan migrasi database dari SQLite ke PostgreSQL dengan schema "Domino Effect" untuk analisis kausal real-time.**
+>
+> **Status: SELESAI** — PostgreSQL 16 di `localhost:5433/market` adalah database utama. File `data/market_research.db` sudah tidak ada. Alembic head 0023.
 
 ---
 
 ## 1. Latar Belakang
 
-Database SQLite `market_research.db` (~6 GB) telah melayani aplikasi sejak awal pengembangan. Untuk mendukung:
+Database SQLite `market_research.db` (~6 GB) sebelumnya melayani aplikasi sejak awal pengembangan. Untuk mendukung:
 
 - **Analisis kausal real-time** (event → price reaction timeline)
 - **Time-range queries** yang efisien (GiST indexes)
@@ -118,7 +120,7 @@ rows = execute_query(
 
 Set di `.env`:
 ```
-DATABASE_URL=postgresql://petrick:market_dev@localhost:5432/market
+DATABASE_URL=postgresql://petrick:market_dev@localhost:5433/market
 ```
 
 Tanpa `DATABASE_URL`, aplikasi otomatis fallback ke SQLite.
@@ -139,10 +141,10 @@ Tanpa `DATABASE_URL`, aplikasi otomatis fallback ke SQLite.
 
 ## 6. Connection Details
 
-- **PostgreSQL 16** di localhost:5432
+- **PostgreSQL 16** di localhost:5433
 - **User:** `petrick`
 - **Database:** `market`
-- **Connection string:** `postgresql://petrick:market_dev@localhost:5432/market`
+- **Connection string:** `postgresql://petrick:market_dev@localhost:5433/market`
 
 ---
 

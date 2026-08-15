@@ -1,17 +1,12 @@
-fix: remediate 54 pre-existing test failures (Windows compat + logic bugs)
+docs: update database references — PostgreSQL 16 is primary (port 5433)
 
-Root causes fixed:
-- OHLCV ORM model aligned with PostgreSQL ohlcv view (composite PK, exchange_mic, vwap)
-- signal.SIGALRM → thread-based timeout fallback for Windows sandbox
-- os.statvfs → shutil.disk_usage fallback for Windows disk space check
-- LightGBM device='gpu' → auto-detect GPU support, fallback to CPU
-- IndoBERT base model detection → keyword sentiment fallback
-- SQLite/psycopg2 placeholder detection in resolve_ticker + refresh_stale
-- approval/support SLA edge case: expire_hours=0 with >= comparison
-- conftest: truncate tables AFTER isolated_db tests to prevent data leakage
-- test_source_audit: broker/broker_bursa → brokers (migration 0022)
-
-Result: 1821 passed, 20 skipped, 0 failed (was: 54 failed)
+- AGENTS.md: port 5432→5433, market_research.db removed as primary DB
+- README.md: PostgreSQL as primary, SQLite as legacy/testing fallback
+- MEGAPLAN.md: migration status updated to completed
+- .env.example: PostgreSQL default, port 5433
+- alembic.ini: fallback URL changed to PostgreSQL
+- pustaka/98: status SELESAI, port 5433
+- docs/AUDIT-*.md: historical note added (reports written when SQLite was primary)
 
 Generated with [Devin](https://devin.ai)
 

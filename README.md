@@ -39,9 +39,9 @@ Aplikasi **decision-support** untuk pasar modal Indonesia (IDX) dan global, diba
 ├─────────────────────────────────────────────────────────────────┤
 │                      Data Access Layer                             │
 │  Yahoo Finance, IDX API, BPS/BI/NOAA/WorldBank/FRED, Parquet,    │
-│  SQLAlchemy ORM, Multi-DB (SQLite/PostgreSQL), Wide Tables       │
+│  SQLAlchemy ORM, PostgreSQL 16, Wide Tables                      │
 ├─────────────────────────────────────────────────────────────────┤
-│        Database (SQLite/PostgreSQL + Parquet + Alembic)          │
+│        Database (PostgreSQL 16 + Parquet + Alembic)              │
 │  90 tables: OHLCV, Wide TI, Risk Metrics, ML Labels, Scores,     │
 │  Model Performance History, Strategy Assignment, Banking Metrics │
 └─────────────────────────────────────────────────────────────────┘
@@ -69,7 +69,7 @@ Aplikasi **decision-support** untuk pasar modal Indonesia (IDX) dan global, diba
 - **Stale Data Engine** (`src/market/data/refresh_stale.py`): Deteksi & auto-refresh data stale >24h (stock_personality, stock_prediction, technical_indicators_wide).
 - **Strategy Selector** (`src/market/analysis/strategy_selector.py`): Pemilihan strategi berbasis personality profile + volatility regime + in-sample backtesting. 8 strategy classes (trend_following, mean_reversion, momentum_breakout, sector_rotation, pairs_trading, value_dividend, macro_regime, technical_only) dengan persistensi ke `strategy_assignment` table.
 - **Model Performance Tracker** (`src/market/analysis/profiling.py`): Persistensi metrik model (Sharpe, MAE, directional accuracy, degradation) ke `model_performance_history` table dengan auto-adjustment recommendations.
-- **Multi-DB Support** (`src/market/db/raw.py`): `get_raw_connection()` + `execute_query()` untuk raw SQL yang kompatibel SQLite dan PostgreSQL (auto-convert `?` → `$1`/`%s`).
+- **Multi-DB Support** (`src/market/db/raw.py`): `get_raw_connection()` + `execute_query()` untuk raw SQL yang kompatibel PostgreSQL dan SQLite (auto-convert `?` → `$1`/`%s`). PostgreSQL adalah backend utama; SQLite hanya untuk unit test fixture.
 - **Instrument Profiler** (`src/market/analysis/profiling.py`): Klasifikasi personality (blue_chip, gorengan, dividend_stock, high_beta, dll), volatility regime, factor relevance mapping, pattern knowledge assessment, dan readiness gate.
 - **RSS News Scraper** (`scripts/scrape_rss_news.py`): Scrape 8 RSS feeds Indonesia, keyword-based sentiment (EN+ID), ticker extraction, adaptive rate limiter, daily scheduler at 20:00 WIB.
 
@@ -81,7 +81,7 @@ Aplikasi **decision-support** untuk pasar modal Indonesia (IDX) dan global, diba
 
 - **Python 3.11+** dan [uv](https://github.com/astral-sh/uv) package manager
 - **Node.js 18+** dan npm (untuk frontend)
-- **SQLite** (default) atau **PostgreSQL 16** (opsional, set `DATABASE_URL` di `.env`)
+- **PostgreSQL 16** (utama, set `DATABASE_URL` di `.env`) atau **SQLite** (fallback untuk testing)
 - Opsional: **NVIDIA GPU** dengan CUDA untuk LSTM/Monte Carlo (gunakan `cuda:1`)
 
 ### Instalasi
@@ -140,14 +140,14 @@ Jika Anda memiliki backup data di external drive:
 bash scripts/restore_data_from_external.sh
 
 # 3. Verifikasi
-ls -lh data/market_research.db  # ~10 GB
 ls data/dataset-saham-idx/       # 1027 CSV files
 ```
 
 Skrip `restore_data_from_external.sh` akan:
-- Mengembalikan `market_research.db` (auto-rejoin chunk jika FAT32)
 - Mengembalikan `dataset-saham-idx/` (1027 CSV files)
 - Mengembalikan `parquet_seeds/` dan `parquet_export/`
+
+> **Catatan:** Database utama sekarang PostgreSQL 16 (`postgresql://petrick:market_dev@localhost:5433/market`). File `data/market_research.db` (SQLite legacy) sudah tidak digunakan. Lihat `pustaka/98-migrasi-sqlite-ke-postgresql.md`.
 
 ### Opsi B: Seed dari Parquet (Dari Nol)
 
@@ -183,10 +183,9 @@ bash scripts/sync_data_to_external.sh --move
 
 | Path | Ukuran | Deskripsi | Sumber |
 |------|--------|-----------|--------|
-| `data/market_research.db` | ~10 GB | Database utama (OHLCV, DTS, fundamental, wide TI, risk metrics, ML labels) | Seed/backfill |
-| `data/market_paper.db` | ~8.3 GB | Database paper trading | Seed dari research |
-| `data/market_live.db` | ~460 KB | Database live (kosong, sesuai) | Migrate |
-| `data/market_research_mock.db` | ~47 MB | Database mock untuk testing pipeline | Generate mock |
+| PostgreSQL `market` | ~6.6 GB | Database utama (OHLCV, DTS, fundamental, wide TI, risk metrics, ML labels) | Migrasi dari SQLite + backfill |
+| PostgreSQL `market_test` | — | Database test (clone schema dari `market`) | `pg_dump --schema-only` |
+| `data/market_live.db` | ~460 KB | Database live SQLite (kosong, sesuai) | Migrate |
 | `data/dataset-saham-idx/` | 233 MB | 1027 CSV files IDX (Jul 2019–Feb 2025) | GitHub clone |
 | `data/backups/` | varies | Backup DB sebelum cleanup | Auto-generated |
 | `data/parquet_export/` | varies | Export Parquet dari DB | `--export` flag |
@@ -195,7 +194,7 @@ bash scripts/sync_data_to_external.sh --move
 | `models/` | varies | Trained ML models | Training |
 | `logs/` | varies | Application logs | Runtime |
 
-> **⚠️ Penting:** Aplikasi akan error jika `data/market_research.db` tidak ada. Pastikan salah satu opsi di atas sudah dijalankan sebelum `uv run market api`.
+> **⚠️ Penting:** Aplikasi akan error jika PostgreSQL `market` database tidak ada atau `DATABASE_URL` tidak di-set di `.env`. Pastikan PostgreSQL 16 berjalan di `localhost:5433` dan database `market` sudah di-seed.
 
 ---
 
@@ -248,9 +247,9 @@ Skrip seeder melakukan validasi otomatis:
 
 | Environment | Tujuan | Database | Broker | Auto-trading |
 |-------------|--------|----------|--------|--------------|
-| `research` | Eksperimen & training model | `market_research.db` | `MockBroker` | Tidak |
-| `paper` | Validasi live-market tanpa uang nyata | `market_paper.db` | `PaperBroker` | Paper fills only |
-| `live` | Eksekusi nyata | `market_live.db` | Broker adapter real | Butuh approval manual |
+| `research` | Eksperimen & training model | PostgreSQL `market` | `MockBroker` | Tidak |
+| `paper` | Validasi live-market tanpa uang nyata | PostgreSQL `market` | `PaperBroker` | Paper fills only |
+| `live` | Eksekusi nyata | `data/market_live.db` (SQLite) | Broker adapter real | Butuh approval manual |
 
 Lihat [pustaka/93-lifecycle-environments-real-testing-ai.md](pustaka/93-lifecycle-environments-real-testing-ai.md) untuk promotion gates `Research → Paper → Live`.
 
@@ -279,7 +278,7 @@ market/
 ├── frontend/             # Next.js 14 dashboard (10 pages, TailwindCSS, TypeScript)
 ├── tests/                # Pytest unit + integration tests (90+ files)
 ├── alembic/              # Database migrations (0001-0021)
-├── data/                 # Local SQLite, Parquet seeds/exports
+├── data/                 # SQLite live DB, Parquet seeds/exports, dataset-saham-idx
 ├── scripts/              # Automation scripts (95+ scripts: backfill, seed, pipeline, migration)
 ├── pustaka/              # Knowledge base (103 Markdown docs, 00-102)
 ├── docs/                 # ADRs, audit findings, database issues
@@ -393,10 +392,10 @@ Pipeline orkestrasi produksi untuk generate sinyal trading harian. Pipeline lama
 uv run python scripts/fast_portfolio_pipeline.py --n-calls 20
 
 # Generate daily signal (insert ke app_notifications table)
-DB_PATH=data/market_research.db uv run python scripts/daily_signal_cron.py
+DATABASE_URL=postgresql://petrick:market_dev@localhost:5433/market uv run python scripts/daily_signal_cron.py
 
 # Dry-run (tanpa DB insert)
-DB_PATH=data/market_research.db uv run python scripts/daily_signal_cron.py --dry-run
+DATABASE_URL=postgresql://petrick:market_dev@localhost:5433/market uv run python scripts/daily_signal_cron.py --dry-run
 
 # Batch compute predictions untuk semua tickers
 uv run python scripts/batch_compute_predictions.py
@@ -420,7 +419,7 @@ uv run python -m market.data.refresh_stale --dry-run
 
 ```bash
 # 16:15 WIB (09:15 UTC) setiap hari bursa Senin-Jumat — daily signal
-15 9 * * 1-5 DB_PATH=/home/petrick/projects/market/data/market_research.db \
+15 9 * * 1-5 DATABASE_URL=postgresql://petrick:market_dev@localhost:5433/market \
     PORTFOLIO_CAPITAL=100000000 \
     /home/petrick/projects/market/.venv/bin/python3 \
     /home/petrick/projects/market/scripts/daily_signal_cron.py \
@@ -430,7 +429,7 @@ uv run python -m market.data.refresh_stale --dry-run
 0 3 * * 6 /home/petrick/projects/market/scripts/weekly_hrp_recompute.sh
 
 # 11:00 WIB (04:00 UTC) Sabtu — weekly drift check (PSI-based)
-0 4 * * 6 DB_PATH=/home/petrick/projects/market/data/market_research.db \
+0 4 * * 6 DATABASE_URL=postgresql://petrick:market_dev@localhost:5433/market \
     /home/petrick/projects/market/.venv/bin/python3 \
     /home/petrick/projects/market/scripts/weekly_drift_check.py
 ```
