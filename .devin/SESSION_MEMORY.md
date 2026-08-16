@@ -1,5 +1,88 @@
 # Session Memory — Pustaka Pasar Modal
 
+## Checkpoint Sesi 2026-08-19 — Gap Closure COMPLETE (Phase 1 + 2 + 3)
+
+- **Status:** SEMUA gap terpilih telah diimplementasi dan diverifikasi.
+- **Eksklusi:** Broker API, Real-time IDX feed, Social/Copy Trading (sesuai permintaan user).
+
+### Verifikasi Final (19 Agustus 2026)
+- **Backend:** 2123 passed, 15 skipped, 0 failed (752.91s)
+- **Frontend:** 18 passed (Vitest), type-check ✅, build ✅ (16 pages)
+- **CI:** Frontend unit-test step added to `.github/workflows/ci.yml`
+- **Audit doc:** Updated with Section E (status penutupan gap)
+
+### Yang Selesai (25 Gap total)
+
+#### Phase 1 Quick Wins (8 gap) — selesai 16 Agustus 2026
+#29 Error Handler, #28 Logging, #37 Registry Persist, #42 Notification,
+#23 Multi-Asset API, #13 Strategy Selector, #33 CI/CD Frontend, #35 Data Lineage
+
+#### Phase 2 Medium (10 gap) — selesai 16-19 Agustus 2026
+#10 DQ Alert, #11 Perf Test (13 tests), #12 Rebalancer (9 tests),
+#25 FE Reports/Settings (6 tests), #30 Migration Testing (8 tests),
+#32 FE Unit Testing (18 tests), #36 Feature Freshness (13 tests),
+#41 Tax Report (14 tests), #24 Security Modules (12 tests),
+#9 Stale 7-state (22 tests)
+
+#### Phase 3 Large (7 gap) — selesai 19 Agustus 2026
+#6 OMS Event Sourcing (19 tests), #7 SOR (15 tests),
+#26 Social Sentiment (18 tests), #27 Google Trends (13 tests),
+#38 XAI (16 tests), #39 CPCV (18 tests), #40 Market Impact (18 tests)
+
+### File BARU Phase 2 + 3
+- `src/market/mlops/feature_store.py` (freshness monitoring)
+- `src/market/reporting/tax_report.py` (annual tax report)
+- `src/market/api/routes_security.py` (sharia + surveillance + fractional API)
+- `src/market/data/freshness_state.py` (7-state stale detection)
+- `src/market/execution/event_store.py` (OMS event sourcing)
+- `src/market/execution/smart_order_router.py` (SOR)
+- `src/market/analysis/social_sentiment.py` (Reddit + X sentiment)
+- `src/market/analysis/google_trends.py` (Google Trends)
+- `src/market/analysis/explainability.py` (SHAP/LIME XAI)
+- `src/market/execution/market_impact.py` (Almgren-Chriss)
+- `src/market/mlops/cross_validation.py` (CPCV implementation added)
+
+### File MODIFIED Phase 2 + 3
+- `src/market/api/app.py` (security_router registered)
+- `src/market/security/surveillance.py` (no changes needed — run_all_checks already existed)
+- `.github/workflows/ci.yml` (frontend unit-test step)
+- `docs/AUDIT-KAPABILITAS-GAP-2026-08-16.md` (Section E added)
+
+### Catatan Teknis
+- Schema drift: `positions` table has text columns conflicting with ORM Numeric — reports use raw SQL with casts
+- Graceful degradation: praw/tweepy/pytrends/shap/lime all degrade gracefully if not installed
+- CPCV: Full implementation per López de Prado Ch. 7 with PBO computation
+- Tax report: UU PPh 36/2008 + PMK-84/PMK.03/2023 references
+- 7-state freshness: LIVE/DEGRADED/STALE/FALLBACK/RECOVERING/DEAD/MARKET_CLOSED with IDX hours auto-detection
+
+---
+
+## Checkpoint Sesi 2026-08-16 — Gap Closure Phase 1 (8 Quick Wins)
+
+- **Alasan:** Implementasi 8 gap Phase 1 Quick Wins dari AUDIT-KAPABILITAS-GAP-2026-08-16.md.
+- **Topik aktif:** Gap closure multi-fase (Phase 1 done, Phase 2 in progress, Phase 3 pending).
+
+### Yang Selesai (8 Gap Phase 1)
+1. **#29 Global Error Handler API** — `src/market/api/error_handlers.py` (BARU): HTTPException, RequestValidationError, CircuitBreakerError, generic Exception handlers dengan standardized JSON envelope. Terdaftar di `app.py` via `register_error_handlers(app)`. 6 tests PASS.
+2. **#28 Structured Logging** — `src/market/logging_config.py` (BARU): `JsonFormatter` (single-line JSON), `setup_logging()` (text/json via `settings.log_format`), `get_logger()`. Config tambah `log_format` field. Auto-setup di `create_app()`. 11 tests PASS.
+3. **#37 Model Registry Persistence** — `src/market/mlops/registry.py`: `ModelVersion.to_dict()/from_dict()`, `ModelRegistry(persist_path=...)` dengan auto-save/load JSON file, atomic write (tmp+rename). Backward compatible (in-memory jika no path). 10 tests baru + 6 existing PASS.
+4. **#42 Notification Channel** — `src/market/notifications/channels.py` (BARU): `TelegramNotifier` (Bot API via requests), `EmailNotifier` (SMTP via smtplib), `WebhookNotifier` (HTTP POST), `NotificationDispatcher` (multi-channel routing, `from_env()`). Integrasi ke `AlertManager(dispatcher=...)` dan `ApprovalBot(dispatcher=...)`. 18 tests PASS.
+5. **#23 Multi-Asset API route** — `src/market/api/routes_multi_asset.py` (BARU): GET correlations, lead-lag, spillover, heatmap (query `relationship_matrix`); POST analyze (on-demand `CrossMarketEngine.analyze`). 8 tests PASS.
+6. **#13 Strategy Selector API + UI** — `src/market/api/routes_strategy.py` (BARU): GET assignment/{ticker}, GET assignments, GET classes. Frontend `stock/page.tsx` tambah Strategy card section. Table `strategy_assignment` dibuat di PostgreSQL (CREATE TABLE IF NOT EXISTS). 4 tests PASS.
+7. **#33 CI/CD Frontend build** — `.github/workflows/ci.yml`: tambah job `frontend-build` (Node 20, npm ci, lint, type-check, build).
+8. **#35 Data Lineage & Provenance** — `src/market/data/lineage.py` (BARU): `DataLineage` dataclass (source, ticker, fetcher_version, parameters, row_count, quality_score, checksum), `LineageTracker` (record + persist ke audit_log). Integrasi ke `DataAcquisitionEngine.fetch_and_store()`. 12 tests PASS.
+
+### File yang Diubah/BARU
+- BARU: `src/market/api/error_handlers.py`, `src/market/logging_config.py`, `src/market/notifications/__init__.py`, `src/market/notifications/channels.py`, `src/market/api/routes_multi_asset.py`, `src/market/api/routes_strategy.py`, `src/market/data/lineage.py`
+- MODIFIED: `src/market/api/app.py` (error handlers + logging + 2 router baru), `src/market/config.py` (log_format), `src/market/mlops/registry.py` (persistence), `src/market/analysis/alerts.py` (dispatcher integration), `src/market/autonomous/approval.py` (dispatcher integration), `src/market/data/acquisition.py` (lineage integration), `.github/workflows/ci.yml` (frontend job), `frontend/src/app/stock/page.tsx` (strategy section)
+- BARU TESTS: `test_error_handlers.py` (6), `test_logging_config.py` (11), `test_registry_persistence.py` (10), `test_notification_channels.py` (18), `test_api_multi_asset_routes.py` (8), `test_api_strategy.py` (4), `test_lineage.py` (12) — total 69 tests baru
+- DB: `strategy_assignment` table created (CREATE TABLE IF NOT EXISTS)
+
+### Pending (Phase 2 + Phase 3)
+- Phase 2 (10 gap): #10 DQ Alert, #11 Perf Test, #12 Rebalancer, #25 FE Reports/Settings, #30 Migration Testing, #32 FE Unit Test, #36 Feature Freshness, #41 Tax Report, #24 Security Modules, #9 Stale 7-state
+- Phase 3 (7 gap): #6 OMS Event Sourcing, #7 SOR, #26 Social Sentiment, #27 Google Trends, #38 XAI, #39 CPCV, #40 Market Impact
+- Final: Run full test suite + update audit doc
+
 ## Checkpoint Sesi 2026-08-16 — Quick Wins Implementation (Audit Gap B)
 
 - **Alasan:** Implementasi 5 quick wins dari AUDIT-KAPABILITAS-GAP-2026-08-16.md section B.

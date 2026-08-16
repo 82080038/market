@@ -34,6 +34,7 @@ class Settings(BaseSettings):
     reporting_currency: str = "IDR"
     device: str = "cuda:1"
     log_level: str = "INFO"
+    log_format: str = "text"  # "text" or "json"
 
     # Data sources
     yfinance_enabled: bool = True

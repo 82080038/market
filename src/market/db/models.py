@@ -10,6 +10,7 @@ from datetime import UTC, date, datetime
 from decimal import Decimal
 
 from sqlalchemy import (
+    BigInteger,
     Boolean,
     CheckConstraint,
     Date,
@@ -17,6 +18,7 @@ from sqlalchemy import (
     ForeignKey,
     Index,
     Integer,
+    JSON,
     Numeric,
     PrimaryKeyConstraint,
     String,
@@ -1385,3 +1387,139 @@ class SatelliteTickerLocation(Base):
     is_active: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_utcnow)
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_utcnow, onupdate=_utcnow)
+
+
+class InstrumentBehaviorProfile(Base):
+    """Per-instrument behavior profile (catatan.md TAHAP 2 — Prompt 2.1).
+
+    Persisted by ``InstrumentBehaviorProfiler`` so signal generators and
+    position sizers can query it without recomputing every run. Updated weekly.
+    """
+
+    __tablename__ = "instrument_behavior_profiles"
+    __table_args__ = (
+        Index("ix_ibp_asset_class", "asset_class"),
+        Index("ix_ibp_volatility_regime", "volatility_regime"),
+    )
+
+    ticker: Mapped[str] = mapped_column(String(10), primary_key=True)
+    asset_class: Mapped[str | None] = mapped_column(String(30), nullable=True)
+    sector: Mapped[str | None] = mapped_column(String(50), nullable=True)
+    # Volatility Profile
+    avg_daily_volatility: Mapped[Decimal | None] = mapped_column(Numeric(8, 6), nullable=True)
+    volatility_regime: Mapped[str | None] = mapped_column(String(20), nullable=True)
+    volatility_clustering_coefficient: Mapped[Decimal | None] = mapped_column(Numeric(6, 4), nullable=True)
+    # Momentum & Mean Reversion
+    momentum_strength: Mapped[Decimal | None] = mapped_column(Numeric(6, 4), nullable=True)
+    optimal_momentum_lookback: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    mean_reversion_halflife: Mapped[Decimal | None] = mapped_column(Numeric(8, 2), nullable=True)
+    # Liquidity Profile
+    avg_daily_volume: Mapped[int | None] = mapped_column(BigInteger, nullable=True)
+    avg_spread_pct: Mapped[Decimal | None] = mapped_column(Numeric(6, 4), nullable=True)
+    liquidity_score: Mapped[Decimal | None] = mapped_column(Numeric(4, 2), nullable=True)
+    optimal_position_size_pct: Mapped[Decimal | None] = mapped_column(Numeric(6, 4), nullable=True)
+    # Correlation & Sensitivity
+    beta_to_ihsg: Mapped[Decimal | None] = mapped_column(Numeric(6, 4), nullable=True)
+    correlation_to_sector: Mapped[Decimal | None] = mapped_column(Numeric(6, 4), nullable=True)
+    sensitivity_to_usd: Mapped[Decimal | None] = mapped_column(Numeric(6, 4), nullable=True)
+    sensitivity_to_rates: Mapped[Decimal | None] = mapped_column(Numeric(6, 4), nullable=True)
+    # Seasonality
+    best_months: Mapped[list | None] = mapped_column(JSON, nullable=True)
+    worst_months: Mapped[list | None] = mapped_column(JSON, nullable=True)
+    day_of_week_effect: Mapped[dict | None] = mapped_column(JSON, nullable=True)
+    # Event Response
+    earnings_drift_days: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    earnings_avg_move: Mapped[Decimal | None] = mapped_column(Numeric(6, 4), nullable=True)
+    dividend_ex_date_effect: Mapped[Decimal | None] = mapped_column(Numeric(6, 4), nullable=True)
+    # Trading Style Suitability (1-10)
+    intraday_suitability: Mapped[Decimal | None] = mapped_column(Numeric(4, 2), nullable=True)
+    swing_suitability: Mapped[Decimal | None] = mapped_column(Numeric(4, 2), nullable=True)
+    investing_suitability: Mapped[Decimal | None] = mapped_column(Numeric(4, 2), nullable=True)
+    # Metadata
+    profile_confidence: Mapped[Decimal | None] = mapped_column(Numeric(4, 2), nullable=True)
+    last_updated: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    data_points_used: Mapped[int | None] = mapped_column(Integer, nullable=True)
+
+
+class CrossMarketCoefficient(Base):
+    """Cross-market Granger coefficient (catatan.md TAHAP 3 — Prompt 3.1).
+
+    Persisted by ``CrossMarketCoefficientEngine``. Updated weekly.
+    """
+
+    __tablename__ = "cross_market_coefficients"
+    __table_args__ = (
+        UniqueConstraint(
+            "source_index", "target_ticker", "lag_days",
+            name="uq_cmc_source_target_lag",
+        ),
+        Index("ix_cmc_source", "source_index"),
+        Index("ix_cmc_target", "target_ticker"),
+    )
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    source_index: Mapped[str] = mapped_column(String(20), nullable=False)
+    target_ticker: Mapped[str] = mapped_column(String(20), nullable=False)
+    lag_days: Mapped[int] = mapped_column(Integer, nullable=False)
+    coefficient: Mapped[Decimal | None] = mapped_column(Numeric(8, 4), nullable=True)
+    p_value: Mapped[Decimal | None] = mapped_column(Numeric(8, 4), nullable=True)
+    f_statistic: Mapped[Decimal | None] = mapped_column(Numeric(10, 4), nullable=True)
+    asymmetric_up: Mapped[Decimal | None] = mapped_column(Numeric(8, 4), nullable=True)
+    asymmetric_down: Mapped[Decimal | None] = mapped_column(Numeric(8, 4), nullable=True)
+    regime: Mapped[str | None] = mapped_column(String(20), nullable=True)
+    sample_size: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    last_updated: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+
+
+class UserTradingProfile(Base):
+    """User trading profile (catatan.md TAHAP 4 — Prompt 4.1).
+
+    Single-user app — user_id default 'default'.
+    """
+
+    __tablename__ = "user_trading_profiles"
+
+    user_id: Mapped[str] = mapped_column(String(50), primary_key=True)
+    capital: Mapped[Decimal] = mapped_column(Numeric(18, 2), nullable=False)
+    risk_tolerance: Mapped[str] = mapped_column(String(20), nullable=False)
+    time_availability: Mapped[str] = mapped_column(String(20), nullable=False)
+    experience_level: Mapped[str] = mapped_column(String(20), nullable=False)
+    max_loss_per_trade_pct: Mapped[Decimal | None] = mapped_column(Numeric(6, 4), nullable=True)
+    max_portfolio_drawdown_pct: Mapped[Decimal | None] = mapped_column(Numeric(6, 4), nullable=True)
+    preferred_styles: Mapped[list | None] = mapped_column(JSON, nullable=True)
+    preferred_sectors: Mapped[list | None] = mapped_column(JSON, nullable=True)
+    created_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    updated_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+
+
+class TradingStyleRecommendation(Base):
+    """Trading style recommendation for a user (catatan.md TAHAP 4)."""
+
+    __tablename__ = "trading_style_recommendations"
+    __table_args__ = (Index("ix_tsr_user", "user_id"),)
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    user_id: Mapped[str] = mapped_column(
+        String(50), ForeignKey("user_trading_profiles.user_id", ondelete="CASCADE"), nullable=False,
+    )
+    recommended_style: Mapped[str] = mapped_column(String(30), nullable=False)
+    allocation_pct: Mapped[Decimal] = mapped_column(Numeric(6, 2), nullable=False)
+    confidence: Mapped[Decimal | None] = mapped_column(Numeric(4, 2), nullable=True)
+    reasoning_summary: Mapped[str | None] = mapped_column(Text, nullable=True)
+    created_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+
+
+class StyleRecommendationReason(Base):
+    """Individual reason supporting a style recommendation (catatan.md TAHAP 4)."""
+
+    __tablename__ = "style_recommendation_reasons"
+    __table_args__ = (Index("ix_srr_rec", "recommendation_id"),)
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    recommendation_id: Mapped[int] = mapped_column(
+        Integer, ForeignKey("trading_style_recommendations.id", ondelete="CASCADE"), nullable=False,
+    )
+    reason_type: Mapped[str] = mapped_column(String(50), nullable=False)
+    reason_text: Mapped[str] = mapped_column(Text, nullable=False)
+    supporting_data: Mapped[dict | None] = mapped_column(JSON, nullable=True)
+    created_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)

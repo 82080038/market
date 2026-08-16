@@ -16,6 +16,7 @@ import {
   BellRing,
   Orbit,
   Clock,
+  Play,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 
@@ -25,6 +26,7 @@ const navItems = [
   { href: "/stock", label: "Saham", icon: TrendingUp },
   { href: "/portfolio", label: "Portofolio", icon: Wallet },
   { href: "/backtest", label: "Backtest", icon: FlaskConical },
+  { href: "/simulation", label: "Simulasi", icon: Play },
   { href: "/screener", label: "Screener", icon: Search },
   { href: "/scan", label: "Pola & Prediksi", icon: Scan },
   { href: "/automation", label: "Otomasi", icon: Bot },

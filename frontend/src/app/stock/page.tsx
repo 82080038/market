@@ -44,6 +44,17 @@ interface StockData {
   } | null;
 }
 
+interface StrategyData {
+  ticker: string;
+  best_strategy: string;
+  strategy_class: string;
+  strategy_rationale: string | null;
+  in_sample_sharpe: number | null;
+  in_sample_max_dd: number | null;
+  in_sample_winrate: number | null;
+  updated_at: string | null;
+}
+
 const FACTOR_COLORS: Record<string, string> = {
   technical: "bg-blue-500",
   fundamental: "bg-green-500",
@@ -56,6 +67,7 @@ const FACTOR_COLORS: Record<string, string> = {
 export default function StockPage() {
   const [ticker, setTicker] = useState("");
   const [data, setData] = useState<StockData | null>(null);
+  const [strategy, setStrategy] = useState<StrategyData | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -73,6 +85,17 @@ export default function StockPage() {
       } else {
         setError(`Error: ${res.status}`);
         setData(null);
+      }
+      // Fetch strategy assignment (Gap #13)
+      try {
+        const stratRes = await fetch(`/api/strategy/assignment/${encodeURIComponent(ticker.trim())}`);
+        if (stratRes.ok) {
+          setStrategy(await stratRes.json());
+        } else {
+          setStrategy(null);
+        }
+      } catch {
+        setStrategy(null);
       }
     } catch {
       setError("Tidak bisa terhubung ke API.");
@@ -249,6 +272,47 @@ export default function StockPage() {
               )}
             </CardContent>
           </Card>
+
+          {strategy && (
+            <Card>
+              <CardHeader><CardTitle>Strategi Optimal</CardTitle></CardHeader>
+              <CardContent>
+                <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-4">
+                  <div>
+                    <p className="text-xs text-muted-foreground">Strategi</p>
+                    <p className="text-lg font-bold capitalize">{strategy.best_strategy.replace(/_/g, " ")}</p>
+                  </div>
+                  <div>
+                    <p className="text-xs text-muted-foreground">Kelas</p>
+                    <p className="text-lg font-bold capitalize">{strategy.strategy_class.replace(/_/g, " ")}</p>
+                  </div>
+                  {strategy.in_sample_sharpe != null && (
+                    <div>
+                      <p className="text-xs text-muted-foreground">In-Sample Sharpe</p>
+                      <p className="text-lg font-bold">{strategy.in_sample_sharpe.toFixed(3)}</p>
+                    </div>
+                  )}
+                  {strategy.in_sample_winrate != null && (
+                    <div>
+                      <p className="text-xs text-muted-foreground">Win Rate</p>
+                      <p className="text-lg font-bold">{strategy.in_sample_winrate.toFixed(1)}%</p>
+                    </div>
+                  )}
+                </div>
+                {strategy.strategy_rationale && (
+                  <div className="pt-3 border-t">
+                    <p className="text-xs text-muted-foreground mb-1">Rasional</p>
+                    <p className="text-sm">{strategy.strategy_rationale}</p>
+                  </div>
+                )}
+                {strategy.updated_at && (
+                  <p className="text-xs text-muted-foreground mt-3">
+                    Update: {new Date(strategy.updated_at).toLocaleString("id-ID")}
+                  </p>
+                )}
+              </CardContent>
+            </Card>
+          )}
         </>
       )}
     </div>

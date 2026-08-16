@@ -88,13 +88,18 @@ class AlertManager:
     """Manages watchlist alerts and notifications.
 
     Supports 15 alert types with multi-channel routing.
+
+    Args:
+        dispatcher: Optional NotificationDispatcher for Telegram/Email/Webhook
+            delivery. If None, only in-app notifications are created.
     """
 
-    def __init__(self) -> None:
+    def __init__(self, dispatcher: Any = None) -> None:
         self._alerts: dict[str, AlertRule] = {}
         self._notifications: list[AlertNotification] = []
         self._alert_counter = 0
         self._notif_counter = 0
+        self._dispatcher = dispatcher
 
     def create_alert(
         self,
@@ -247,6 +252,18 @@ class AlertManager:
 
         alert.status = AlertStatus.TRIGGERED
         alert.triggered_at = datetime.now(UTC).isoformat()
+
+        # Dispatch to external channels (Telegram/Email/Webhook) if configured
+        if self._dispatcher is not None:
+            external_channels = [
+                ch for ch in alert.channels if ch != AlertChannel.IN_APP
+            ]
+            if external_channels:
+                self._dispatcher.dispatch(
+                    message=full_msg,
+                    channels=external_channels,
+                    subject=f"Alert: {alert.ticker} {alert.condition.value}",
+                )
 
         return notif
 

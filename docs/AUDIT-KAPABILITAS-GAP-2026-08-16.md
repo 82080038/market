@@ -356,3 +356,75 @@ Backend/data engine sudah matang; penutupan gap medium term akan meningkatkan re
 > - `frontend/src/app/` — 13 halaman Next.js
 >
 > **Metodologi verifikasi:** Batch audit via 4 subagent paralel (16 Agustus 2026) — verifikasi setiap gap terhadap kode aktual dengan grep + readfile. 7 klaim audit awal dikoreksi, 15 gap baru ditemukan.
+
+---
+
+## E. Status Penutupan Gap — Update Implementasi (19 Agustus 2026)
+
+> **Konteks:** Implementasi bertahap semua gap terpilih (MEDIUM + BARU + Batch Audit), dengan eksklusi: Broker API, Real-time IDX feed, Social/Copy Trading.
+
+### E.1 Phase 1 — Quick Wins (✅ Semua selesai)
+
+| # | Gap | File Utama | Status |
+|---|-----|-----------|--------|
+| 29 | Global Error Handler API | `src/market/api/error_handlers.py` | ✅ |
+| 28 | Structured Logging | `src/market/logging_config.py` | ✅ |
+| 37 | Model Registry Persistence | `src/market/mlops/registry.py` | ✅ |
+| 42 | Notification Channel | `src/market/notifications/channels.py` | ✅ |
+| 23 | Multi-Asset API route | `src/market/api/routes_multi_asset.py` | ✅ |
+| 13 | Strategy Selector API + UI | `src/market/api/routes_strategy.py` | ✅ |
+| 33 | CI/CD Frontend build | `.github/workflows/ci.yml` | ✅ |
+| 35 | Data Lineage & Provenance | `src/market/data/lineage.py` | ✅ |
+
+### E.2 Phase 2 — Medium Complexity (✅ Semua selesai)
+
+| # | Gap | File Utama | Tests | Status |
+|---|-----|-----------|-------|--------|
+| 10 | Data Quality Alert Automation | `src/market/data/dq_monitor.py`, `src/market/pipelines/alerts.py` | ✅ | ✅ |
+| 11 | Performance Regression Test | `tests/test_performance.py` | 13 passed | ✅ |
+| 12 | Portfolio Rebalancer Integration | `src/market/execution/automation.py` | 9 passed | ✅ |
+| 25 | Frontend reports & settings | `src/market/api/routes_reports.py`, `routes_settings.py`, `frontend/src/app/reports/`, `settings/` | 6 passed | ✅ |
+| 30 | DB Migration Testing | `tests/test_migrations.py` | 8 passed | ✅ |
+| 32 | Frontend Unit Testing | `frontend/vitest.config.ts`, `frontend/src/lib/utils.test.ts`, `frontend/src/components/ui/card.test.tsx` | 18 passed | ✅ |
+| 36 | Feature Store Freshness Monitoring | `src/market/mlops/feature_store.py` | 13 passed | ✅ |
+| 41 | Annual Tax Report Generator | `src/market/reporting/tax_report.py` | 14 passed | ✅ |
+| 24 | Security Modules Integration | `src/market/api/routes_security.py` | 12 passed | ✅ |
+| 9 | Stale Data Detection 7-state | `src/market/data/freshness_state.py` | 22 passed | ✅ |
+
+### E.3 Phase 3 — Large Features (✅ Semua selesai)
+
+| # | Gap | File Utama | Tests | Status |
+|---|-----|-----------|-------|--------|
+| 6 | OMS Event Sourcing | `src/market/execution/event_store.py` | 19 passed | ✅ |
+| 7 | Smart Order Router (SOR) | `src/market/execution/smart_order_router.py` | 15 passed | ✅ |
+| 26 | Social Sentiment (Reddit + X) | `src/market/analysis/social_sentiment.py` | 18 passed | ✅ |
+| 27 | Google Trends | `src/market/analysis/google_trends.py` | 13 passed | ✅ |
+| 38 | Explainability (XAI) | `src/market/analysis/explainability.py` | 16 passed | ✅ |
+| 39 | Combinatorial Purged CV (CPCV) | `src/market/mlops/cross_validation.py` | 18 passed | ✅ |
+| 40 | Market Impact Model | `src/market/execution/market_impact.py` | 18 passed | ✅ |
+
+### E.4 Verifikasi Final (19 Agustus 2026)
+
+- **Backend test suite:** 2123 passed, 15 skipped, 0 failed (752.91s)
+- **Frontend unit tests:** 18 passed (2 test files)
+- **Frontend type-check:** ✅ (tsc --noEmit)
+- **Frontend build:** ✅ (Next.js 16.3.0, 16 static pages)
+- **CI workflow:** Frontend unit-test step added to `.github/workflows/ci.yml`
+
+### E.5 Eksklusi (sesuai permintaan user)
+
+Gap-gap berikut **tidak diimplementasi** karena eksklusi eksplisit:
+
+- **Broker API** — masih dalam tahap pengujian/development
+- **Real-time IDX price feed** — swing trading menggunakan OHLCV harian
+- **Social/Copy Trading** — bukan fitur target (sentiment analysis tetap diimplementasi sebagai data source, bukan copy trading)
+
+### E.6 Catatan Teknis Penting
+
+1. **Schema drift legacy:** Tabel `positions` di PostgreSQL memiliki kolom `text` (quantity, avg_entry_price, current_price) yang konflik dengan deklarasi ORM `Numeric`. Reports routes menggunakan raw SQL dengan explicit cast untuk menghindari error `Unknown PG numeric type: 25`.
+2. **Graceful degradation:** Modul social sentiment (praw/tweepy) dan Google Trends (pytrends) mendegrasi gracefully jika library tidak terinstall atau kredensial tidak ada — return empty results, tidak crash.
+3. **XAI fallback:** SHAP/LIME fallback ke built-in feature importance (`coef_` atau `feature_importances_`) jika library tidak tersedia.
+4. **CPCV:** Implementasi penuh mengikuti López de Prado "Advances in Financial Machine Learning" Ch. 7, dengan PBO (Probability of Backtest Overfitting) computation.
+5. **Almgren-Chriss:** Model optimal execution untuk large orders dengan efficient frontier, temporary + permanent impact, dan risk aversion parameter.
+6. **Tax report:** Mengacu UU PPh No. 36/2008 Pasal 4 ayat (2) untuk PPh final 0.1% saham IDX dan PMK-84/PMK.03/2023 untuk tarif PPh dividen WNI individu.
+7. **7-state freshness:** LIVE, DEGRADED, STALE, FALLBACK, RECOVERING, DEAD, MARKET_CLOSED — dengan auto-detection jam bursa IDX (WIB 09:00-15:00, Senin-Jumat).

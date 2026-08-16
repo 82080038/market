@@ -983,6 +983,103 @@ class AutoExecutor:
             summary=summary,
         )
 
+    def execute_rebalance(
+        self,
+        rebalance_orders: list[dict[str, object]],
+        prices: dict[str, float] | None = None,
+    ) -> ExecutionBatchResult:
+        """Eksekusi rebalance orders dari PortfolioManager.compute_rebalance_orders().
+
+        Mengkonversi rebalance orders (list of dict dengan ticker, side, shares,
+        value) menjadi ExecutionPlan dan mengeksekusinya via broker.
+
+        Args:
+            rebalance_orders: List of order dicts from compute_rebalance_orders().
+            prices: Optional dict mapping ticker to current price (for limit orders).
+                If not provided, uses market orders.
+
+        Returns:
+            ExecutionBatchResult dengan hasil eksekusi.
+        """
+        from market.execution.oms import OrderSide, OrderStatus, OrderType
+
+        results: list[ExecutionResult] = []
+        filled = 0
+        rejected = 0
+        total_comm = 0.0
+        total_tax = 0.0
+        total_val = 0.0
+
+        for order_dict in rebalance_orders:
+            ticker = str(order_dict.get("ticker", ""))
+            side_str = str(order_dict.get("side", "buy"))
+            shares = int(order_dict.get("shares", 0))
+            if shares <= 0 or not ticker:
+                continue
+
+            side = OrderSide.BUY if side_str == "buy" else OrderSide.SELL
+            price = prices.get(ticker) if prices else None
+
+            order_type = OrderType.LIMIT if price else OrderType.MARKET
+
+            order = self.oms.create_order(
+                ticker=ticker,
+                side=side,
+                shares=shares,
+                order_type=order_type,
+                price=price,
+            )
+
+            self.oms.transition(order.id, OrderStatus.PENDING)
+
+            fill = self.broker.submit(order)
+
+            if fill is not None:
+                self.oms.add_fill(order.id, fill.shares, fill.price)
+                results.append(ExecutionResult(
+                    ticker=ticker,
+                    side=side_str,
+                    shares=fill.shares,
+                    price=fill.price,
+                    status="filled",
+                    fill_price=fill.price,
+                    commission=fill.commission,
+                    sales_tax=fill.sales_tax,
+                    order_id=order.id,
+                ))
+                filled += 1
+                total_comm += fill.commission
+                total_tax += fill.sales_tax
+                total_val += fill.shares * fill.price
+            else:
+                results.append(ExecutionResult(
+                    ticker=ticker,
+                    side=side_str,
+                    shares=shares,
+                    price=price or 0.0,
+                    status="rejected",
+                    rejection_reason="Broker rejected rebalance order",
+                    order_id=order.id,
+                ))
+                rejected += 1
+
+        summary = (
+            f"Rebalance executed: {filled} filled, {rejected} rejected. "
+            f"Value: Rp {total_val:,.0f}. Commission: Rp {total_comm:,.0f}."
+        )
+
+        return ExecutionBatchResult(
+            plan_id=f"REBALANCE-{datetime.now(UTC).strftime('%Y%m%d%H%M%S')}",
+            executed_at=datetime.now(UTC).isoformat(),
+            results=results,
+            filled_count=filled,
+            rejected_count=rejected,
+            total_commission=round(total_comm, 2),
+            total_sales_tax=round(total_tax, 2),
+            total_value=round(total_val, 2),
+            summary=summary,
+        )
+
 
 # ---------------------------------------------------------------------------
 # Automation Orchestrator
@@ -1143,5 +1240,64 @@ class AutomationOrchestrator:
 
         # Execute
         result = self.executor.execute_plan(plan)
+        self._last_execution = result
+        return result
+
+    def rebalance(
+        self,
+        portfolio_manager: Any,
+        prices: dict[str, float],
+        drift_threshold_pct: float = 5.0,
+    ) -> ExecutionBatchResult:
+        """Rebalance portfolio ke target weights via AutoExecutor (Gap #12).
+
+        Flow:
+        1. Cek apakah drift melebihi threshold
+        2. Compute rebalance orders via PortfolioManager
+        3. Eksekusi orders via AutoExecutor.execute_rebalance()
+
+        Args:
+            portfolio_manager: PortfolioManager instance dengan target_weights.
+            prices: Dict mapping ticker to current price.
+            drift_threshold_pct: Rebalance hanya jika drift > threshold.
+
+        Returns:
+            ExecutionBatchResult dengan hasil eksekusi rebalance.
+        """
+        # 1. Cek drift
+        needs_rebalance = portfolio_manager.needs_rebalance(
+            prices, threshold_pct=drift_threshold_pct,
+        )
+
+        if not needs_rebalance:
+            return ExecutionBatchResult(
+                plan_id="REBALANCE-SKIP",
+                executed_at=datetime.now(UTC).isoformat(),
+                summary=f"Drift < {drift_threshold_pct}% — no rebalance needed.",
+            )
+
+        # 2. Compute rebalance orders
+        orders = portfolio_manager.compute_rebalance_orders(prices)
+
+        if not orders:
+            return ExecutionBatchResult(
+                plan_id="REBALANCE-EMPTY",
+                executed_at=datetime.now(UTC).isoformat(),
+                summary="Rebalance needed but no orders generated (rounding to lot size).",
+            )
+
+        # 3. Cek gate jika config diset
+        if self._config is not None:
+            gate_result = self.gate.check_config(self._config)
+            self._last_gate_result = gate_result
+            if not gate_result.can_proceed:
+                return ExecutionBatchResult(
+                    plan_id="REBALANCE-GATE-FAIL",
+                    executed_at=datetime.now(UTC).isoformat(),
+                    summary=f"Gate gagal untuk rebalance: {gate_result.summary}",
+                )
+
+        # 4. Eksekusi
+        result = self.executor.execute_rebalance(orders, prices)
         self._last_execution = result
         return result

@@ -6,16 +6,28 @@ Supports:
 - Feature computation from raw OHLCV data
 - Feature versioning and caching
 - Feature serving for training and inference
+- Freshness monitoring (Gap #36): track staleness of cached feature sets
 """
 
 from __future__ import annotations
 
 from collections.abc import Callable
 from dataclasses import dataclass, field
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
+from enum import Enum
 
 import numpy as np
 import pandas as pd
+
+
+class FreshnessStatus(str, Enum):
+    """Feature set freshness status (Gap #36)."""
+
+    FRESH = "FRESH"
+    STALE = "STALE"
+    EXPIRED = "EXPIRED"
+    MISSING = "MISSING"
+    ERROR = "ERROR"
 
 
 @dataclass
@@ -39,17 +51,33 @@ class FeatureSet:
     features: pd.DataFrame
     computed_at: str = field(default_factory=lambda: datetime.now(UTC).isoformat())
     n_rows: int = 0
+    source_data_last_date: str | None = None
+    has_errors: bool = False
 
     def __post_init__(self) -> None:
         self.n_rows = len(self.features)
 
 
+@dataclass
+class FreshnessReport:
+    """Freshness report for a cached feature set (Gap #36)."""
+
+    cache_key: str
+    status: FreshnessStatus
+    computed_at: str | None
+    age_hours: float | None
+    source_data_last_date: str | None
+    source_age_hours: float | None
+    message: str
+
+
 class FeatureStore:
     """Feature store for ML pipeline automation."""
 
-    def __init__(self) -> None:
+    def __init__(self, max_fresh_age_hours: float = 24.0) -> None:
         self._definitions: dict[str, FeatureDefinition] = {}
         self._cache: dict[str, FeatureSet] = {}
+        self._max_fresh_age = timedelta(hours=max_fresh_age_hours)
 
     def register(self, definition: FeatureDefinition) -> None:
         """Register a feature definition.
@@ -196,10 +224,27 @@ class FeatureStore:
                 results[defn.name].attrs["error"] = str(e)
 
         feature_df = pd.DataFrame(results, index=data.index)
+
+        # Track source data last date for freshness monitoring (Gap #36)
+        source_last = None
+        if hasattr(data.index, "max"):
+            try:
+                source_last = str(data.index.max())
+            except Exception:
+                source_last = None
+
+        # Check if any features had errors
+        has_errors = any(
+            isinstance(results.get(c), pd.Series) and "error" in results[c].attrs
+            for c in results
+        )
+
         return FeatureSet(
             name="default",
             version=version,
             features=feature_df,
+            source_data_last_date=source_last,
+            has_errors=has_errors,
         )
 
     def cache(self, feature_set: FeatureSet, key: str | None = None) -> str:
@@ -224,3 +269,114 @@ class FeatureStore:
     def registered_features(self) -> list[str]:
         """List registered feature names."""
         return list(self._definitions.keys())
+
+    # ── Freshness Monitoring (Gap #36) ──────────────────────────────────────
+
+    def check_freshness(self, cache_key: str) -> FreshnessReport:
+        """Check freshness of a cached feature set.
+
+        Args:
+            cache_key: Cache key returned by cache().
+
+        Returns:
+            FreshnessReport with status and age info.
+        """
+        fs = self._cache.get(cache_key)
+        if fs is None:
+            return FreshnessReport(
+                cache_key=cache_key,
+                status=FreshnessStatus.MISSING,
+                computed_at=None,
+                age_hours=None,
+                source_data_last_date=None,
+                source_age_hours=None,
+                message=f"Feature set '{cache_key}' not in cache.",
+            )
+
+        if fs.has_errors:
+            return FreshnessReport(
+                cache_key=cache_key,
+                status=FreshnessStatus.ERROR,
+                computed_at=fs.computed_at,
+                age_hours=self._age_hours(fs.computed_at),
+                source_data_last_date=fs.source_data_last_date,
+                source_age_hours=self._age_hours(fs.source_data_last_date),
+                message="Feature set has computation errors.",
+            )
+
+        age = self._age_hours(fs.computed_at)
+        if age is None:
+            return FreshnessReport(
+                cache_key=cache_key,
+                status=FreshnessStatus.ERROR,
+                computed_at=fs.computed_at,
+                age_hours=None,
+                source_data_last_date=fs.source_data_last_date,
+                source_age_hours=self._age_hours(fs.source_data_last_date),
+                message="Cannot parse computed_at timestamp.",
+            )
+
+        max_h = self._max_fresh_age.total_seconds() / 3600
+        if age < max_h:
+            status = FreshnessStatus.FRESH
+            msg = f"Fresh ({age:.1f}h < {max_h:.0f}h threshold)."
+        elif age < 2 * max_h:
+            status = FreshnessStatus.STALE
+            msg = f"Stale ({age:.1f}h >= {max_h:.0f}h threshold)."
+        else:
+            status = FreshnessStatus.EXPIRED
+            msg = f"Expired ({age:.1f}h >= {2 * max_h:.0f}h)."
+
+        return FreshnessReport(
+            cache_key=cache_key,
+            status=status,
+            computed_at=fs.computed_at,
+            age_hours=age,
+            source_data_last_date=fs.source_data_last_date,
+            source_age_hours=self._age_hours(fs.source_data_last_date),
+            message=msg,
+        )
+
+    def check_all_freshness(self) -> list[FreshnessReport]:
+        """Check freshness of all cached feature sets.
+
+        Returns:
+            List of FreshnessReport for each cached key.
+        """
+        return [self.check_freshness(k) for k in self._cache]
+
+    def get_stale_keys(self) -> list[str]:
+        """Get cache keys for stale or expired feature sets.
+
+        Returns:
+            List of cache keys that are STALE or EXPIRED.
+        """
+        reports = self.check_all_freshness()
+        return [
+            r.cache_key for r in reports
+            if r.status in (FreshnessStatus.STALE, FreshnessStatus.EXPIRED)
+        ]
+
+    def evict_stale(self) -> int:
+        """Evict all stale and expired feature sets from cache.
+
+        Returns:
+            Number of evicted entries.
+        """
+        keys = self.get_stale_keys()
+        for k in keys:
+            self._cache.pop(k, None)
+        return len(keys)
+
+    @staticmethod
+    def _age_hours(timestamp: str | None) -> float | None:
+        """Compute age in hours from an ISO timestamp string."""
+        if not timestamp:
+            return None
+        try:
+            ts = datetime.fromisoformat(timestamp)
+        except (ValueError, TypeError):
+            return None
+        if ts.tzinfo is None:
+            ts = ts.replace(tzinfo=UTC)
+        return (datetime.now(UTC) - ts).total_seconds() / 3600

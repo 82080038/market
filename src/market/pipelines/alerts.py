@@ -21,6 +21,8 @@ import json
 import logging
 from typing import TYPE_CHECKING
 
+import pandas as pd
+
 if TYPE_CHECKING:
     from market.core.events import Event
 
@@ -74,6 +76,9 @@ class AlertPipeline:
 
             # 5. Price drop/spike check for watchlist tickers
             alerts.extend(self._check_price_movements(session))
+
+            # 6. Data quality drop check (Gap #10)
+            alerts.extend(self._check_data_quality(session))
         except Exception as exc:
             logger.error("Alert check failed: %s", exc)
             alerts.append({
@@ -307,5 +312,58 @@ class AlertPipeline:
                     })
         except Exception as exc:
             logger.debug("Price movement check skipped: %s", exc)
+
+        return alerts
+
+    def _check_data_quality(self, session) -> list[dict[str, object]]:
+        """Check data quality for watchlist tickers (Gap #10).
+
+        Computes DQ scores on-the-fly and generates alerts when quality
+        drops below thresholds.
+        """
+        from sqlalchemy import desc, select
+
+        from market.config import settings
+        from market.data.dq_monitor import DataQualityMonitor
+        from market.db.models import Watchlist
+
+        alerts: list[dict[str, object]] = []
+        try:
+            watch_tickers = session.execute(
+                select(Watchlist.ticker)
+            ).scalars().all()
+            if not watch_tickers:
+                return alerts
+
+            is_pg = settings.db_backend == "postgresql"
+            if is_pg:
+                from market.db.models import StockPrice as model
+            else:
+                from market.db.models import OHLCV as model
+
+            monitor = DataQualityMonitor(lookback_days=60)
+            data: dict[str, pd.DataFrame] = {}
+
+            for ticker in watch_tickers:
+                rows = session.execute(
+                    select(model.timestamp, model.close, model.volume)
+                    .where(model.ticker == ticker, model.timeframe == "1d")
+                    .order_by(desc(model.timestamp))
+                    .limit(60)
+                ).all()
+                if len(rows) < 10:
+                    continue
+                df = pd.DataFrame(
+                    [(r[0], float(r[1]) if r[1] else 0, float(r[2]) if r[2] else 0) for r in rows],
+                    columns=["timestamp", "close", "volume"],
+                )
+                df = df.set_index("timestamp")
+                data[ticker] = df
+
+            if data:
+                dq_alerts = monitor.generate_alerts(data)
+                alerts.extend(dq_alerts)
+        except Exception as exc:
+            logger.debug("Data quality check skipped: %s", exc)
 
         return alerts

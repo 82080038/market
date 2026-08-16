@@ -65,6 +65,9 @@ from datetime import UTC, datetime
 
 from fastapi import FastAPI
 
+from market.logging_config import setup_logging
+
+from market.api.error_handlers import register_error_handlers
 from market.api.routes_analysis import router as analysis_router
 from market.api.routes_automation import router as automation_router
 from market.api.routes_backtest import autonomous_router as autonomous_backtest_router
@@ -73,12 +76,17 @@ from market.api.routes_cosmos import router as cosmos_router
 from market.api.routes_data import router as data_router
 from market.api.routes_delisting import router as delisting_router
 from market.api.routes_instruments import router as instruments_router
+from market.api.routes_multi_asset import router as multi_asset_router
 from market.api.routes_notifications import router as notifications_router
 from market.api.routes_portfolio import router as portfolio_router
 from market.api.routes_prediction import router as prediction_router
 from market.api.routes_prices import router as prices_router
 from market.api.routes_recompute import router as recompute_router
+from market.api.routes_reports import router as reports_router
 from market.api.routes_scheduler import router as scheduler_router
+from market.api.routes_security import router as security_router
+from market.api.routes_settings import router as settings_router
+from market.api.routes_strategy import router as strategy_router
 from market.api.routes_system import router as system_router
 
 logger = logging.getLogger(__name__)
@@ -178,6 +186,9 @@ def _scheduler_loop() -> None:
 
 def create_app() -> FastAPI:
     """Create and configure the FastAPI application."""
+    # Set up structured logging (Gap #28)
+    setup_logging()
+
     app = FastAPI(
         title="Market API",
         description="Single-user capital market decision-support API.",
@@ -202,6 +213,14 @@ def create_app() -> FastAPI:
     app.include_router(scheduler_router)
     app.include_router(notifications_router)
     app.include_router(cosmos_router)
+    app.include_router(multi_asset_router)
+    app.include_router(strategy_router)
+    app.include_router(reports_router)
+    app.include_router(security_router)
+    app.include_router(settings_router)
+
+    # Register global error handlers (Gap #29)
+    register_error_handlers(app)
 
     @app.on_event("startup")
     def _start_scheduler() -> None:

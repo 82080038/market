@@ -69,6 +69,7 @@ class ApprovalBot:
         auto_expire_hours: int = 24,
         telegram_bot_token: str | None = None,
         telegram_chat_id: str | None = None,
+        dispatcher: Any = None,
     ) -> None:
         self.auto_expire_hours = auto_expire_hours
         self._telegram_bot_token = telegram_bot_token
@@ -77,6 +78,7 @@ class ApprovalBot:
         self._log: list[ApprovalLog] = []
         self._counter = 0
         self._notification_hook: Any = None
+        self._dispatcher = dispatcher
 
     def set_notification_hook(self, hook: Any) -> None:
         """Set a custom notification hook (e.g., for testing).
@@ -264,12 +266,35 @@ class ApprovalBot:
     def _notify(self, request: ApprovalRequest) -> None:
         """Send notification about a new approval request.
 
-        In production, this would send a Telegram message.
-        For now, it calls the notification hook if set.
+        Routes through the NotificationDispatcher if configured (Gap #42),
+        falls back to the notification hook, or uses direct Telegram credentials.
         """
         if self._notification_hook:
             self._notification_hook(request)
-        else:
-            if self._telegram_bot_token and self._telegram_chat_id:
-                # In production: send via Telegram Bot API
-                pass
+            return
+
+        # Build notification message
+        msg = (
+            f"🔔 <b>Approval Request</b>\n"
+            f"<b>ID:</b> {request.request_id}\n"
+            f"<b>Action:</b> {request.action_type}\n"
+            f"<b>Description:</b> {request.description}\n"
+            f"<b>Expires:</b> {request.expires_at}"
+        )
+
+        # Use dispatcher if configured
+        if self._dispatcher is not None:
+            self._dispatcher.dispatch(
+                message=msg,
+                subject=f"Approval Request: {request.action_type}",
+            )
+            return
+
+        # Fallback: direct Telegram via credentials
+        if self._telegram_bot_token and self._telegram_chat_id:
+            from market.notifications.channels import TelegramNotifier
+            notifier = TelegramNotifier(
+                bot_token=self._telegram_bot_token,
+                chat_id=self._telegram_chat_id,
+            )
+            notifier.send(msg)

@@ -1,18 +1,21 @@
 """Model registry with aliases (pustaka/51 §3).
 
-In-memory model registry supporting:
+Model registry supporting:
 - Model versioning with semantic versions
 - Aliases: @experiment, @candidate, @champion
 - Model metadata (metrics, config, training info)
 - Promotion workflow (experiment → candidate → champion)
 - Rollback capability
+- File-based persistence (JSON) — survives process restarts (Gap #37)
 """
 
 from __future__ import annotations
 
-from dataclasses import dataclass, field
+import json
+from dataclasses import asdict, dataclass, field
 from datetime import UTC, datetime
 from enum import Enum
+from pathlib import Path
 from typing import Any
 
 
@@ -52,14 +55,34 @@ class ModelVersion:
     def is_experiment(self) -> bool:
         return ModelAlias.EXPERIMENT.value in self.aliases
 
+    def to_dict(self) -> dict[str, Any]:
+        """Serialize to a JSON-compatible dict for persistence."""
+        return asdict(self)
+
+    @classmethod
+    def from_dict(cls, data: dict[str, Any]) -> ModelVersion:
+        """Deserialize from a dict (e.g. loaded from JSON file)."""
+        return cls(**data)
+
 
 class ModelRegistry:
-    """In-memory model registry with alias management."""
+    """Model registry with alias management and optional file persistence.
 
-    def __init__(self) -> None:
+    Args:
+        persist_path: Optional path to a JSON file for persistence. When set,
+            the registry auto-loads on init and auto-saves on every mutation.
+            When None (default), operates in-memory only (backward compatible).
+    """
+
+    def __init__(self, persist_path: str | Path | None = None) -> None:
         self._models: dict[str, ModelVersion] = {}
         self._aliases: dict[str, str] = {}  # alias -> model_id
         self._counter = 0
+        self._persist_path = Path(persist_path) if persist_path else None
+
+        # Auto-load if persist file exists
+        if self._persist_path and self._persist_path.exists():
+            self.load()
 
     def register(
         self,
@@ -106,6 +129,7 @@ class ModelRegistry:
 
         self._models[model_id] = mv
         self._counter += 1
+        self._auto_save()
         return mv
 
     def get(self, model_id: str) -> ModelVersion | None:
@@ -151,6 +175,7 @@ class ModelRegistry:
         if alias.value not in model.aliases:
             model.aliases.append(alias.value)
         self._aliases[alias.value] = model_id
+        self._auto_save()
         return True
 
     def promote(self, model_id: str) -> bool:
@@ -212,6 +237,7 @@ class ModelRegistry:
 
         # Promote new champion
         self.assign_alias(new_champion.model_id, ModelAlias.CHAMPION)
+        self._auto_save()
         return new_champion
 
     def archive(self, model_id: str) -> bool:
@@ -232,6 +258,7 @@ class ModelRegistry:
             if self._aliases.get(alias) == model_id:
                 del self._aliases[alias]
         model.aliases.clear()
+        self._auto_save()
         return True
 
     @property
@@ -253,3 +280,46 @@ class ModelRegistry:
     def count(self) -> int:
         """Total registered models."""
         return len(self._models)
+
+    # ── Persistence (Gap #37) ──────────────────────────────────────────────
+
+    def _auto_save(self) -> None:
+        """Auto-save to file if persist_path is configured."""
+        if self._persist_path:
+            self.save()
+
+    def save(self) -> None:
+        """Save registry state to JSON file.
+
+        Raises:
+            RuntimeError: If no persist_path was configured.
+        """
+        if self._persist_path is None:
+            raise RuntimeError("No persist_path configured — registry is in-memory only")
+        self._persist_path.parent.mkdir(parents=True, exist_ok=True)
+        data = {
+            "models": {mid: mv.to_dict() for mid, mv in self._models.items()},
+            "aliases": dict(self._aliases),
+            "counter": self._counter,
+        }
+        tmp = self._persist_path.with_suffix(".tmp")
+        tmp.write_text(json.dumps(data, indent=2, ensure_ascii=False), encoding="utf-8")
+        tmp.replace(self._persist_path)
+
+    def load(self) -> None:
+        """Load registry state from JSON file.
+
+        Raises:
+            RuntimeError: If no persist_path was configured.
+            json.JSONDecodeError: If the file is corrupted.
+        """
+        if self._persist_path is None:
+            raise RuntimeError("No persist_path configured — registry is in-memory only")
+        if not self._persist_path.exists():
+            return
+        data = json.loads(self._persist_path.read_text(encoding="utf-8"))
+        self._models = {
+            mid: ModelVersion.from_dict(mv) for mid, mv in data.get("models", {}).items()
+        }
+        self._aliases = dict(data.get("aliases", {}))
+        self._counter = data.get("counter", 0)

@@ -1,0 +1,1062 @@
+{
+  "metadata": {
+    "timestamp": "2026-08-16T18:16:12.705162+00:00",
+    "simulation_type": "30_day_paper_trading",
+    "capital": 100000000,
+    "period": "2026-07-07 to 2026-08-14",
+    "sim_days": 30,
+    "tickers": [
+      "BBCA.JK",
+      "BBRI.JK",
+      "BMRI.JK",
+      "TLKM.JK",
+      "ASII.JK",
+      "UNTR.JK",
+      "ANTM.JK",
+      "ICBP.JK",
+      "ADRO.JK",
+      "MDKA.JK"
+    ],
+    "rebalance_freq": 5,
+    "max_positions": 5
+  },
+  "strategy_selection": {
+    "BBCA.JK": "rsi_meanrev",
+    "BBRI.JK": "rsi_meanrev",
+    "BMRI.JK": "rsi_meanrev",
+    "TLKM.JK": "rsi_meanrev",
+    "ASII.JK": "donchian",
+    "UNTR.JK": "rsi_meanrev",
+    "ANTM.JK": "ema_envelope",
+    "ICBP.JK": "rsi_meanrev",
+    "ADRO.JK": "donchian",
+    "MDKA.JK": "ema_envelope"
+  },
+  "performance": {
+    "initial_capital": 100000000,
+    "final_equity": 102311315.5,
+    "total_return_pct": 2.31,
+    "sharpe_ratio": 2.196,
+    "sortino_ratio": 4.015,
+    "max_drawdown_pct": -1.96,
+    "n_trades": 11,
+    "n_buy_orders": 4,
+    "n_sell_orders": 7,
+    "total_realized_pnl": 2382430.0,
+    "win_rate_pct": 28.6
+  },
+  "orders": [
+    {
+      "ticker": "BMRI.JK",
+      "side": "buy",
+      "shares": 4900,
+      "price": 4070.0,
+      "commission": 29914.5,
+      "sales_tax": 0.0,
+      "total_cost": 19972914.5,
+      "status": "filled",
+      "rejection_reason": null
+    },
+    {
+      "ticker": "ASII.JK",
+      "side": "buy",
+      "shares": 4000,
+      "price": 4930.0,
+      "commission": 29580.0,
+      "sales_tax": 0.0,
+      "total_cost": 19749580.0,
+      "status": "filled",
+      "rejection_reason": null
+    },
+    {
+      "ticker": "ADRO.JK",
+      "side": "buy",
+      "shares": 8400,
+      "price": 2350.0,
+      "commission": 29610.0,
+      "sales_tax": 0.0,
+      "total_cost": 19769610.0,
+      "status": "filled",
+      "rejection_reason": null
+    },
+    {
+      "ticker": "BMRI.JK",
+      "side": "sell",
+      "shares": 4900,
+      "price": 4480.0,
+      "commission": 32928.0,
+      "sales_tax": 21952.0,
+      "total_cost": 21897120.0,
+      "status": "filled",
+      "rejection_reason": null
+    },
+    {
+      "ticker": "ADRO.JK",
+      "side": "sell",
+      "shares": 8400,
+      "price": 2540.0,
+      "commission": 32004.0,
+      "sales_tax": 21336.0,
+      "total_cost": 21282660.0,
+      "status": "filled",
+      "rejection_reason": null
+    },
+    {
+      "ticker": "UNTR.JK",
+      "side": "buy",
+      "shares": 800,
+      "price": 23800.0,
+      "commission": 28560.0,
+      "sales_tax": 0.0,
+      "total_cost": 19068560.0,
+      "status": "filled",
+      "rejection_reason": null
+    },
+    {
+      "ticker": "ASII.JK",
+      "side": "sell",
+      "shares": 4000,
+      "price": 4780.0,
+      "commission": 28680.0,
+      "sales_tax": 19120.0,
+      "total_cost": 19072200.0,
+      "status": "filled",
+      "rejection_reason": null
+    },
+    {
+      "ticker": "BMRI.JK",
+      "side": "sell",
+      "shares": 0,
+      "price": 4170.0,
+      "commission": 0.0,
+      "sales_tax": 0.0,
+      "total_cost": 0.0,
+      "status": "filled",
+      "rejection_reason": null
+    },
+    {
+      "ticker": "ASII.JK",
+      "side": "sell",
+      "shares": 0,
+      "price": 4780.0,
+      "commission": 0.0,
+      "sales_tax": 0.0,
+      "total_cost": 0.0,
+      "status": "filled",
+      "rejection_reason": null
+    },
+    {
+      "ticker": "ADRO.JK",
+      "side": "sell",
+      "shares": 0,
+      "price": 2530.0,
+      "commission": 0.0,
+      "sales_tax": 0.0,
+      "total_cost": 0.0,
+      "status": "filled",
+      "rejection_reason": null
+    },
+    {
+      "ticker": "UNTR.JK",
+      "side": "sell",
+      "shares": 800,
+      "price": 23275.0,
+      "commission": 27930.0,
+      "sales_tax": 18620.0,
+      "total_cost": 18573450.0,
+      "status": "filled",
+      "rejection_reason": null
+    }
+  ],
+  "equity_curve": [
+    {
+      "date": "2026-07-07",
+      "equity": 99910895.5,
+      "cash": 40507895.5,
+      "n_positions": 3
+    },
+    {
+      "date": "2026-07-08",
+      "equity": 98840895.5,
+      "cash": 40507895.5,
+      "n_positions": 3
+    },
+    {
+      "date": "2026-07-09",
+      "equity": 99059895.5,
+      "cash": 40507895.5,
+      "n_positions": 3
+    },
+    {
+      "date": "2026-07-10",
+      "equity": 99815895.5,
+      "cash": 40507895.5,
+      "n_positions": 3
+    },
+    {
+      "date": "2026-07-13",
+      "equity": 101312895.5,
+      "cash": 40507895.5,
+      "n_positions": 3
+    },
+    {
+      "date": "2026-07-14",
+      "equity": 101243895.5,
+      "cash": 40507895.5,
+      "n_positions": 3
+    },
+    {
+      "date": "2026-07-15",
+      "equity": 101319895.5,
+      "cash": 40507895.5,
+      "n_positions": 3
+    },
+    {
+      "date": "2026-07-16",
+      "equity": 103110895.5,
+      "cash": 40507895.5,
+      "n_positions": 3
+    },
+    {
+      "date": "2026-07-17",
+      "equity": 103775895.5,
+      "cash": 40507895.5,
+      "n_positions": 3
+    },
+    {
+      "date": "2026-07-20",
+      "equity": 104100895.5,
+      "cash": 40507895.5,
+      "n_positions": 3
+    },
+    {
+      "date": "2026-07-21",
+      "equity": 104087675.5,
+      "cash": 83687675.5,
+      "n_positions": 3
+    },
+    {
+      "date": "2026-07-22",
+      "equity": 104287675.5,
+      "cash": 83687675.5,
+      "n_positions": 3
+    },
+    {
+      "date": "2026-07-23",
+      "equity": 103687675.5,
+      "cash": 83687675.5,
+      "n_positions": 3
+    },
+    {
+      "date": "2026-07-24",
+      "equity": 103607675.5,
+      "cash": 83687675.5,
+      "n_positions": 3
+    },
+    {
+      "date": "2026-07-26",
+      "equity": 103607675.5,
+      "cash": 83687675.5,
+      "n_positions": 3
+    },
+    {
+      "date": "2026-07-27",
+      "equity": 103327675.5,
+      "cash": 83687675.5,
+      "n_positions": 3
+    },
+    {
+      "date": "2026-07-28",
+      "equity": 103567675.5,
+      "cash": 83687675.5,
+      "n_positions": 3
+    },
+    {
+      "date": "2026-07-29",
+      "equity": 103527675.5,
+      "cash": 83687675.5,
+      "n_positions": 3
+    },
+    {
+      "date": "2026-07-30",
+      "equity": 103487675.5,
+      "cash": 83687675.5,
+      "n_positions": 3
+    },
+    {
+      "date": "2026-07-31",
+      "equity": 104087675.5,
+      "cash": 83687675.5,
+      "n_positions": 3
+    },
+    {
+      "date": "2026-08-03",
+      "equity": 103859115.5,
+      "cash": 64619115.5,
+      "n_positions": 4
+    },
+    {
+      "date": "2026-08-04",
+      "equity": 104319115.5,
+      "cash": 64619115.5,
+      "n_positions": 4
+    },
+    {
+      "date": "2026-08-05",
+      "equity": 103759115.5,
+      "cash": 64619115.5,
+      "n_positions": 4
+    },
+    {
+      "date": "2026-08-06",
+      "equity": 104059115.5,
+      "cash": 64619115.5,
+      "n_positions": 4
+    },
+    {
+      "date": "2026-08-07",
+      "equity": 103959115.5,
+      "cash": 64619115.5,
+      "n_positions": 4
+    },
+    {
+      "date": "2026-08-07",
+      "equity": 103959115.5,
+      "cash": 64619115.5,
+      "n_positions": 4
+    },
+    {
+      "date": "2026-08-10",
+      "equity": 103859115.5,
+      "cash": 64619115.5,
+      "n_positions": 4
+    },
+    {
+      "date": "2026-08-11",
+      "equity": 102999115.5,
+      "cash": 64619115.5,
+      "n_positions": 4
+    },
+    {
+      "date": "2026-08-12",
+      "equity": 102699115.5,
+      "cash": 64619115.5,
+      "n_positions": 4
+    },
+    {
+      "date": "2026-08-13",
+      "equity": 102279115.5,
+      "cash": 64619115.5,
+      "n_positions": 4
+    },
+    {
+      "date": "2026-08-14",
+      "equity": 102311315.5,
+      "cash": 83691315.5,
+      "n_positions": 4
+    }
+  ],
+  "decisions_log": [
+    {
+      "date": "2026-07-07",
+      "ticker": "BBCA.JK",
+      "action": "HOLD",
+      "score": 0.0,
+      "strategy_signal": 0,
+      "rsi": 50.5,
+      "regime": "bear",
+      "has_position": false
+    },
+    {
+      "date": "2026-07-07",
+      "ticker": "BBRI.JK",
+      "action": "HOLD",
+      "score": 0.0,
+      "strategy_signal": 0,
+      "rsi": 36.2,
+      "regime": "bear",
+      "has_position": false
+    },
+    {
+      "date": "2026-07-07",
+      "ticker": "BMRI.JK",
+      "action": "BUY",
+      "score": 0.6133,
+      "strategy_signal": 1,
+      "rsi": 29.0,
+      "regime": "bear",
+      "has_position": false
+    },
+    {
+      "date": "2026-07-07",
+      "ticker": "TLKM.JK",
+      "action": "HOLD",
+      "score": 0.0,
+      "strategy_signal": 0,
+      "rsi": 32.7,
+      "regime": "bear",
+      "has_position": false
+    },
+    {
+      "date": "2026-07-07",
+      "ticker": "ASII.JK",
+      "action": "BUY",
+      "score": 0.6,
+      "strategy_signal": 1,
+      "rsi": 54.5,
+      "regime": "bear",
+      "has_position": false
+    },
+    {
+      "date": "2026-07-07",
+      "ticker": "UNTR.JK",
+      "action": "HOLD",
+      "score": 0.0,
+      "strategy_signal": 0,
+      "rsi": 58.7,
+      "regime": "bear",
+      "has_position": false
+    },
+    {
+      "date": "2026-07-07",
+      "ticker": "ANTM.JK",
+      "action": "HOLD",
+      "score": 0.0,
+      "strategy_signal": 0,
+      "rsi": 49.2,
+      "regime": "bear",
+      "has_position": false
+    },
+    {
+      "date": "2026-07-07",
+      "ticker": "ICBP.JK",
+      "action": "HOLD",
+      "score": 0.0,
+      "strategy_signal": 0,
+      "rsi": 65.1,
+      "regime": "bear",
+      "has_position": false
+    },
+    {
+      "date": "2026-07-07",
+      "ticker": "ADRO.JK",
+      "action": "BUY",
+      "score": 0.6,
+      "strategy_signal": 1,
+      "rsi": 52.3,
+      "regime": "bear",
+      "has_position": false
+    },
+    {
+      "date": "2026-07-07",
+      "ticker": "MDKA.JK",
+      "action": "HOLD",
+      "score": 0.0,
+      "strategy_signal": 0,
+      "rsi": 50.1,
+      "regime": "bear",
+      "has_position": false
+    },
+    {
+      "date": "2026-07-14",
+      "ticker": "BBCA.JK",
+      "action": "HOLD",
+      "score": 0.0,
+      "strategy_signal": 0,
+      "rsi": 55.1,
+      "regime": "bear",
+      "has_position": false
+    },
+    {
+      "date": "2026-07-14",
+      "ticker": "BBRI.JK",
+      "action": "HOLD",
+      "score": 0.0,
+      "strategy_signal": 0,
+      "rsi": 47.2,
+      "regime": "bear",
+      "has_position": false
+    },
+    {
+      "date": "2026-07-14",
+      "ticker": "BMRI.JK",
+      "action": "HOLD",
+      "score": 0.0,
+      "strategy_signal": 0,
+      "rsi": 60.0,
+      "regime": "bear",
+      "has_position": true
+    },
+    {
+      "date": "2026-07-14",
+      "ticker": "TLKM.JK",
+      "action": "HOLD",
+      "score": 0.0,
+      "strategy_signal": 0,
+      "rsi": 56.0,
+      "regime": "bear",
+      "has_position": false
+    },
+    {
+      "date": "2026-07-14",
+      "ticker": "ASII.JK",
+      "action": "HOLD",
+      "score": 0.0,
+      "strategy_signal": 0,
+      "rsi": 58.7,
+      "regime": "bear",
+      "has_position": true
+    },
+    {
+      "date": "2026-07-14",
+      "ticker": "UNTR.JK",
+      "action": "SELL",
+      "score": -0.7698,
+      "strategy_signal": -1,
+      "rsi": 82.7,
+      "regime": "bear",
+      "has_position": false
+    },
+    {
+      "date": "2026-07-14",
+      "ticker": "ANTM.JK",
+      "action": "HOLD",
+      "score": 0.0,
+      "strategy_signal": 0,
+      "rsi": 60.5,
+      "regime": "bear",
+      "has_position": false
+    },
+    {
+      "date": "2026-07-14",
+      "ticker": "ICBP.JK",
+      "action": "HOLD",
+      "score": 0.0,
+      "strategy_signal": 0,
+      "rsi": 68.4,
+      "regime": "bear",
+      "has_position": false
+    },
+    {
+      "date": "2026-07-14",
+      "ticker": "ADRO.JK",
+      "action": "BUY",
+      "score": 0.5404,
+      "strategy_signal": 1,
+      "rsi": 74.5,
+      "regime": "bear",
+      "has_position": true
+    },
+    {
+      "date": "2026-07-14",
+      "ticker": "MDKA.JK",
+      "action": "HOLD",
+      "score": 0.0,
+      "strategy_signal": 0,
+      "rsi": 48.1,
+      "regime": "bear",
+      "has_position": false
+    },
+    {
+      "date": "2026-07-21",
+      "ticker": "BBCA.JK",
+      "action": "SELL",
+      "score": -0.7661,
+      "strategy_signal": -1,
+      "rsi": 82.5,
+      "regime": "bear",
+      "has_position": false
+    },
+    {
+      "date": "2026-07-21",
+      "ticker": "BBRI.JK",
+      "action": "HOLD",
+      "score": 0.0,
+      "strategy_signal": 0,
+      "rsi": 47.2,
+      "regime": "bear",
+      "has_position": false
+    },
+    {
+      "date": "2026-07-21",
+      "ticker": "BMRI.JK",
+      "action": "SELL",
+      "score": -0.7357,
+      "strategy_signal": -1,
+      "rsi": 80.2,
+      "regime": "bear",
+      "has_position": true
+    },
+    {
+      "date": "2026-07-21",
+      "ticker": "TLKM.JK",
+      "action": "SELL",
+      "score": -0.7233,
+      "strategy_signal": -1,
+      "rsi": 79.2,
+      "regime": "bear",
+      "has_position": false
+    },
+    {
+      "date": "2026-07-21",
+      "ticker": "ASII.JK",
+      "action": "HOLD",
+      "score": -0.0667,
+      "strategy_signal": 0,
+      "rsi": 75.0,
+      "regime": "bear",
+      "has_position": true
+    },
+    {
+      "date": "2026-07-21",
+      "ticker": "UNTR.JK",
+      "action": "SELL",
+      "score": -0.6827,
+      "strategy_signal": -1,
+      "rsi": 76.2,
+      "regime": "bear",
+      "has_position": false
+    },
+    {
+      "date": "2026-07-21",
+      "ticker": "ANTM.JK",
+      "action": "SELL",
+      "score": -0.663,
+      "strategy_signal": -1,
+      "rsi": 74.7,
+      "regime": "bear",
+      "has_position": false
+    },
+    {
+      "date": "2026-07-21",
+      "ticker": "ICBP.JK",
+      "action": "SELL",
+      "score": -0.6388,
+      "strategy_signal": -1,
+      "rsi": 72.9,
+      "regime": "bear",
+      "has_position": false
+    },
+    {
+      "date": "2026-07-21",
+      "ticker": "ADRO.JK",
+      "action": "SELL",
+      "score": -0.1067,
+      "strategy_signal": 0,
+      "rsi": 78.0,
+      "regime": "bear",
+      "has_position": true
+    },
+    {
+      "date": "2026-07-21",
+      "ticker": "MDKA.JK",
+      "action": "HOLD",
+      "score": 0.0,
+      "strategy_signal": 0,
+      "rsi": 68.8,
+      "regime": "bear",
+      "has_position": false
+    },
+    {
+      "date": "2026-07-27",
+      "ticker": "BBCA.JK",
+      "action": "HOLD",
+      "score": 0.0,
+      "strategy_signal": 0,
+      "rsi": 52.6,
+      "regime": "bear",
+      "has_position": false
+    },
+    {
+      "date": "2026-07-27",
+      "ticker": "BBRI.JK",
+      "action": "HOLD",
+      "score": 0.0,
+      "strategy_signal": 0,
+      "rsi": 47.2,
+      "regime": "bear",
+      "has_position": false
+    },
+    {
+      "date": "2026-07-27",
+      "ticker": "BMRI.JK",
+      "action": "HOLD",
+      "score": 0.0,
+      "strategy_signal": 0,
+      "rsi": 53.7,
+      "regime": "bear",
+      "has_position": true
+    },
+    {
+      "date": "2026-07-27",
+      "ticker": "TLKM.JK",
+      "action": "HOLD",
+      "score": 0.0,
+      "strategy_signal": 0,
+      "rsi": 59.6,
+      "regime": "bear",
+      "has_position": false
+    },
+    {
+      "date": "2026-07-27",
+      "ticker": "ASII.JK",
+      "action": "HOLD",
+      "score": 0.0,
+      "strategy_signal": 0,
+      "rsi": 48.8,
+      "regime": "bear",
+      "has_position": true
+    },
+    {
+      "date": "2026-07-27",
+      "ticker": "UNTR.JK",
+      "action": "HOLD",
+      "score": 0.0,
+      "strategy_signal": 0,
+      "rsi": 61.5,
+      "regime": "bear",
+      "has_position": false
+    },
+    {
+      "date": "2026-07-27",
+      "ticker": "ANTM.JK",
+      "action": "HOLD",
+      "score": 0.0,
+      "strategy_signal": 0,
+      "rsi": 52.6,
+      "regime": "bear",
+      "has_position": false
+    },
+    {
+      "date": "2026-07-27",
+      "ticker": "ICBP.JK",
+      "action": "HOLD",
+      "score": 0.0,
+      "strategy_signal": 0,
+      "rsi": 61.5,
+      "regime": "bear",
+      "has_position": false
+    },
+    {
+      "date": "2026-07-27",
+      "ticker": "ADRO.JK",
+      "action": "HOLD",
+      "score": 0.0,
+      "strategy_signal": 0,
+      "rsi": 66.7,
+      "regime": "bear",
+      "has_position": true
+    },
+    {
+      "date": "2026-07-27",
+      "ticker": "MDKA.JK",
+      "action": "HOLD",
+      "score": 0.0,
+      "strategy_signal": 0,
+      "rsi": 42.3,
+      "regime": "bear",
+      "has_position": false
+    },
+    {
+      "date": "2026-08-03",
+      "ticker": "BBCA.JK",
+      "action": "HOLD",
+      "score": 0.0,
+      "strategy_signal": 0,
+      "rsi": 57.8,
+      "regime": "bear",
+      "has_position": false
+    },
+    {
+      "date": "2026-08-03",
+      "ticker": "BBRI.JK",
+      "action": "HOLD",
+      "score": 0.0,
+      "strategy_signal": 0,
+      "rsi": 61.0,
+      "regime": "bear",
+      "has_position": false
+    },
+    {
+      "date": "2026-08-03",
+      "ticker": "BMRI.JK",
+      "action": "HOLD",
+      "score": 0.0,
+      "strategy_signal": 0,
+      "rsi": 50.5,
+      "regime": "bear",
+      "has_position": true
+    },
+    {
+      "date": "2026-08-03",
+      "ticker": "TLKM.JK",
+      "action": "HOLD",
+      "score": 0.0,
+      "strategy_signal": 0,
+      "rsi": 62.5,
+      "regime": "bear",
+      "has_position": false
+    },
+    {
+      "date": "2026-08-03",
+      "ticker": "ASII.JK",
+      "action": "HOLD",
+      "score": 0.0,
+      "strategy_signal": 0,
+      "rsi": 58.9,
+      "regime": "bear",
+      "has_position": true
+    },
+    {
+      "date": "2026-08-03",
+      "ticker": "UNTR.JK",
+      "action": "BUY",
+      "score": 1.0,
+      "strategy_signal": 1,
+      "rsi": 0.0,
+      "regime": "bear",
+      "has_position": false
+    },
+    {
+      "date": "2026-08-03",
+      "ticker": "ANTM.JK",
+      "action": "HOLD",
+      "score": 0.0,
+      "strategy_signal": 0,
+      "rsi": 46.4,
+      "regime": "bear",
+      "has_position": false
+    },
+    {
+      "date": "2026-08-03",
+      "ticker": "ICBP.JK",
+      "action": "SELL",
+      "score": -0.6667,
+      "strategy_signal": -1,
+      "rsi": 75.0,
+      "regime": "bear",
+      "has_position": false
+    },
+    {
+      "date": "2026-08-03",
+      "ticker": "ADRO.JK",
+      "action": "HOLD",
+      "score": 0.0,
+      "strategy_signal": 0,
+      "rsi": 48.9,
+      "regime": "bear",
+      "has_position": true
+    },
+    {
+      "date": "2026-08-03",
+      "ticker": "MDKA.JK",
+      "action": "HOLD",
+      "score": 0.0,
+      "strategy_signal": 0,
+      "rsi": 57.1,
+      "regime": "bear",
+      "has_position": false
+    },
+    {
+      "date": "2026-08-07",
+      "ticker": "BBCA.JK",
+      "action": "HOLD",
+      "score": 0.0,
+      "strategy_signal": 0,
+      "rsi": 44.2,
+      "regime": "bear",
+      "has_position": false
+    },
+    {
+      "date": "2026-08-07",
+      "ticker": "BBRI.JK",
+      "action": "SELL",
+      "score": -0.7407,
+      "strategy_signal": -1,
+      "rsi": 80.6,
+      "regime": "bear",
+      "has_position": false
+    },
+    {
+      "date": "2026-08-07",
+      "ticker": "BMRI.JK",
+      "action": "HOLD",
+      "score": 0.0,
+      "strategy_signal": 0,
+      "rsi": 34.2,
+      "regime": "bear",
+      "has_position": true
+    },
+    {
+      "date": "2026-08-07",
+      "ticker": "TLKM.JK",
+      "action": "HOLD",
+      "score": 0.0,
+      "strategy_signal": 0,
+      "rsi": 47.1,
+      "regime": "bear",
+      "has_position": false
+    },
+    {
+      "date": "2026-08-07",
+      "ticker": "ASII.JK",
+      "action": "HOLD",
+      "score": 0.0,
+      "strategy_signal": 0,
+      "rsi": 50.0,
+      "regime": "bear",
+      "has_position": true
+    },
+    {
+      "date": "2026-08-07",
+      "ticker": "UNTR.JK",
+      "action": "BUY",
+      "score": 0.9056,
+      "strategy_signal": 1,
+      "rsi": 7.1,
+      "regime": "bear",
+      "has_position": true
+    },
+    {
+      "date": "2026-08-07",
+      "ticker": "ANTM.JK",
+      "action": "SELL",
+      "score": -0.6,
+      "strategy_signal": -1,
+      "rsi": 57.4,
+      "regime": "bear",
+      "has_position": false
+    },
+    {
+      "date": "2026-08-07",
+      "ticker": "ICBP.JK",
+      "action": "SELL",
+      "score": -0.7333,
+      "strategy_signal": -1,
+      "rsi": 80.0,
+      "regime": "bear",
+      "has_position": false
+    },
+    {
+      "date": "2026-08-07",
+      "ticker": "ADRO.JK",
+      "action": "HOLD",
+      "score": 0.0,
+      "strategy_signal": 0,
+      "rsi": 50.0,
+      "regime": "bear",
+      "has_position": true
+    },
+    {
+      "date": "2026-08-07",
+      "ticker": "MDKA.JK",
+      "action": "SELL",
+      "score": -0.6,
+      "strategy_signal": -1,
+      "rsi": 65.7,
+      "regime": "bear",
+      "has_position": false
+    },
+    {
+      "date": "2026-08-14",
+      "ticker": "BBCA.JK",
+      "action": "HOLD",
+      "score": 0.0,
+      "strategy_signal": 0,
+      "rsi": 54.3,
+      "regime": "bear",
+      "has_position": false
+    },
+    {
+      "date": "2026-08-14",
+      "ticker": "BBRI.JK",
+      "action": "SELL",
+      "score": -0.7241,
+      "strategy_signal": -1,
+      "rsi": 79.3,
+      "regime": "bear",
+      "has_position": false
+    },
+    {
+      "date": "2026-08-14",
+      "ticker": "BMRI.JK",
+      "action": "HOLD",
+      "score": 0.0,
+      "strategy_signal": 0,
+      "rsi": 57.1,
+      "regime": "bear",
+      "has_position": true
+    },
+    {
+      "date": "2026-08-14",
+      "ticker": "TLKM.JK",
+      "action": "HOLD",
+      "score": 0.0,
+      "strategy_signal": 0,
+      "rsi": 54.5,
+      "regime": "bear",
+      "has_position": false
+    },
+    {
+      "date": "2026-08-14",
+      "ticker": "ASII.JK",
+      "action": "SELL",
+      "score": -0.6,
+      "strategy_signal": -1,
+      "rsi": 38.0,
+      "regime": "bear",
+      "has_position": true
+    },
+    {
+      "date": "2026-08-14",
+      "ticker": "UNTR.JK",
+      "action": "BUY",
+      "score": 0.6845,
+      "strategy_signal": 1,
+      "rsi": 23.7,
+      "regime": "bear",
+      "has_position": true
+    },
+    {
+      "date": "2026-08-14",
+      "ticker": "ANTM.JK",
+      "action": "HOLD",
+      "score": 0.0,
+      "strategy_signal": 0,
+      "rsi": 64.5,
+      "regime": "bear",
+      "has_position": false
+    },
+    {
+      "date": "2026-08-14",
+      "ticker": "ICBP.JK",
+      "action": "SELL",
+      "score": -0.6944,
+      "strategy_signal": -1,
+      "rsi": 77.1,
+      "regime": "bear",
+      "has_position": false
+    },
+    {
+      "date": "2026-08-14",
+      "ticker": "ADRO.JK",
+      "action": "HOLD",
+      "score": 0.0,
+      "strategy_signal": 0,
+      "rsi": 58.1,
+      "regime": "bear",
+      "has_position": true
+    },
+    {
+      "date": "2026-08-14",
+      "ticker": "MDKA.JK",
+      "action": "SELL",
+      "score": -0.6,
+      "strategy_signal": -1,
+      "rsi": 64.2,
+      "regime": "bear",
+      "has_position": false
+    }
+  ],
+  "elapsed_seconds": 0.5
+}

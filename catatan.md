@@ -497,3 +497,629 @@ Aplikasi **belum bisa dibuktikan** sepenuhnya karena:
 | VOLATILITY_RATE | 4 |
 | ETF | 4 |
 | FUND | 1 |
+
+
+====
+
+## Audit Status Aplikasi
+
+
+### Status Evaluasi:
+
+1. **Time-Zone Awareness:**
+   - ✅ Modul `cross_market_timezone.py` sudah ada dengan `get_aligned_global_features(as_of_wib)`
+   - ✅ DST handling via `verify_dst_cutoff(date)` untuk bursa AS
+   - ⚠️ Belum ada `MarketSessionManager` class terpusat
+
+2. **Frontend Header Requirements:**
+   - [ ] Jam lokal (WIB) dan jam UTC
+   - [ ] Status real-time setiap bursa: OPEN | CLOSED | PRE-MARKET | AFTER-HOURS
+   - [ ] Bursa yang baru tutup → trigger fetch data & AI calculation
+   - [ ] IHSG value + persentase perubahan (↑/↓)
+   - [ ] Countdown ke pembukaan bursa berikutnya
+
+3. **Pipeline Trigger:**
+   - ✅ `daily_signal_cron.py` berjalan 16:15 WIB (setelah IDX tutup)
+   - ✅ Data AS menggunakan T-1 (anti look-ahead)
+   - ✅ Data Asia (N225, HSI) menggunakan T-0
+
+---
+
+## Analisis Hubungan Pasar Global → IHSG
+
+### Status Data:
+
+| Jenis Data | Status | Tabel | Rows |
+|------------|--------|-------|------|
+| Commodity-Stock Map | ✅ | `commodity_to_stock_map` | 28 |
+| Macro Global (VIX, TNX, GSPC) | ✅ | `macro_data` | 1,018+ |
+| Causal Relationships | ✅ | `causal_relationships` | 198 |
+| DCC-GARCH Correlation | ✅ | `dcc_garch_results` | 60 |
+| Cross-Market Features | ⚠️ | via `mc_cross_market` engine | runtime |
+
+### Gap Analysis:
+
+| Gap | Prioritas | Status |
+|-----|-----------|--------|
+| Lag coefficient per commodity-stock pair | HIGH | Belum ada kolom di DB |
+| Magnitude coefficient (1% impact) | HIGH | Belum dihitung |
+| Asymmetric response (up vs down) | MEDIUM | Belum diimplementasi |
+| Real-time shipping/AIS data | LOW | Belum ada integrasi |
+
+---
+
+## To-Do Prompts (Grouped by Priority)
+
+### PRIORITY 1: Market Session & Time-Zone Infrastructure
+
+**Prompt:**
+```
+Buatkan `MarketSessionManager` class di `src/market/utils/market_session.py` dengan fitur:
+1. Jam buka/tutup 10 bursa utama (IDX, NYSE, NASDAQ, TSE, HSI, LSE, XETRA, KRX, SGX, ASX) dalam UTC dan WIB
+2. DST handling otomatis untuk US/EU (gunakan pytz/zoneinfo)
+3. Method: `get_status(exchange)` → OPEN | CLOSED | PRE_MARKET | AFTER_HOURS
+4. Method: `get_next_open(exchange)` → datetime countdown
+5. Method: `get_recently_closed()` → list bursa yang tutup dalam 30 menit terakhir
+6. Integrasikan dengan `daily_signal_cron.py` untuk auto-trigger pipeline
+```
+
+### PRIORITY 2: Cross-Market Correlation & Causality
+
+**Prompt:**
+```
+Perkuat engine cross-market di `src/market/analysis/` dengan:
+1. Granger causality test untuk hubungan: S&P500 → IHSG, HSI → IHSG, Nikkei → IHSG
+2. Lag analysis 1-5 hari dengan optimal lag detection
+3. Magnitude coefficient: berapa % IHSG bergerak per 1% perubahan index global
+4. Simpan hasil ke tabel baru `cross_market_coefficients` (source_index, target, lag_days, coefficient, p_value, updated_at)
+5. Update koefisien setiap minggu via scheduled job
+```
+
+### PRIORITY 3: Commodity-Stock Relationship Enhancement
+
+**Prompt:**
+```
+Lengkapi `commodity_to_stock_map` dengan kolom tambahan:
+1. `lag_days` (INTEGER) - berapa hari delay dampak
+2. `coefficient` (FLOAT) - magnitude pengaruh
+3. `response_type` (ENUM: LINEAR, THRESHOLD, ASYMMETRIC)
+4. `threshold_value` (FLOAT, nullable) - untuk response_type THRESHOLD
+5. Hitung nilai menggunakan rolling regression 252 hari dari `macro_data` dan `daily_prices`
+6. Buat fungsi `recalculate_commodity_coefficients()` untuk update berkala
+```
+
+### PRIORITY 4: ML Model Optimization
+
+**Prompt:**
+```
+Optimasi LightGBM di `MultiFactorModel` dan `MLSignalProvider`:
+1. Tambahkan hyperparameter: min_data_in_leaf=20, reg_alpha=0.1, reg_lambda=0.1, feature_fraction=0.8
+2. Implementasi Optuna hyperparameter search dengan 50 trials
+3. Ganti 80/20 split dengan TimeSeriesSplit (5 folds, gap=21 hari)
+4. Tambahkan out-of-sample test pada periode: 2008 (GFC), 2020 (COVID), 2022 (rate hike)
+5. Log semua experiment ke MLflow atau tabel `ml_experiments`
+```
+
+### PRIORITY 5: Frontend MarketSessionHeader
+
+**Prompt:**
+```
+Desain komponen React `MarketSessionHeader` di `frontend/components/`:
+1. Display: Jam WIB | Jam UTC (live update setiap detik)
+2. Grid 10 bursa dengan status badge (hijau=OPEN, merah=CLOSED, kuning=PRE_MARKET)
+3. IHSG card: nilai, perubahan %, panah ↑/↓, mini sparkline 5 hari
+4. Countdown timer ke pembukaan bursa berikutnya
+5. Notification badge untuk bursa yang baru tutup (trigger data fetch)
+6. Fetch data dari endpoint `/api/market-session/status`
+```
+
+### PRIORITY 6: Ablation & Validation
+
+**Prompt:**
+```
+Jalankan validasi komprehensif:
+1. Full ablation test: `python -m src.market.ablation.engine_ablation_runner --full --walk-forward`
+2. Walk-forward validation pada data 2023-2025 dengan 252-day initial window
+3. Paper trading simulation 90 hari dengan 20 saham fokus (top composite score)
+4. Generate audit trail: predicted_return vs actual_return per hari per saham
+5. Hitung metrics: Sharpe ratio, max drawdown, win rate, average holding period
+6. Export hasil ke `validation_results` tabel dan PDF report
+```
+
+### PRIORITY 7: Data Integration (Lower Priority)
+
+**Prompt:**
+```
+Perbaiki data gaps:
+1. Sentinel-2 NDVI: migrasi ke Google Earth Engine API atau Microsoft Planetary Computer
+2. Shipping AIS: integrasikan MarineTraffic API untuk port activity (Tanjung Priok, Balikpapan)
+3. Real-time commodity: tambahkan feed dari Investing.com atau TradingView websocket
+4. Broker API: buat adapter layer untuk Ajaib/Stockbit/Mirae dengan failover mechanism
+```
+
+---
+
+## Audit Summary
+
+| Kategori | Modul | Status | Action |
+|----------|-------|--------|--------|
+| Time-Zone | `cross_market_timezone.py` | ✅ Exists | Extend to MarketSessionManager |
+| Correlation | `mc_cross_market` engine | ⚠️ Partial | Add Granger + coefficients |
+| Commodity | `commodity_to_stock_map` | ⚠️ Basic | Add lag/coefficient columns |
+| ML | `MultiFactorModel` | ⚠️ Needs tuning | Optuna + walk-forward |
+| Ablation | `engine_ablation_runner` | ✅ Fixed | Run full validation |
+| Frontend | - | ❌ Missing | Create MarketSessionHeader |
+| Satelit | `satellite_observations` | ⚠️ Stale | Fix Sentinel API |
+
+===
+Bangun framework simulasi trading yang benar dan bebas look-ahead bias:
+
+## 0. Data Completeness Check & Backfill (PREREQUISITE)
+Implementasi `DataCompletenessChecker` di `src/market/simulation/data_checker.py`:
+```python
+class DataCompletenessChecker:
+    def __init__(self, db_connection):
+        self.db = db_connection
+        self.required_tables = {
+            'daily_prices': {'min_rows': 1000, 'required_cols': ['date', 'ticker', 'close', 'volume']},
+            'fundamental_data': {'min_rows': 500, 'required_cols': ['ticker', 'report_date', 'revenue']},
+            'macro_data': {'min_rows': 200, 'required_cols': ['date', 'indicator', 'value']},
+            'instrument_master': {'min_rows': 100, 'required_cols': ['ticker', 'asset_class', 'sector']},
+        }
+        
+    def check_all(self) -> DataCompletenessReport:
+        """Check semua tabel yang diperlukan untuk simulasi"""
+        report = DataCompletenessReport()
+        for table, requirements in self.required_tables.items():
+            status = self._check_table(table, requirements)
+            report.add(table, status)
+        return report
+        
+    def _check_table(self, table: str, requirements: dict) -> TableStatus:
+        """Check satu tabel: exists, row count, columns, date range"""
+        if not self._table_exists(table):
+            return TableStatus(exists=False, can_backfill=self._can_backfill(table))
+        row_count = self._get_row_count(table)
+        missing_cols = self._check_columns(table, requirements['required_cols'])
+        date_range = self._get_date_range(table)
+        gaps = self._detect_gaps(table, date_range)
+        return TableStatus(
+            exists=True,
+            row_count=row_count,
+            sufficient=row_count >= requirements['min_rows'],
+            missing_columns=missing_cols,
+            date_range=date_range,
+            gaps=gaps,
+            can_backfill=self._can_backfill(table)
+        )
+        
+    def _can_backfill(self, table: str) -> bool:
+        """Check apakah ada data source untuk backfill"""
+        backfill_sources = {
+            'daily_prices': ['yfinance', 'idx_api', 'csv_archive'],
+            'fundamental_data': ['idx_api', 'manual_entry'],
+            'macro_data': ['fred_api', 'world_bank', 'bi_api'],
+            'instrument_master': ['idx_api', 'manual_entry'],
+        }
+        return table in backfill_sources and len(backfill_sources[table]) > 0
+
+
+class DataBackfiller:
+    def __init__(self, db_connection, api_keys: dict):
+        self.db = db_connection
+        self.api_keys = api_keys
+        
+    def backfill(self, table: str, date_range: tuple = None) -> BackfillResult:
+        """Attempt to backfill missing data"""
+        try:
+            if table == 'daily_prices':
+                return self._backfill_prices(date_range)
+            elif table == 'fundamental_data':
+                return self._backfill_fundamentals(date_range)
+            elif table == 'macro_data':
+                return self._backfill_macro(date_range)
+            elif table == 'instrument_master':
+                return self._backfill_instruments()
+            else:
+                return BackfillResult(success=False, error=f"No backfill handler for {table}")
+        except Exception as e:
+            return BackfillResult(success=False, error=str(e))
+            
+    def _backfill_prices(self, date_range: tuple) -> BackfillResult:
+        """Backfill daily_prices dari yfinance atau IDX API"""
+        import yfinance as yf
+        tickers = self._get_ticker_list()
+        filled_count = 0
+        errors = []
+        for ticker in tickers:
+            try:
+                data = yf.download(ticker, start=date_range[0], end=date_range[1])
+                if not data.empty:
+                    self._insert_prices(ticker, data)
+                    filled_count += len(data)
+            except Exception as e:
+                errors.append(f"{ticker}: {e}")
+        return BackfillResult(success=filled_count > 0, rows_added=filled_count, errors=errors)
+
+
+class SimulationPreflightCheck:
+    def __init__(self, checker: DataCompletenessChecker, backfiller: DataBackfiller):
+        self.checker = checker
+        self.backfiller = backfiller
+        
+    def run(self, auto_backfill: bool = True) -> PreflightResult:
+        """
+        Run preflight check sebelum simulasi:
+        1. Check data completeness
+        2. Attempt backfill jika auto_backfill=True
+        3. Return status: READY | BACKFILL_NEEDED | CANNOT_PROCEED
+        """
+        report = self.checker.check_all()
+        
+        if report.all_sufficient():
+            return PreflightResult(status="READY", report=report)
+            
+        # Identify gaps
+        insufficient_tables = report.get_insufficient_tables()
+        
+        if auto_backfill:
+            backfill_results = {}
+            for table, status in insufficient_tables.items():
+                if status.can_backfill:
+                    result = self.backfiller.backfill(table, status.date_range)
+                    backfill_results[table] = result
+                else:
+                    backfill_results[table] = BackfillResult(
+                        success=False, 
+                        error=f"No data source available for {table}"
+                    )
+            
+            # Re-check after backfill
+            report_after = self.checker.check_all()
+            if report_after.all_sufficient():
+                return PreflightResult(
+                    status="READY", 
+                    report=report_after,
+                    backfill_performed=backfill_results
+                )
+        
+        # Cannot proceed - notify user
+        return PreflightResult(
+            status="CANNOT_PROCEED",
+            report=report,
+            user_message=self._generate_user_message(insufficient_tables),
+            required_actions=self._generate_required_actions(insufficient_tables)
+        )
+        
+    def _generate_user_message(self, insufficient_tables: dict) -> str:
+        """Generate human-readable message for user"""
+        lines = ["⚠️ SIMULASI TIDAK DAPAT DILANJUTKAN - DATA TIDAK LENGKAP\n"]
+        for table, status in insufficient_tables.items():
+            lines.append(f"\n📊 Tabel: {table}")
+            if not status.exists:
+                lines.append(f"   ❌ Tabel tidak ada di database")
+            else:
+                lines.append(f"   📈 Rows: {status.row_count} (minimum: {self.checker.required_tables[table]['min_rows']})")
+                if status.missing_columns:
+                    lines.append(f"   ❌ Kolom hilang: {', '.join(status.missing_columns)}")
+                if status.gaps:
+                    lines.append(f"   ⚠️ Gap tanggal: {len(status.gaps)} periode")
+            if not status.can_backfill:
+                lines.append(f"   🚫 Tidak ada sumber data untuk backfill otomatis")
+        lines.append("\n\n📋 LANGKAH YANG DIPERLUKAN:")
+        return "\n".join(lines)
+        
+    def _generate_required_actions(self, insufficient_tables: dict) -> list:
+        """Generate list of actions user must take"""
+        actions = []
+        for table, status in insufficient_tables.items():
+            if not status.exists:
+                actions.append({
+                    'priority': 'HIGH',
+                    'table': table,
+                    'action': 'CREATE_TABLE',
+                    'command': f"python -m src.market.db.migrations create_{table}"
+                })
+            elif not status.can_backfill:
+                actions.append({
+                    'priority': 'HIGH',
+                    'table': table,
+                    'action': 'MANUAL_DATA_ENTRY',
+                    'description': f"Data untuk {table} harus diinput manual atau dari file CSV",
+                    'template_path': f"templates/data_import/{table}_template.csv"
+                })
+            elif status.gaps:
+                actions.append({
+                    'priority': 'MEDIUM',
+                    'table': table,
+                    'action': 'FILL_GAPS',
+                    'command': f"python -m src.market.data.backfill --table {table} --fill-gaps"
+                })
+        return actions
+```
+
+Penggunaan di entry point simulasi:
+```python
+def run_simulation(config: SimulationConfig):
+    # STEP 0: Preflight check (WAJIB sebelum simulasi)
+    checker = DataCompletenessChecker(db)
+    backfiller = DataBackfiller(db, api_keys)
+    preflight = SimulationPreflightCheck(checker, backfiller)
+    
+    result = preflight.run(auto_backfill=config.auto_backfill)
+    
+    if result.status == "CANNOT_PROCEED":
+        # Tampilkan pesan ke user
+        print(result.user_message)
+        for action in result.required_actions:
+            print(f"  [{action['priority']}] {action['action']}: {action.get('command', action.get('description'))}")
+        raise SimulationDataError(
+            message="Data tidak lengkap untuk simulasi",
+            report=result.report,
+            required_actions=result.required_actions
+        )
+    
+    if result.status == "READY":
+        if result.backfill_performed:
+            print(f"✅ Backfill berhasil: {result.backfill_performed}")
+        # Lanjut ke simulasi...
+        return _execute_simulation(config)
+```
+
+## 1. Durasi Data & Analisa Pemilihan
+- Analisa karakteristik data IHSG untuk menentukan durasi optimal:
+  - Minimum: 3 tahun (756 trading days) untuk menangkap 1 siklus bull-bear
+  - Ideal: 5 tahun (1260 trading days) untuk robustness
+  - Stress test: include periode krisis (2020 COVID, 2022 rate hike)
+- Gunakan `TimeSeriesSplit` dengan:
+  - Initial training window: 252 hari (1 tahun)
+  - Test window: 63 hari (1 kuartal)
+  - Gap: 5 hari (hindari data leakage dari weekend/holiday)
+- Validasi stasioneritas data dengan ADF test sebelum simulasi
+
+## 2. Delisted Stock Handling & Pattern Detection
+- Implementasi `DelistedStockAnalyzer` di `src/market/simulation/`:
+  ```python
+  class DelistedStockAnalyzer:
+      def get_delisted_stocks(self) -> pd.DataFrame:
+          """Return semua saham delisted dengan metadata"""
+          # Columns: ticker, delist_date, delist_reason, last_price, 
+          #          peak_price, days_to_delist, final_return
+          
+      def extract_warning_patterns(self, lookback_days: int = 252) -> dict:
+          """Analisa pattern sebelum delisting untuk early warning"""
+          # Pattern yang dicari:
+          # - Volume anomaly (spike atau drop drastis)
+          # - Price deterioration (consecutive lower highs)
+          # - Fundamental red flags (negative equity, audit qualified)
+          # - Liquidity death spiral (bid-ask spread widening)
+          # - Suspension frequency (berapa kali suspend sebelum delist)
+          
+      def build_avoidance_model(self) -> DelistPredictionModel:
+          """Train model untuk prediksi probabilitas delisting"""
+          # Features: financial ratios, volume patterns, governance flags
+          # Target: delisted within 12 months (binary)
+          # Output: probability score 0-1 untuk setiap saham aktif
+          
+      def get_simulation_data(self, ticker: str, as_of_date: datetime) -> pd.DataFrame:
+          """Return data HANYA sampai delist_date untuk saham delisted"""
+          delist_date = self._get_delist_date(ticker)
+          if delist_date and as_of_date > delist_date:
+              return pd.DataFrame()  # No data after delist
+          return self._fetch_data(ticker, end_date=min(as_of_date, delist_date))
+  ```
+- Simulasi WAJIB include saham delisted untuk:
+  1. Validasi apakah sistem bisa menghindari saham pre-delist
+  2. Mengukur loss avoidance dari early warning system
+  3. Training model deteksi saham berisiko tinggi
+- Setelah delist_date: EXCLUDE dari semua analisa dan portfolio
+
+## 3. Anti Look-Ahead Bias Enforcement
+- Implementasi `PointInTimeDataLoader` di `src/market/simulation/`:
+  ```python
+  class PointInTimeDataLoader:
+      def __init__(self, delisted_analyzer: DelistedStockAnalyzer):
+          self.delisted_analyzer = delisted_analyzer
+          
+      def get_data(self, as_of_date: datetime) -> pd.DataFrame:
+          """Return ONLY data available BEFORE as_of_date"""
+          # Fundamental: use report_date, NOT period_end
+          # Price: use T-1 close for signal, T open for execution
+          # Macro: respect publication lag (GDP: 45 days, CPI: 14 days)
+          # Earnings: use announcement_date, NOT fiscal_period
+          # DELISTED: exclude jika as_of_date > delist_date
+          
+      def get_active_universe(self, as_of_date: datetime) -> list[str]:
+          """Return hanya saham yang AKTIF pada as_of_date"""
+          all_tickers = self._get_all_tickers()
+          return [t for t in all_tickers 
+                  if not self.delisted_analyzer.is_delisted_before(t, as_of_date)]
+  ```
+- Tambahkan decorator `@no_lookahead` untuk semua signal generators
+- Audit trail: log setiap data point dengan `available_at` timestamp
+
+## 4. Portfolio Exclusion Rules
+```
+
+---
+
+## EKSEKUSI TAHAAP 1-7 (17 Agustus 2026) — SELESAI
+
+### Ringkasan Eksekusi
+
+Semua 7 tahap dari urutan prompting (catatan.md L557-L682) telah diimplementasikan
+secara batch, otonom, dan pro-aktif. Total 126 unit/integration tests pass,
+ruff lint clean, 3 Alembic migrations (0024-0026) applied ke PostgreSQL.
+
+### TAHAP 1: MarketSessionManager (Prompt 1.1) — SELESAI
+
+- **File:** `src/market/utils/market_session.py` (306 baris)
+- **Tests:** `tests/test_market_session.py` (19 tests, 93% coverage)
+- **Fitur:**
+  - 10 bursa utama: IDX, NYSE, NASDAQ, TSE, HSE, LSE, XETRA, KRX, SGX, ASX
+  - DST handling otomatis via `zoneinfo` (America/New_York, Europe/London, Europe/Berlin, Australia/Sydney)
+  - `get_status(exchange)` -> OPEN | CLOSED | PRE_MARKET | AFTER_HOURS
+  - `get_next_open(exchange)` -> datetime UTC (skip weekend + holiday dari `exchange_holidays`)
+  - `get_recently_closed(minutes=30)` -> list bursa yang baru tutup
+  - `should_run_pipeline("IDX")` -> integrasi dengan `daily_signal_cron.py` (window 30 menit setelah close)
+  - Alias ramah pengguna: IDX/NYSE/NASDAQ/TSE/HSI/LSE/XETRA/KRX/SGX/ASX
+
+### TAHAP 2: InstrumentBehaviorProfiler (Prompt 2.1) — SELESAI
+
+- **File:** `src/market/analysis/instrument_profiler.py` (866 baris)
+- **Migration:** `alembic/versions/0024_instrument_behavior_profiles.py` (head 0024)
+- **DB table:** `instrument_behavior_profiles` (ticker PK, 28 kolom)
+- **SQLAlchemy model:** `InstrumentBehaviorProfile` di `src/market/db/models.py`
+- **Tests:** `tests/test_instrument_profiler.py` (28 tests)
+- **Fitur:**
+  - `profile_all_instruments()` — batch profiling semua active instruments
+  - `profile_single(ticker, lookback_days=756)` — comprehensive profile
+  - `get_profile(ticker)` — retrieve dari DB
+  - `calculate_volatility_regime()` — LOW (<1%) / MEDIUM (1-2%) / HIGH (2-4%) / EXTREME (>4%)
+  - `calculate_momentum_vs_meanrevert()` — autocorrelation + optimal lookback (5/10/20/60/120/252)
+  - `calculate_trading_style_suitability()` — score 1-10 untuk intraday/swing/investing
+  - `detect_regime_change()` — alert perubahan perilaku (vol + momentum shift)
+  - Volatility clustering (Engle ARCH-LM coefficient)
+  - Mean-reversion halflife (Ornstein-Uhlenbeck AR(1))
+  - Liquidity score + optimal_position_size_pct (square-root impact model)
+  - Beta to IHSG, correlation to sector, sensitivity to USD & rates
+  - Seasonality (best/worst months, day-of-week effect)
+  - Event response (earnings drift, dividend ex-date effect)
+  - Profile confidence (data points + completeness)
+- **Hasil real BBCA.JK:** MEDIUM vol 1.73%, swing_suitability=7.5, investing=7.75, confidence=7.5
+
+### TAHAP 3: Cross-Market Correlation Enhancement (Prompt 3.1) — SELESAI
+
+- **File:** `src/market/analysis/cross_market_coefficients.py` (338 baris)
+- **Migration:** `alembic/versions/0025_cross_market_coefficients.py` (head 0025)
+- **DB table:** `cross_market_coefficients` (source_index + target_ticker + lag_days unique)
+- **SQLAlchemy model:** `CrossMarketCoefficient` di `src/market/db/models.py`
+- **Tests:** `tests/test_cross_market_coefficients.py` (17 tests)
+- **Fitur:**
+  - Granger causality test (memakai `market.analysis.causal_discovery.granger_causality`)
+  - Lag analysis 1-5 hari dengan optimal lag detection
+  - Magnitude coefficient: OLS regression beta
+  - Asymmetric up/down: koefisien terpisah untuk source > 0 vs source < 0
+  - Regime classification: BULL/BEAR/SIDEWAYS (200-day cumulative return)
+  - Date normalization (beda UTC close time per bursa -> align by calendar date)
+  - `update_all()` — weekly job untuk semua source indices
+  - `get_coefficient(source, target, lag)` — retrieve
+  - `get_optimal_lag(source, target)` — lag dengan p-value terendah
+- **Hasil real:** ^GSPC -> ^JKSE lag=1 coef=0.2946 p=0.0 (signifikan), regime=BEAR
+  - Asymmetric: down moves lebih kuat di lag=2 (-0.4283) — bear contagion
+  - ^HSI tidak signifikan (p=0.55), ^N225 moderat (optimal lag=3)
+
+### TAHAP 4: TradingStyleAdvisor (Prompt 4.1) — SELESAI
+
+- **File:** `src/market/advisory/trading_style_advisor.py` (498 baris)
+- **Migration:** `alembic/versions/0026_user_trading_profiles.py` (head 0026)
+- **DB tables:** `user_trading_profiles`, `trading_style_recommendations`, `style_recommendation_reasons`
+- **SQLAlchemy models:** `UserTradingProfile`, `TradingStyleRecommendation`, `StyleRecommendationReason`
+- **Tests:** `tests/test_trading_style_advisor.py` (14 tests)
+- **Fitur:**
+  - `save_profile()` / `get_profile()` — persist user profile (single-user, default user_id='default')
+  - `recommend_style(user_id)` -> StyleRecommendation dengan allocation + reasoning + confidence
+  - `calculate_allocation()` — scoring berdasarkan capital + risk_tolerance + time_availability + experience_level + preferred_styles
+  - `generate_reasoning()` — Bahasa Indonesia human-readable explanation
+  - 4 tipe alasan: capital_match, risk_match, time_match, experience_match
+  - Confidence 1-10 (penalti beginner+aggressive, boost expert+explicit preference)
+  - Floor 5% per style untuk diversifikasi
+- **Hasil real:**
+  - Aggressive/full-time/expert/500jt -> intraday 45.65%, swing 36.96%, investing 17.39% (conf 8.0)
+  - Beginner/conservative/evenings/50jt -> investing 67.74% (conf 7.0)
+
+### TAHAP 5: Enhanced Signal Generator (Prompt 5.1) — SELESAI
+
+- **File:** `src/market/analysis/enhanced_signal_generator.py` (306 baris)
+- **Tests:** `tests/test_enhanced_signal_generator.py` (14 tests)
+- **Filosofi:** Tidak memodifikasi `generate_ticker_signals` yang sudah produksi.
+  Sebagai gantinya, wrapper/enhancement layer yang membungkus signal mentah.
+- **Fitur:**
+  - `enhance_signal(ticker, direction, raw_position, ...)` -> EnhancedSignal
+  - `enhance_signals(raw_signals_dict, ...)` -> list[EnhancedSignal]
+  - Query InstrumentBehaviorProfiler sebelum generate signal
+  - Check trading_style_suitability sebelum include (filter min 4.0)
+  - Apply cross_market_coefficients untuk overnight gap prediction
+  - Respect optimal_position_size_pct dalam sizing (cap raw_position)
+  - Combined confidence: signal strength + profile confidence + suitability + cross-market corroboration
+  - Auto-determine target_style dari user profile via TradingStyleAdvisor
+
+### TAHAP 6: Capital-Aware Position Sizer (Prompt 6.1) — SELESAI
+
+- **File:** `src/market/risk/capital_aware_sizer.py` (389 baris)
+- **Tests:** `tests/test_capital_aware_sizer.py` (14 tests)
+- **Fitur:**
+  - `size_position(ticker, direction, entry_price, win_rate, win_loss_ratio, target_style, user_id)`
+  - `size_multiple(signals, user_id)` — batch dengan per-style capital tracking
+  - Query user_trading_profiles untuk available capital + max_loss_per_trade_pct
+  - Query instrument_behavior_profiles untuk liquidity constraints (optimal_position_size_pct)
+  - Kelly criterion: f* = (p*b - q) / b, capped at 25% (quarter-Kelly)
+  - Portfolio cap: max 20% per position
+  - Risk cap: position_value x stop_distance <= max_loss_idr
+  - Stop loss dari volatility (2x daily vol)
+  - Output: shares, lots (100 IDX), value_idr, reasoning Bahasa Indonesia
+  - Reasoning steps: capital, Kelly, liquidity cap, risk cap, portfolio cap, final value, shares
+- **Hasil real BBCA.JK BUY:** 13 lot (1300 shares) @ 8500 = Rp 11.05jt (2.21% portfolio)
+  - Kelly raw=0.25, capped=0.0625, liquidity_cap=8.37%, stop @ 8206
+
+### TAHAP 7: Recommendation Output (Prompt 7.1) — SELESAI
+
+- **File:** `src/market/analysis/recommendation_engine.py` (396 baris)
+- **Tests:** `tests/test_recommendation_engine.py` (20 tests)
+- **Fitur:**
+  - `generate_report(raw_signals, user_id, target_style)` -> RecommendationReport
+  - Output per ticker: direction, entry/target/stop, shares + lots + IDR, trading_style, confidence, reasoning
+  - Exit prices: target = entry +/- 2x daily vol, stop = entry -/+ 1x daily vol (R/R ~2.0)
+  - Portfolio summary: total_allocated, total_risk, potential_profit/loss, avg_confidence, style_breakdown
+  - 3 format output: `to_dict()`, `to_json()`, `to_text_summary()` (Bahasa Indonesia)
+  - Reasoning lengkap: profile + cross-market + Kelly + sizing + confidence
+  - Supporting data: profile_confidence, cross_market_sources, sizing_reasoning, filter_reason
+  - Approved/rejected dengan alasan (HOLD ditolak, capital habis ditolak)
+
+### Verifikasi
+
+- **Tests:** 126/126 pass (19 + 28 + 17 + 14 + 14 + 14 + 20)
+- **Lint:** ruff check clean (0 errors) untuk semua file baru
+- **Migrations:** 0024, 0025, 0026 applied ke PostgreSQL (alembic head = 0026)
+- **DB tables baru:** instrument_behavior_profiles, cross_market_coefficients,
+  user_trading_profiles, trading_style_recommendations, style_recommendation_reasons
+
+### File yang Dibuat/Dimodifikasi
+
+**Dibuat (15 file):**
+- `src/market/utils/__init__.py`
+- `src/market/utils/market_session.py`
+- `src/market/advisory/__init__.py`
+- `src/market/advisory/trading_style_advisor.py`
+- `src/market/analysis/instrument_profiler.py`
+- `src/market/analysis/cross_market_coefficients.py`
+- `src/market/analysis/enhanced_signal_generator.py`
+- `src/market/analysis/recommendation_engine.py`
+- `src/market/risk/capital_aware_sizer.py`
+- `alembic/versions/0024_instrument_behavior_profiles.py`
+- `alembic/versions/0025_cross_market_coefficients.py`
+- `alembic/versions/0026_user_trading_profiles.py`
+- `tests/test_market_session.py`
+- `tests/test_instrument_profiler.py`
+- `tests/test_cross_market_coefficients.py`
+- `tests/test_trading_style_advisor.py`
+- `tests/test_enhanced_signal_generator.py`
+- `tests/test_capital_aware_sizer.py`
+- `tests/test_recommendation_engine.py`
+
+**Dimodifikasi (1 file):**
+- `src/market/db/models.py` — tambah `BigInteger`, `JSON` import + 4 model baru
+  (InstrumentBehaviorProfile, CrossMarketCoefficient, UserTradingProfile,
+  TradingStyleRecommendation, StyleRecommendationReason)
+
+### Integrasi Selanjutnya (Opsional)
+
+- Hook `RecommendationEngine.generate_report()` ke `daily_signal_cron.py` untuk
+  output rekomendasi harian yang lebih kaya (saat ini cron hanya output
+  BUY/SELL/HOLD + position sizing dasar).
+- Scheduled job weekly untuk `InstrumentBehaviorProfiler.profile_all_instruments()`
+  dan `CrossMarketCoefficientEngine.update_all()`.
+- API endpoint untuk `RecommendationEngine` (FastAPI route) agar frontend
+  Next.js bisa menampilkan rekomendasi.
+- Integrasi `MarketSessionManager.should_run_pipeline()` ke cron trigger
+  untuk auto-trigger setelah IDX close (saat ini cron jalan fixed 16:15 WIB).

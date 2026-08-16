@@ -8,6 +8,7 @@ from __future__ import annotations
 import logging
 from typing import TYPE_CHECKING
 
+from market.data.lineage import LineageTracker
 from market.data.validation import DataQualityEngine
 from market.data.yahoo_adapter import YahooFinanceAdapter
 
@@ -37,10 +38,12 @@ class DataAcquisitionEngine:
         self._adapter = adapter or YahooFinanceAdapter()
         self._validator = validator or DataQualityEngine()
         self._repository = repository
+        self._lineage = LineageTracker(repository=repository, fetcher_version="1.0.0")
 
     def set_repository(self, repository: DataRepository) -> None:
         """Set the data repository (useful for dependency injection)."""
         self._repository = repository
+        self._lineage.set_repository(repository)
 
     def fetch_and_store(
         self,
@@ -75,6 +78,13 @@ class DataAcquisitionEngine:
                 status="error",
                 error_msg=f"No data for {ticker}",
             )
+            self._lineage.record(
+                source="yahoo_finance",
+                ticker=ticker,
+                action="pause",
+                error=f"No data for {ticker}",
+                parameters={"period": period, "market_mic": market_mic},
+            )
             return {
                 "ticker": ticker,
                 "fetched": 0,
@@ -107,11 +117,36 @@ class DataAcquisitionEngine:
                     "action": quality.action,
                 },
             )
+            # Record lineage (Gap #35)
+            self._lineage.record(
+                source="yahoo_finance",
+                ticker=ticker,
+                row_count=len(records),
+                stored_count=stored,
+                quality_score=quality.score,
+                parameters={"period": period, "market_mic": market_mic, "currency": currency},
+                storage_table="stock_prices",
+                action="store",
+                records=records,
+            )
         else:
             self._repository.update_source_health(
                 source="yahoo_finance",
                 status="error",
                 error_msg=f"Quality pause for {ticker}: {quality.anomalies}",
+            )
+            # Record lineage for paused data
+            self._lineage.record(
+                source="yahoo_finance",
+                ticker=ticker,
+                row_count=len(records),
+                stored_count=0,
+                quality_score=quality.score,
+                parameters={"period": period, "market_mic": market_mic},
+                storage_table="stock_prices",
+                action="pause",
+                error=f"Quality pause: {quality.anomalies}",
+                records=records,
             )
 
         return {
