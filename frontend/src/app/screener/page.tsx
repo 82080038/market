@@ -28,7 +28,7 @@ export default function ScreenerPage() {
     setError(null);
     try {
       const res = await fetch(
-        `/api/analysis/advisory?market_regime=${encodeURIComponent(regime)}&min_composite=${minComposite}`,
+        `/api/advisory?market_regime=${encodeURIComponent(regime)}&min_composite=${minComposite}`,
       );
       if (res.ok) {
         setResult(await res.json());
