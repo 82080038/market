@@ -937,31 +937,104 @@ def _task_fetch_fundamental() -> None:
 def _task_scrape_news() -> None:
     """Scrape RSS news feeds and compute sentiment (daily).
 
-    Runs the RSS scraper as a subprocess to avoid importing requests/psycopg2
-    in the main process. Stores results in news_sentiment table.
+    Uses NewsFetcher to fetch from 10+ Indonesian financial RSS feeds,
+    extract tickers, and compute sentiment. Stores to news_sentiment table.
+    Falls back to subprocess script if import fails.
     """
-    import subprocess
-    import sys
-
     logger.info("News sentiment scrape: starting...")
 
     try:
-        result = subprocess.run(
-            [sys.executable, "scripts/scrape_rss_news.py", "--days", "7"],
-            capture_output=True,
-            text=True,
-            timeout=300,
-        )
-        if result.returncode == 0:
-            logger.info("News sentiment scrape: completed successfully")
-        else:
-            logger.warning("News sentiment scrape: exited with code %d", result.returncode)
-            if result.stderr:
-                logger.debug("stderr: %s", result.stderr[:500])
-    except subprocess.TimeoutExpired:
-        logger.warning("News sentiment scrape: timed out after 300s")
+        from market.data.news_fetcher import NewsFetcher
+        fetcher = NewsFetcher()
+        result = fetcher.fetch_and_store(hours_back=24)
+        logger.info("News sentiment scrape: %d articles fetched, %d stored",
+                    result.get("fetched", 0), result.get("stored", 0))
     except Exception as e:
-        logger.error("News sentiment scrape: failed — %s", e)
+        logger.warning("NewsFetcher failed (%s), falling back to subprocess", e)
+        import subprocess
+        import sys
+        try:
+            result = subprocess.run(
+                [sys.executable, "scripts/scrape_rss_news.py", "--days", "7"],
+                capture_output=True,
+                text=True,
+                timeout=300,
+            )
+            if result.returncode == 0:
+                logger.info("News sentiment scrape (subprocess): completed")
+            else:
+                logger.warning("News sentiment scrape: exited with code %d", result.returncode)
+        except Exception as e2:
+            logger.error("News sentiment scrape: failed — %s", e2)
+
+
+def _task_fetch_broker_summary() -> None:
+    """Fetch broker summary from idx.co.id GetBrokerSummary (daily).
+
+    Fetches per-broker buy/sell volume/value for the latest trading days.
+    Stores to broker_daily_summary table.
+    """
+    logger.info("Broker summary fetch: starting...")
+
+    try:
+        from market.data.broker_summary_fetcher import BrokerSummaryFetcher
+        fetcher = BrokerSummaryFetcher()
+        result = fetcher.fetch_and_store(days_back=5)
+        logger.info("Broker summary fetch: %d records stored", result.get("stored", 0))
+    except Exception as e:
+        logger.error("Broker summary fetch: failed — %s", e)
+
+
+def _task_fetch_earnings_calendar() -> None:
+    """Fetch corporate event calendar from idx.co.id GetCompanyCalendar (weekly).
+
+    Fetches RUPS, dividend, stock split, and other corporate events.
+    Stores to corporate_calendar table.
+    """
+    logger.info("Earnings calendar fetch: starting...")
+
+    try:
+        from market.data.earnings_calendar_fetcher import EarningsCalendarFetcher
+        fetcher = EarningsCalendarFetcher()
+        result = fetcher.fetch_and_store(months_ahead=3)
+        logger.info("Earnings calendar fetch: %d events stored", result.get("stored", 0))
+    except Exception as e:
+        logger.error("Earnings calendar fetch: failed — %s", e)
+
+
+def _task_fetch_foreign_flow() -> None:
+    """Fetch foreign investor flow from idx.co.id GetStockSummary (daily).
+
+    Fetches ForeignBuy/ForeignSell per stock per day.
+    Stores to foreign_flow table.
+    """
+    logger.info("Foreign flow fetch: starting...")
+
+    try:
+        from market.data.foreign_flow_fetcher import ForeignFlowFetcher
+        fetcher = ForeignFlowFetcher()
+        result = fetcher.fetch_and_store(days_back=5)
+        logger.info("Foreign flow fetch: %d records stored", result.get("stored", 0))
+    except Exception as e:
+        logger.error("Foreign flow fetch: failed — %s", e)
+
+
+def _task_evaluate_alerts() -> None:
+    """Evaluate alert rules and send notifications (daily after recompute).
+
+    Checks RSI overbought/oversold, foreign net sell, volume spikes,
+    and price gaps. Sends Telegram notifications if configured.
+    Stores fired alerts to alert_log table.
+    """
+    logger.info("Alert evaluation: starting...")
+
+    try:
+        from market.analysis.alert_engine import AlertEngine
+        engine = AlertEngine()
+        alerts = engine.evaluate_all()
+        logger.info("Alert evaluation: %d alerts fired", len(alerts))
+    except Exception as e:
+        logger.error("Alert evaluation: failed — %s", e)
 
 
 def _task_fetch_holidays() -> None:
@@ -1654,5 +1727,37 @@ def register_default_tasks(scheduler: DailyScheduler) -> None:
         func=_task_scrape_news,
         schedule="daily",
         time_of_day="20:00",
-        data_dependencies=["news"],
+        data_dependencies=["news_sentiment"],
+    )
+    scheduler.register_task(
+        task_id="fetch_broker_summary",
+        name="Broker summary fetch from idx.co.id (daily)",
+        func=_task_fetch_broker_summary,
+        schedule="EOD",
+        time_of_day="17:43",
+        data_dependencies=["broker_daily_summary"],
+    )
+    scheduler.register_task(
+        task_id="fetch_foreign_flow",
+        name="Foreign investor flow fetch from idx.co.id (daily)",
+        func=_task_fetch_foreign_flow,
+        schedule="EOD",
+        time_of_day="17:44",
+        data_dependencies=["foreign_flow"],
+    )
+    scheduler.register_task(
+        task_id="fetch_earnings_calendar",
+        name="Corporate event calendar from idx.co.id (weekly)",
+        func=_task_fetch_earnings_calendar,
+        schedule="weekly",
+        time_of_day="09:30",
+        data_dependencies=["corporate_calendar"],
+    )
+    scheduler.register_task(
+        task_id="evaluate_alerts",
+        name="Alert rule evaluation + Telegram notification (daily after recompute)",
+        func=_task_evaluate_alerts,
+        schedule="daily",
+        time_of_day="18:20",
+        data_dependencies=["technical_indicators_wide", "foreign_flow", "alert_log"],
     )

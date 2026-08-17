@@ -179,6 +179,7 @@ class PredictionEngine:
         ma_long: int = 30,
         horizon: int = 5,
         context_provider: MarketContextProvider | None = None,
+        use_lstm: bool = False,
     ) -> None:
         self.pattern_detector = pattern_detector or PatternDetector()
         self.delisting_memory = delisting_memory or self.pattern_detector.delisting_memory
@@ -189,6 +190,13 @@ class PredictionEngine:
         self.context_provider = context_provider
         self._log: list[PredictionLogEntry] = []
         self._pending: dict[str, Prediction] = {}  # ticker → pending prediction
+        self._lstm_predictor = None
+        if use_lstm:
+            try:
+                from market.analysis.lstm_predictor import LSTMPredictor
+                self._lstm_predictor = LSTMPredictor()
+            except Exception:
+                pass
 
     @property
     def log(self) -> list[PredictionLogEntry]:
@@ -1035,6 +1043,25 @@ class PredictionEngine:
         # USD/IDR and Shanghai Composite directly adjust predicted price
         # based on sector sensitivity
         exog_rationale = ""
+
+        # LSTM adjustment (if enabled)
+        lstm_rationale = ""
+        if self._lstm_predictor is not None:
+            try:
+                lstm_pred = self._lstm_predictor.predict(df, ticker=ticker)
+                if lstm_pred and lstm_pred.confidence > 0:
+                    lstm_signal = 1.0 if lstm_pred.direction == "up" else -1.0 if lstm_pred.direction == "down" else 0.0
+                    lstm_weight = 0.10  # 10% weight for LSTM signal
+                    predicted_price = predicted_price * (1.0 - lstm_weight) + \
+                        price * (1.0 + lstm_pred.predicted_return_pct / 100.0) * lstm_weight
+                    ret_pct = (predicted_price - price) / price * 100
+                    direction = "up" if ret_pct > direction_threshold else "down" if ret_pct < -direction_threshold else "flat"
+                    if lstm_signal * (1.0 if ret_pct > 0 else -1.0) > 0:
+                        confidence *= 1.05
+                    lstm_rationale = f" LSTM={lstm_pred.direction}({lstm_pred.confidence:.2f})"
+            except Exception:
+                pass
+
         try:
             _as_of_dt = pd.Timestamp(as_of)
 
@@ -1084,7 +1111,7 @@ class PredictionEngine:
             rationale=(
                 f"Ensemble: MA={weights['ma']:.0%}, Mom={weights['momentum']:.0%}, "
                 f"Pat={weights['pattern']:.0%}, Vol={weights['vol_adj']:.0%}. "
-                f"RSI={rsi:.1f}.{context_rationale}"
+                f"RSI={rsi:.1f}.{context_rationale}{lstm_rationale}"
             ),
         )
 

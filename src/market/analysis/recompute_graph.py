@@ -332,8 +332,74 @@ class RecomputeGraph:
                         total_rows += count
                         continue
                     elif fn_name == "recompute_dcc_garch":
-                        logger.info("DCC-GARCH recompute not yet implemented as function")
-                        results[fn_name] = 0
+                        from market.analysis.dcc_garch import DCCGarchEngine
+                        dcc_session = get_sessionmaker()()
+                        try:
+                            from sqlalchemy import text as _text
+                            import pandas as _pd
+                            # Get top tickers by volume
+                            tickers = dcc_session.execute(
+                                _text(
+                                    "SELECT ticker FROM stock_prices "
+                                    "WHERE timeframe = '1d' AND ticker LIKE '%.JK' "
+                                    "GROUP BY ticker ORDER BY SUM(volume) DESC LIMIT 15"
+                                )
+                            ).scalars().all()
+                            if len(tickers) < 3:
+                                logger.info("DCC-GARCH: need >=3 tickers, got %d", len(tickers))
+                                results[fn_name] = 0
+                                continue
+                            # Load returns
+                            returns_dict = {}
+                            for tk in tickers:
+                                rows = dcc_session.execute(
+                                    _text(
+                                        "SELECT timestamp, close FROM stock_prices "
+                                        "WHERE ticker = :t AND timeframe = '1d' "
+                                        "ORDER BY timestamp"
+                                    ),
+                                    {"t": tk},
+                                ).all()
+                                if len(rows) < 60:
+                                    continue
+                                s = _pd.Series(
+                                    [float(r[1]) for r in rows],
+                                    index=_pd.to_datetime([r[0] for r in rows]),
+                                )
+                                returns_dict[tk] = s.pct_change().dropna()
+                            if len(returns_dict) < 3:
+                                results[fn_name] = 0
+                                continue
+                            returns_df = _pd.DataFrame(returns_dict).dropna()
+                            engine = DCCGarchEngine(use_gpu=True, max_assets=len(returns_df.columns))
+                            result = engine.compute(returns=returns_df, n_ahead=5)
+                            # Store to dcc_garch_results
+                            count = 0
+                            for i, t1 in enumerate(returns_df.columns):
+                                for j, t2 in enumerate(returns_df.columns):
+                                    if i >= j:
+                                        continue
+                                    corr = float(result.correlation_matrix.iloc[i, j]) if result.correlation_matrix is not None else 0.0
+                                    dcc_session.execute(
+                                        _text(
+                                            "INSERT INTO dcc_garch_results "
+                                            "(ticker_a, ticker_b, correlation, forecast_horizon, computed_at) "
+                                            "VALUES (:a, :b, :c, :h, NOW()) "
+                                            "ON CONFLICT (ticker_a, ticker_b, forecast_horizon) DO UPDATE SET "
+                                            "correlation=EXCLUDED.correlation, computed_at=NOW()"
+                                        ),
+                                        {"a": t1, "b": t2, "c": corr, "h": 5},
+                                    )
+                                    count += 1
+                            dcc_session.commit()
+                            results[fn_name] = count
+                            total_rows += count
+                        except Exception as exc:
+                            logger.warning("DCC-GARCH recompute failed: %s", exc)
+                            dcc_session.rollback()
+                            results[fn_name] = 0
+                        finally:
+                            dcc_session.close()
                         continue
                     elif fn_name == "recompute_seasonal_patterns":
                         # Seasonal patterns recompute from stock_prices monthly returns

@@ -269,3 +269,43 @@ class BacktestEngine:
             "final_equity": round(float(equity.iloc[-1]), 2),
             "n_trades": n_trades,
         }
+
+    def run_walk_forward(
+        self,
+        strategy: Strategy,
+        data: pd.DataFrame,
+        ticker: str = "ASSET",
+        train_days: int = 252,
+        test_days: int = 63,
+    ) -> dict:
+        """Run walk-forward backtest with purged train/test splits.
+
+        Uses WalkForwardOptimizer to split data into consecutive
+        (train, test) folds. Strategy is fit on train, evaluated on test.
+        Returns stitched OOS metrics.
+
+        Args:
+            strategy: Strategy with optional fit() method.
+            data: OHLCV DataFrame.
+            ticker: Asset ticker.
+            train_days: Training window length (default 252 = 1 year).
+            test_days: Test window length (default 63 = 1 quarter).
+
+        Returns:
+            Dict with oos_sharpe, oos_return_pct, consistency_pct, n_splits.
+        """
+        from market.analysis.walk_forward import WalkForwardOptimizer
+
+        wfo = WalkForwardOptimizer(train_days=train_days, test_days=test_days)
+        wf_result = wfo.run(
+            data=data,
+            strategy_fn=lambda df: strategy.generate_signals(df),
+        )
+
+        return {
+            "oos_sharpe": wf_result.oos_sharpe,
+            "oos_return_pct": wf_result.oos_return_pct,
+            "consistency_pct": wf_result.consistency_pct,
+            "n_splits": wf_result.n_splits,
+            "per_fold_results": wf_result.per_fold,
+        }

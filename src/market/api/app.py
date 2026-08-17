@@ -89,6 +89,10 @@ from market.api.routes_security import router as security_router
 from market.api.routes_settings import router as settings_router
 from market.api.routes_strategy import router as strategy_router
 from market.api.routes_system import router as system_router
+from market.api.routes_risk import router as risk_router
+from market.api.routes_instrument_profiles import router as instrument_profiles_router
+from market.api.routes_cross_market import router as cross_market_router
+from market.api.routes_market_influence import router as market_influence_router
 
 logger = logging.getLogger(__name__)
 
@@ -220,6 +224,10 @@ def create_app() -> FastAPI:
     app.include_router(security_router)
     app.include_router(settings_router)
     app.include_router(foreign_flow_router)
+    app.include_router(risk_router)
+    app.include_router(instrument_profiles_router)
+    app.include_router(cross_market_router)
+    app.include_router(market_influence_router)
 
     # Register global error handlers (Gap #29)
     register_error_handlers(app)
