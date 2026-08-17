@@ -609,9 +609,9 @@ class InstrumentBehaviorProfiler:
         """Earnings drift days + avg move. Best-effort from earnings_calendar."""
         sql = text(
             """
-            SELECT report_date FROM earnings_calendar
-            WHERE ticker = :t AND report_date <= NOW()
-            ORDER BY report_date DESC LIMIT 20
+            SELECT earnings_date FROM earnings_calendar
+            WHERE ticker = :t AND earnings_date <= NOW()
+            ORDER BY earnings_date DESC LIMIT 20
             """
         )
         try:

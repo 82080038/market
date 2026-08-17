@@ -336,8 +336,63 @@ class RecomputeGraph:
                         results[fn_name] = 0
                         continue
                     elif fn_name == "recompute_seasonal_patterns":
-                        logger.info("Seasonal patterns module not yet implemented")
-                        results[fn_name] = 0
+                        # Seasonal patterns recompute from stock_prices monthly returns
+                        from sqlalchemy import text as _text
+                        seas_session = get_sessionmaker()()
+                        try:
+                            tickers = seas_session.execute(
+                                _text("SELECT DISTINCT ticker FROM stock_prices ORDER BY ticker")
+                            ).scalars().all()
+                            count = 0
+                            for tk in tickers[:200]:  # limit to avoid long runtime
+                                rows = seas_session.execute(
+                                    _text(
+                                        "SELECT date_trunc('month', timestamp)::date as month, "
+                                        "AVG(close) as avg_close "
+                                        "FROM stock_prices WHERE ticker = :t "
+                                        "GROUP BY 1 ORDER BY 1"
+                                    ),
+                                    {"t": tk},
+                                ).all()
+                                if len(rows) < 24:
+                                    continue
+                                import pandas as _pd
+                                monthly = _pd.DataFrame(rows, columns=["month", "avg_close"])
+                                monthly["ret"] = monthly["avg_close"].pct_change()
+                                for month in range(1, 13):
+                                    month_data = monthly[monthly["month"].dt.month == month]["ret"].dropna()
+                                    if len(month_data) < 3:
+                                        continue
+                                    avg_ret = float(month_data.mean())
+                                    std_ret = float(month_data.std())
+                                    win_rate = float((month_data > 0).mean())
+                                    score = max(0.0, min(100.0, 50.0 + avg_ret * 100))
+                                    seas_session.execute(
+                                        _text(
+                                            "INSERT INTO seasonal_patterns "
+                                            "(ticker, month, avg_return, std_return, win_rate, n_years, seasonal_score, pattern_type, computed_at) "
+                                            "VALUES (:t, :m, :ar, :sr, :wr, :n, :sc, :pt, NOW()) "
+                                            "ON CONFLICT (ticker, month) DO UPDATE SET "
+                                            "avg_return=EXCLUDED.avg_return, std_return=EXCLUDED.std_return, "
+                                            "win_rate=EXCLUDED.win_rate, seasonal_score=EXCLUDED.seasonal_score, "
+                                            "computed_at=NOW()"
+                                        ),
+                                        {
+                                            "t": tk, "m": month, "ar": avg_ret, "sr": std_ret,
+                                            "wr": win_rate, "n": len(month_data),
+                                            "sc": score, "pt": "bullish" if avg_ret > 0 else "bearish",
+                                        },
+                                    )
+                                    count += 1
+                            seas_session.commit()
+                            results[fn_name] = count
+                            total_rows += count
+                        except Exception as exc:
+                            logger.warning("Seasonal patterns recompute failed: %s", exc)
+                            seas_session.rollback()
+                            results[fn_name] = 0
+                        finally:
+                            seas_session.close()
                         continue
                     elif fn_name == "recompute_macro_correlation":
                         from market.analysis.macro_correlation import full_analysis

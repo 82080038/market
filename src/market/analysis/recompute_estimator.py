@@ -380,7 +380,7 @@ class RecomputeEstimator:
             "policy_events": "event_date",
             "external_events": "tanggal",
             "seasonal_patterns": "created_at",
-            "earnings_calendar": "report_date",
+            "earnings_calendar": "earnings_date",
             "exchange_holidays": "holiday_date",
             "satellite_observations": "observed_at",
             "causal_relationships": "created_at",

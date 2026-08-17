@@ -1157,7 +1157,13 @@ def run_daily_signal(
         logger.info("")
 
         # ── Pre-pass: Load all OHLCV + compute daily IV weights ──
-        logger.info("  Pre-pass: Loading OHLCV for IV weight computation...")
+        # Filter to only tickers in verdict config to avoid wasting time on ~900 tickers
+        active_tickers = [t for t in tickers if t in ticker_params]
+        skipped_count = len(tickers) - len(active_tickers)
+        if skipped_count > 0:
+            logger.info("  Skipping %d tickers not in verdict config", skipped_count)
+        tickers = active_tickers
+        logger.info("  Pre-pass: Loading OHLCV for %d tickers (IV weight computation)...", len(tickers))
         ohlcv_cache: dict[str, pd.DataFrame] = {}
         for ticker in tickers:
             ohlcv_cache[ticker] = load_recent_ohlcv(conn, ticker, lookback_days)
@@ -1178,14 +1184,13 @@ def run_daily_signal(
             params = ticker_params.get(ticker)
 
             if params is None:
-                # Ticker tidak ada di verdict — gunakan default
-                logger.warning("  [%2d/%d] %s — SKIP (tidak ada di verdict config)",
+                # Ticker tidak ada di verdict — skip gracefully (bukan error)
+                logger.debug("  [%2d/%d] %s — skip (tidak ada di verdict config)",
                                i + 1, len(tickers), ticker)
                 report.signals.append(TickerSignal(
                     ticker=ticker, signal_date=report.signal_date,
-                    error="tidak ada di verdict config",
+                    error="",
                 ))
-                report.n_errors += 1
                 continue
 
             ohlcv = ohlcv_cache.get(ticker)

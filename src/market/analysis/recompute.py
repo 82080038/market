@@ -449,14 +449,14 @@ def recompute_scores(
                 # Earnings calendar score
                 try:
                     e_row = session.execute(text(
-                        "SELECT report_date, expected_surprise_pct FROM earnings_calendar "
-                        "WHERE ticker = :t AND report_date >= :today ORDER BY report_date LIMIT 1"
+                        "SELECT earnings_date FROM earnings_calendar "
+                        "WHERE ticker = :t AND earnings_date >= :today ORDER BY earnings_date LIMIT 1"
                     ), {"t": ticker, "today": today}).first()
                     if e_row:
                         report_dt = e_row[0]
                         days_to = (report_dt - today).days if report_dt else 999
-                        if days_to <= 0 and e_row[1] is not None:
-                            e_score = max(0.0, min(100.0, 50.0 + float(e_row[1]) * 5.0))
+                        if days_to <= 0:
+                            e_score = 50.0
                         elif days_to <= 5:
                             e_score = 42.0
                         elif days_to <= 30:

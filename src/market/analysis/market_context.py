@@ -1371,10 +1371,10 @@ class MarketContextProvider:
 
         try:
             row = session.execute(text("""
-                SELECT report_date, expected_surprise_pct
+                SELECT earnings_date
                 FROM earnings_calendar
-                WHERE ticker = :ticker AND report_date >= :cutoff
-                ORDER BY report_date LIMIT 1
+                WHERE ticker = :ticker AND earnings_date >= :cutoff
+                ORDER BY earnings_date LIMIT 1
             """), {"ticker": ticker, "cutoff": cutoff}).first()
 
             if row:
@@ -1384,8 +1384,6 @@ class MarketContextProvider:
                         pd.Timestamp(report_date).date() - cutoff
                     ).days
                     ctx.earnings_days_to_report = days_to
-                if row[1] is not None:
-                    ctx.earnings_expected_surprise = float(row[1])
         except Exception as e:
             logger.debug("Earnings calendar fetch failed for %s: %s", ticker, e)
 

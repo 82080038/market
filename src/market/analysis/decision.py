@@ -798,10 +798,10 @@ class DecisionEngine:
             today = date.today()
 
             cur.execute("""
-                SELECT report_date, expected_surprise_pct
+                SELECT earnings_date
                 FROM earnings_calendar
-                WHERE ticker = %s AND report_date >= %s
-                ORDER BY report_date LIMIT 1
+                WHERE ticker = %s AND earnings_date >= %s
+                ORDER BY earnings_date LIMIT 1
             """, (ticker, today))
             row = cur.fetchone()
             conn.close()
@@ -814,8 +814,7 @@ class DecisionEngine:
 
             if days_to <= 0:
                 # Post-earnings drift
-                surprise = float(row[1]) if row[1] is not None else 0.0
-                return max(0.0, min(100.0, 50.0 + surprise * 5.0))
+                return 50.0
             elif days_to <= 5:
                 # Pre-earnings uncertainty → slight bearish
                 return 42.0  # below neutral
