@@ -14,9 +14,9 @@ from market.utils.market_session import (
 
 
 class TestExchangeResolution:
-    def test_list_exchanges_returns_10(self):
+    def test_list_exchanges_returns_21(self):
         exs = MarketSessionManager.list_exchanges()
-        assert len(exs) == 10
+        assert len(exs) == 21
         assert "XIDX" in exs and "XNYS" in exs
 
     def test_alias_resolution(self):

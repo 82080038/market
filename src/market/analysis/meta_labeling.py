@@ -37,8 +37,12 @@ from typing import TYPE_CHECKING
 import numpy as np
 import pandas as pd
 
+from market.compute.device import lgbm_device
+
 if TYPE_CHECKING:
     from lightgbm import LGBMClassifier
+
+_lgbm_dev = lgbm_device()
 
 logger = logging.getLogger(__name__)
 
@@ -673,6 +677,7 @@ class MetaLabeler:
                 colsample_bytree=self.colsample_bytree,
                 min_gain_to_split=self.min_gain_to_split,
                 verbose=-1,
+                device=_lgbm_dev,
             )
             fold_model.fit(X_tr, y_tr)
             preds = fold_model.predict(X_te)
@@ -698,6 +703,7 @@ class MetaLabeler:
             colsample_bytree=self.colsample_bytree,
             min_gain_to_split=self.min_gain_to_split,
             verbose=-1,
+            device=_lgbm_dev,
         )
         final_model.fit(X, y)
         self._model = final_model

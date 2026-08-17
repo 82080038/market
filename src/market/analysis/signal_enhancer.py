@@ -1,4 +1,4 @@
-"""Signal Enhancer — integrates 7 doc-97 modules into prediction pipeline.
+"""Signal Enhancer — integrates 9 signal modules into prediction pipeline.
 
 Wraps the existing ``PredictionEngine._predict_ensemble`` output and enhances
 it with non-trend-following signals from:
@@ -13,6 +13,13 @@ it with non-trend-following signals from:
    rotation. Adds a sector-level directional bias.
 5. **Pairs trading** (``pairs_trading.py``) — cointegration spread Z-score.
    Adds a mean-reversion signal orthogonal to trend.
+6. **Smart Money** — retail absorption detection from volume/price patterns.
+7. **Cross-market domino** — causal chain from v_domino_timeline.
+8. **Astronacci** (``astronacci.py``) — time-cycle signal from astrological
+   events (Moon Phases, Retrogrades, Ingresses) + Fibonacci time windows.
+9. **Market Influence KB** (``market_influence_kb.py``) — consolidated
+   influence mapping from sector-global links, commodity sensitivity,
+   Granger causality, and macro policy. Adds a net influence signal.
 
 The enhancer is **additive and optional**: if any module's input data is
 unavailable, it silently skips that signal (graceful degradation). The
@@ -45,6 +52,7 @@ import pandas as pd
 
 if TYPE_CHECKING:
     from market.analysis.meta_labeling import MetaLabeler
+    from market.analysis.market_influence_kb import MarketInfluenceKB
     from market.analysis.pairs_trading import PairsTradingEngine
     from market.analysis.policy_event_scorer import PolicyEventScorer
     from market.analysis.prediction import Prediction
@@ -124,6 +132,7 @@ class SignalEnhancer:
         smart_money_weight: float = 0.12,
         cross_market_weight: float = 0.12,
         astronacci_weight: float = 0.06,
+        influence_kb_weight: float = 0.08,
         signal_threshold: float = 0.15,
         smart_money_streak_threshold: int = 3,
         mid_cap_relax_factor: float = 0.15,
@@ -160,6 +169,7 @@ class SignalEnhancer:
         self.smart_money_weight = smart_money_weight
         self.cross_market_weight = cross_market_weight
         self.astronacci_weight = astronacci_weight
+        self.influence_kb_weight = influence_kb_weight
         self.signal_threshold = signal_threshold
         self.smart_money_streak_threshold = smart_money_streak_threshold
         self.mid_cap_relax_factor = mid_cap_relax_factor
@@ -231,6 +241,10 @@ class SignalEnhancer:
         astro_sig = self._compute_astronacci_signal(as_of)
         signals.append(astro_sig)
 
+        # 9. Market Influence KB signal.
+        influence_sig = self._compute_influence_kb_signal(ticker, df_trunc)
+        signals.append(influence_sig)
+
         # 7. Meta-labeler bet sizing (with optional threshold relaxation).
         # If Smart Money Score shows accumulation for >=3 consecutive days,
         # relax the meta-labeler prob_threshold for Mid-Cap stocks.
@@ -276,6 +290,8 @@ class SignalEnhancer:
                 total_adj += sig.signal * self.cross_market_weight
             elif sig.source == "astronacci":
                 total_adj += sig.signal * self.astronacci_weight
+            elif sig.source == "influence_kb":
+                total_adj += sig.signal * self.influence_kb_weight
             elif sig.source == "meta":
                 bet_size = sig.signal  # meta-labeler returns bet size directly
             conf_mult *= sig.confidence_adjustment
@@ -757,6 +773,68 @@ class SignalEnhancer:
         except Exception as e:
             logger.debug("Astronacci signal failed: %s", e)
             return EnhancementSignal(source="astronacci")
+
+    def _compute_influence_kb_signal(
+        self,
+        ticker: str,
+        df_trunc: pd.DataFrame,
+    ) -> EnhancementSignal:
+        """Compute Market Influence KB signal.
+
+        Queries the ``market_influence_kb`` table for all active influences
+        on *ticker*, then fetches recent returns for each source ticker from
+        ``df_trunc`` (if the source is a global index or commodity already in
+        the OHLCV table) or from macro_data. The net influence signal is
+        computed as a strength-weighted average of direction × actual return.
+
+        Falls back to theoretical signal (strength-only) if no return data
+        is available.
+        """
+        try:
+            from market.db.engine import get_sessionmaker
+            from market.analysis.market_influence_kb import MarketInfluenceKB
+
+            session = get_sessionmaker()()
+            try:
+                kb = MarketInfluenceKB(session)
+                influences = kb.get_influences(ticker, active_only=True)
+
+                if not influences:
+                    return EnhancementSignal(source="influence_kb")
+
+                # Try to get recent returns for source tickers from df_trunc
+                # df_trunc is the target ticker's OHLCV — we need source returns
+                # from stock_prices or macro_data. For now, use theoretical signal
+                # (strength-only) as we don't have source OHLCV in df_trunc.
+                sig = kb.compute_influence_signal(ticker)
+
+                # Build rationale
+                top_sources = []
+                for inf in influences[:5]:
+                    direction_arrow = "↑" if inf.direction == "positive" else "↓"
+                    top_sources.append(
+                        f"{inf.source_ticker}{direction_arrow}({inf.strength or 0:.2f})"
+                    )
+                rationale = (
+                    f"net={sig.net_signal:+.3f}, sources={sig.source_count}, "
+                    f"top=[{', '.join(top_sources)}]"
+                )
+
+                # Confidence adjustment: more sources → more confidence
+                conf_adj = 1.0 + min(0.15, sig.source_count * 0.02)
+
+                return EnhancementSignal(
+                    source="influence_kb",
+                    signal=sig.net_signal,
+                    confidence_adjustment=conf_adj,
+                    rationale=rationale,
+                    available=True,
+                )
+            finally:
+                session.close()
+        except Exception as e:
+            logger.debug("Influence KB signal failed: %s", e)
+            return EnhancementSignal(source="influence_kb")
 
     def _compute_meta_signal(
         self,

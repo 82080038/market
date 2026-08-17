@@ -8,6 +8,7 @@ from fastapi import APIRouter
 
 from market.config import settings
 from market.data.seed import DEFAULT_MARKETS
+from market.api.cache import cache_stats, clear_all_cache
 
 router = APIRouter(prefix="/api", tags=["system"])
 
@@ -32,3 +33,16 @@ async def env() -> dict[str, Any]:
 @router.get("/markets")
 async def markets() -> list[dict[str, Any]]:
     return list(DEFAULT_MARKETS)
+
+
+@router.get("/cache/stats")
+async def get_cache_stats() -> dict[str, Any]:
+    """Cache statistics — hit rate, entries, misses."""
+    return cache_stats()
+
+
+@router.post("/cache/clear")
+async def clear_cache() -> dict[str, Any]:
+    """Clear all cached API results."""
+    n = clear_all_cache()
+    return {"cleared": n}

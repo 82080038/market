@@ -69,11 +69,13 @@ class YahooFinanceAdapter:
             end = date.today() - timedelta(days=1)
 
         # For daily bars, skip if the ticker's market is still open
-        # (prevents storing intraday prices as daily close)
+        # (prevents storing intraday prices as daily close).
+        # FX markets (XFXS) trade 24h on weekdays — since `end` is already
+        # set to yesterday, the daily bar we fetch is final, so no need to skip.
         if interval == "1d":
             from market.data.timestamp_validation import TICKER_MIC, is_market_open
             mic = TICKER_MIC.get(ticker, market_mic)
-            if mic and is_market_open(mic):
+            if mic and mic != "XFXS" and is_market_open(mic):
                 logger.warning(
                     "Skipping %s (market %s still open) — daily close not yet final",
                     ticker, mic,

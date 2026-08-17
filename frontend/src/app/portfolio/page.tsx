@@ -3,21 +3,27 @@
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { useCallback, useEffect, useState } from "react";
 
-interface Position {
-  ticker: string;
+interface PositionData {
   shares: number;
   avg_cost: number;
   current_price: number;
   market_value: number;
-  pnl: number;
-  weight: number;
+  unrealized_pnl: number;
+  weight_pct: number;
+}
+
+interface Position extends PositionData {
+  ticker: string;
 }
 
 interface PortfolioData {
-  nav: number;
-  pnl_realized: number;
-  pnl_unrealized: number;
-  positions: Position[];
+  total_nav: number;
+  cash: number;
+  positions: Record<string, PositionData>;
+  sector_exposure: Record<string, number>;
+  market_exposure: Record<string, number>;
+  largest_position_pct: number;
+  n_positions: number;
 }
 
 export default function PortfolioPage() {
@@ -38,10 +44,10 @@ export default function PortfolioPage() {
     load();
   }, [load]);
 
-  const nav = data?.nav ?? 0;
-  const realized = data?.pnl_realized ?? 0;
-  const unrealized = data?.pnl_unrealized ?? 0;
-  const positions = data?.positions ?? [];
+  const nav = data?.total_nav ?? 0;
+  const cash = data?.cash ?? 0;
+  const positionList = data ? Object.entries(data.positions).map(([ticker, p]) => ({ ticker, ...p })) : [];
+  const unrealized = positionList.reduce((sum, p) => sum + (p.unrealized_pnl ?? 0), 0);
 
   return (
     <div className="space-y-6">
@@ -62,10 +68,10 @@ export default function PortfolioPage() {
           </CardContent>
         </Card>
         <Card>
-          <CardHeader><CardTitle>PnL Realized</CardTitle></CardHeader>
+          <CardHeader><CardTitle>Kas</CardTitle></CardHeader>
           <CardContent>
-            <p className={`text-2xl font-bold ${realized >= 0 ? "text-green-600" : "text-red-600"}`}>
-              {realized >= 0 ? "+" : ""}Rp {realized.toLocaleString("id-ID")}
+            <p className="text-2xl font-bold">
+              Rp {cash.toLocaleString("id-ID")}
             </p>
           </CardContent>
         </Card>
@@ -84,7 +90,7 @@ export default function PortfolioPage() {
         <CardContent>
           {loading ? (
             <p className="text-muted-foreground text-sm py-8 text-center">Memuat data...</p>
-          ) : positions.length === 0 ? (
+          ) : positionList.length === 0 ? (
             <table className="w-full text-sm">
               <thead>
                 <tr className="border-b border-border text-muted-foreground">
@@ -119,17 +125,17 @@ export default function PortfolioPage() {
                 </tr>
               </thead>
               <tbody>
-                {positions.map((p) => (
+                {positionList.map((p) => (
                   <tr key={p.ticker} className="border-b border-border/50">
                     <td className="py-2 font-mono">{p.ticker}</td>
                     <td className="text-right">{p.shares.toLocaleString("id-ID")}</td>
                     <td className="text-right">{p.avg_cost.toLocaleString("id-ID", { minimumFractionDigits: 0 })}</td>
                     <td className="text-right">{p.current_price.toLocaleString("id-ID", { minimumFractionDigits: 0 })}</td>
                     <td className="text-right">Rp {p.market_value.toLocaleString("id-ID", { maximumFractionDigits: 0 })}</td>
-                    <td className={`text-right ${p.pnl >= 0 ? "text-green-600" : "text-red-600"}`}>
-                      {p.pnl >= 0 ? "+" : ""}Rp {p.pnl.toLocaleString("id-ID", { maximumFractionDigits: 0 })}
+                    <td className={`text-right ${p.unrealized_pnl >= 0 ? "text-green-600" : "text-red-600"}`}>
+                      {p.unrealized_pnl >= 0 ? "+" : ""}Rp {p.unrealized_pnl.toLocaleString("id-ID", { maximumFractionDigits: 0 })}
                     </td>
-                    <td className="text-right">{(p.weight * 100).toFixed(1)}%</td>
+                    <td className="text-right">{p.weight_pct.toFixed(1)}%</td>
                   </tr>
                 ))}
               </tbody>
@@ -141,20 +147,20 @@ export default function PortfolioPage() {
       <Card>
         <CardHeader><CardTitle>Alokasi Sektor</CardTitle></CardHeader>
         <CardContent>
-          {positions.length > 0 ? (
+          {positionList.length > 0 && data?.sector_exposure ? (
             <div className="space-y-2">
-              {positions.map((p) => (
-                <div key={p.ticker} className="flex items-center justify-between text-sm">
-                  <span className="font-mono">{p.ticker}</span>
+              {Object.entries(data.sector_exposure).map(([sector, weight]) => (
+                <div key={sector} className="flex items-center justify-between text-sm">
+                  <span className="capitalize">{sector}</span>
                   <div className="flex items-center gap-2 flex-1 ml-4">
                     <div className="h-2 rounded-full bg-muted flex-1">
                       <div
                         className="h-2 rounded-full bg-primary"
-                        style={{ width: `${Math.min(p.weight * 100, 100)}%` }}
+                        style={{ width: `${Math.min(weight, 100)}%` }}
                       />
                     </div>
                     <span className="text-muted-foreground w-12 text-right">
-                      {(p.weight * 100).toFixed(1)}%
+                      {weight.toFixed(1)}%
                     </span>
                   </div>
                 </div>

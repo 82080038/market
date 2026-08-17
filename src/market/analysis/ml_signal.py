@@ -26,6 +26,10 @@ from dataclasses import dataclass
 import numpy as np
 import pandas as pd
 
+from market.compute.device import lgbm_device
+
+_lgbm_dev = lgbm_device()
+
 logger = logging.getLogger(__name__)
 
 # Module-level cache for global asset data (loaded once per process)
@@ -630,6 +634,7 @@ class MLSignalProvider:
                     colsample_bytree=self.colsample_bytree,
                     min_gain_to_split=self.min_gain_to_split,
                     verbose=-1,
+                    device=_lgbm_dev,
                 )
                 model_r.fit(
                     X_tr_r, y_tr_r,
@@ -720,6 +725,7 @@ class MLSignalProvider:
             colsample_bytree=self.colsample_bytree,
             min_gain_to_split=self.min_gain_to_split,
             verbose=-1,
+            device=_lgbm_dev,
         )
 
         model.fit(

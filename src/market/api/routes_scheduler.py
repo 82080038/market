@@ -29,7 +29,9 @@ TASK_DEFINITIONS: list[dict[str, str]] = [
     {"task_id": "health_check", "name": "Pre-flight health checks", "schedule": "daily", "time_of_day": "17:00"},
     {"task_id": "fetch_eod", "name": "Fetch EOD OHLCV data (IDX)", "schedule": "EOD", "time_of_day": "17:30"},
     {"task_id": "fetch_global", "name": "Fetch global reference tickers", "schedule": "EOD", "time_of_day": "17:35"},
+    {"task_id": "fetch_commodity", "name": "Fetch commodity futures (gold, oil, copper, CPO)", "schedule": "EOD", "time_of_day": "17:38"},
     {"task_id": "fetch_macro", "name": "Fetch macro economic data", "schedule": "EOD", "time_of_day": "17:40"},
+    {"task_id": "fetch_fx", "name": "Fetch FX exchange rates (61 pairs: USD, IDR, EUR crosses)", "schedule": "EOD", "time_of_day": "17:41"},
     {"task_id": "fetch_macroeconomic_indicators", "name": "Daily macroeconomic indicators", "schedule": "EOD", "time_of_day": "17:42"},
     {"task_id": "quality_check", "name": "Data quality checks", "schedule": "EOD", "time_of_day": "17:45"},
     {"task_id": "recompute", "name": "Recompute indicators & scores", "schedule": "EOD", "time_of_day": "18:00"},
@@ -40,6 +42,8 @@ TASK_DEFINITIONS: list[dict[str, str]] = [
     {"task_id": "macro_correlation_analysis", "name": "Macro ↔ stock correlation analysis", "schedule": "daily", "time_of_day": "19:15"},
     {"task_id": "export_parquet", "name": "Export DB to parquet + WAL checkpoint", "schedule": "daily", "time_of_day": "19:30"},
     {"task_id": "scrape_news", "name": "RSS news sentiment scrape", "schedule": "daily", "time_of_day": "20:00"},
+    {"task_id": "fetch_holidays", "name": "Weekly exchange holidays update (21 bursa)", "schedule": "weekly", "time_of_day": "09:00"},
+    {"task_id": "compute_holiday_effects", "name": "Monthly holiday effect analysis (pre/post + spillover)", "schedule": "monthly", "time_of_day": "10:00"},
 ]
 
 # Static cron job definitions (mirrors crontab -l).
@@ -72,25 +76,35 @@ PIPELINE_PHASES: list[dict[str, str]] = [
 async def scheduler_status(
     session: Annotated[Session, Depends(get_session)],
 ) -> dict[str, Any]:
-    """Scheduler status — task execution state from system_state table.
+    """Scheduler status — task execution state from scheduler_state table.
 
     Returns task definitions merged with persisted execution state
-    (last_run, last_status, last_error, run_count) from the database.
+    (last_run, last_status, run_count, next_run_at, is_stale,
+    data_dependencies, data_ready, last_result, is_catchup,
+    last_duration_seconds) from the database.
     """
-    # Load persisted scheduler state
+    from market.db.models import SchedulerState
+
+    # Load persisted scheduler state from scheduler_state table
     rows = session.execute(
-        select(SystemState.key, SystemState.value).where(
-            SystemState.key.like("scheduler:%")
-        )
-    ).all()
+        select(SchedulerState)
+    ).scalars().all()
 
     state_map: dict[str, dict[str, Any]] = {}
-    for key, value in rows:
-        task_id = key.replace("scheduler:", "", 1)
-        try:
-            state_map[task_id] = json.loads(value) if value else {}
-        except (json.JSONDecodeError, TypeError):
-            state_map[task_id] = {}
+    for row in rows:
+        state_map[row.task_id] = {
+            "last_run": row.last_run.isoformat() if row.last_run else None,
+            "last_status": row.last_status or "pending",
+            "last_error": row.last_error or "",
+            "run_count": row.run_count or 0,
+            "next_run_at": row.next_run_at.isoformat() if row.next_run_at else None,
+            "is_stale": row.is_stale or False,
+            "data_dependencies": row.data_dependencies or [],
+            "data_ready": row.data_ready or False,
+            "last_result": row.last_result,
+            "is_catchup": row.is_catchup or False,
+            "last_duration_seconds": row.last_duration_seconds or 0.0,
+        }
 
     # Merge definitions with state
     tasks: list[dict[str, Any]] = []
@@ -99,10 +113,7 @@ async def scheduler_status(
         st = state_map.get(tid, {})
         tasks.append({
             **defn,
-            "last_run": st.get("last_run"),
-            "last_status": st.get("last_status", "pending"),
-            "last_error": st.get("last_error", ""),
-            "run_count": st.get("run_count", 0),
+            **st,
         })
 
     # Summary counts
@@ -110,6 +121,7 @@ async def scheduler_status(
     failed = sum(1 for t in tasks if t["last_status"] == "failed")
     pending = sum(1 for t in tasks if t["last_status"] == "pending")
     never_run = sum(1 for t in tasks if t["last_run"] is None)
+    stale = sum(1 for t in tasks if t.get("is_stale", False))
 
     return {
         "tasks": tasks,
@@ -121,6 +133,7 @@ async def scheduler_status(
             "failed": failed,
             "pending": pending,
             "never_run": never_run,
+            "stale": stale,
         },
     }
 
@@ -179,4 +192,70 @@ async def scheduler_run() -> dict[str, Any]:
         "executed": len(results) + len(heavy_dispatched),
         "results": results,
         "heavy_dispatched": heavy_dispatched,
+    }
+
+
+@router.get("/upcoming")
+async def scheduler_upcoming(
+    hours: int = 24,
+) -> dict[str, Any]:
+    """Get tasks scheduled within the next N hours.
+
+    Returns tasks with their next_run_at, data_dependencies, and
+    data_ready status. Modules can use this to pre-load required
+    data from the database before the scheduled time arrives.
+
+    Query params:
+        hours: Look-ahead window (default 24h).
+    """
+    from market.api.app import _get_scheduler
+
+    sched = _get_scheduler()
+    if sched._persist:
+        sched.load_state()
+
+    upcoming = sched.get_upcoming_tasks(within_hours=hours)
+    stale = sched.check_stale_tasks()
+
+    return {
+        "within_hours": hours,
+        "upcoming": upcoming,
+        "stale_tasks": stale,
+        "summary": {
+            "upcoming_count": len(upcoming),
+            "stale_count": len(stale),
+        },
+    }
+
+
+@router.get("/holidays")
+async def exchange_holidays(
+    days: int = 30,
+) -> dict[str, Any]:
+    """Get upcoming exchange holidays for all exchanges within N days.
+
+    Returns holidays sorted by date. Each entry includes exchange name,
+    holiday name, date, and days until holiday.
+    """
+    from market.utils.market_session import MarketSessionManager
+
+    mgr = MarketSessionManager()
+    upcoming = mgr.get_upcoming_holidays(days=days)
+
+    # Also get next holiday per exchange
+    all_exchanges = MarketSessionManager.list_exchanges()
+    next_per_exchange = {}
+    for mic in all_exchanges:
+        h = mgr.get_next_holiday(mic, max_days=365)
+        if h:
+            next_per_exchange[mic] = h
+
+    return {
+        "days": days,
+        "upcoming": upcoming,
+        "next_per_exchange": next_per_exchange,
+        "summary": {
+            "total_upcoming": len(upcoming),
+            "exchanges_with_holiday": len(next_per_exchange),
+        },
     }

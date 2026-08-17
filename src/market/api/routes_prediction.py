@@ -9,6 +9,7 @@ from fastapi import APIRouter, HTTPException
 from market.analysis.prediction import PredictionMethod
 from market.api._engines import engines
 from market.api._shared import _dataclass_to_dict
+from market.api.cache import ttl_cache
 
 router = APIRouter(prefix="/api", tags=["prediction"])
 
@@ -174,12 +175,14 @@ async def prediction_verify(body: dict[str, Any]) -> dict[str, Any]:
 
 
 @router.get("/prediction/errors")
+@ttl_cache(ttl_seconds=300, key_prefix="pred_errors")
 async def prediction_errors(ticker: str | None = None) -> dict[str, Any]:
     """Get prediction error summary with lessons and risk factors."""
     return dict(engines.prediction_engine.get_error_summary(ticker))
 
 
 @router.get("/prediction/risk/{ticker}")
+@ttl_cache(ttl_seconds=300, key_prefix="pred_risk")
 async def prediction_risk(ticker: str) -> dict[str, Any]:
     """Get risk adjustment factor from prediction errors for a ticker."""
     adjustment = engines.prediction_engine.get_risk_adjustment(ticker)

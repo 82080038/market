@@ -12,6 +12,9 @@ import {
   GitBranch,
   AlertCircle,
   Zap,
+  Timer,
+  AlertTriangle,
+  Database,
 } from "lucide-react";
 
 interface SchedulerTask {
@@ -23,6 +26,12 @@ interface SchedulerTask {
   last_status: string;
   last_error: string;
   run_count: number;
+  next_run_at: string | null;
+  is_stale: boolean;
+  data_dependencies: string[];
+  data_ready: boolean;
+  is_catchup: boolean;
+  last_duration_seconds: number;
 }
 
 interface CronJob {
@@ -50,6 +59,7 @@ interface SchedulerStatus {
     failed: number;
     pending: number;
     never_run: number;
+    stale: number;
   };
 }
 
@@ -96,6 +106,22 @@ function StatusBadge({ status }: { status: string }) {
       {labels[status] || status}
     </span>
   );
+}
+
+function Countdown({ target }: { target: string }) {
+  const [now, setNow] = useState(Date.now());
+  useEffect(() => {
+    const timer = setInterval(() => setNow(Date.now()), 1000);
+    return () => clearInterval(timer);
+  }, []);
+  const diff = new Date(target).getTime() - now;
+  if (diff <= 0) return <span className="text-green-500">sekarang</span>;
+  const h = Math.floor(diff / 3600000);
+  const m = Math.floor((diff % 3600000) / 60000);
+  const s = Math.floor((diff % 60000) / 1000);
+  if (h > 0) return <span className="text-primary">{h}j {m}m</span>;
+  if (m > 0) return <span className="text-primary">{m}m {s}s</span>;
+  return <span className="text-orange-500">{s}s</span>;
 }
 
 export default function SchedulerPage() {
@@ -203,7 +229,7 @@ export default function SchedulerPage() {
 
       {/* Summary Cards */}
       {status && (
-        <div className="grid grid-cols-2 md:grid-cols-5 gap-3">
+        <div className="grid grid-cols-2 md:grid-cols-6 gap-3">
           <Card>
             <CardContent className="p-4">
               <div className="flex items-center gap-2">
@@ -269,6 +295,19 @@ export default function SchedulerPage() {
               </div>
             </CardContent>
           </Card>
+          <Card>
+            <CardContent className="p-4">
+              <div className="flex items-center gap-2">
+                <AlertTriangle className="w-4 h-4 text-orange-500" />
+                <div>
+                  <p className="text-2xl font-bold text-orange-500">
+                    {status.summary.stale}
+                  </p>
+                  <p className="text-xs text-muted-foreground">Stale</p>
+                </div>
+              </div>
+            </CardContent>
+          </Card>
         </div>
       )}
 
@@ -315,7 +354,11 @@ export default function SchedulerPage() {
                     <th className="pb-2 pr-4">Jadwal</th>
                     <th className="pb-2 pr-4">WIB</th>
                     <th className="pb-2 pr-4">Last Run</th>
-                    <th className="pb-2 pr-4">Run Count</th>
+                    <th className="pb-2 pr-4">Next Run</th>
+                    <th className="pb-2 pr-4">Countdown</th>
+                    <th className="pb-2 pr-4">Deps</th>
+                    <th className="pb-2 pr-4">Runs</th>
+                    <th className="pb-2 pr-4">Dur</th>
                     <th className="pb-2 pr-4">Error</th>
                   </tr>
                 </thead>
@@ -323,10 +366,18 @@ export default function SchedulerPage() {
                   {status.tasks.map((task) => (
                     <tr
                       key={task.task_id}
-                      className="border-b border-border/50"
+                      className={`border-b border-border/50 ${task.is_stale ? "bg-orange-500/5" : ""}`}
                     >
                       <td className="py-2 pr-4">
-                        <StatusIcon status={task.last_status} />
+                        <div className="flex items-center gap-1">
+                          <StatusIcon status={task.last_status} />
+                          {task.is_stale && (
+                            <AlertTriangle className="w-3 h-3 text-orange-500" />
+                          )}
+                          {task.is_catchup && (
+                            <span className="text-[9px] bg-blue-100 text-blue-700 px-1 rounded">catch-up</span>
+                          )}
+                        </div>
                       </td>
                       <td className="py-2 pr-4">
                         <div className="font-medium">{task.name}</div>
@@ -345,7 +396,34 @@ export default function SchedulerPage() {
                       <td className="py-2 pr-4 text-muted-foreground text-xs">
                         {fmtDate(task.last_run)}
                       </td>
+                      <td className="py-2 pr-4 text-muted-foreground text-xs">
+                        {fmtDate(task.next_run_at)}
+                      </td>
+                      <td className="py-2 pr-4 font-mono text-xs">
+                        {task.next_run_at ? (
+                          <Countdown target={task.next_run_at} />
+                        ) : (
+                          "-"
+                        )}
+                      </td>
+                      <td className="py-2 pr-4">
+                        {task.data_dependencies.length > 0 ? (
+                          <div className="flex items-center gap-1" title={task.data_dependencies.join(", ")}>
+                            <Database className="w-3 h-3 text-muted-foreground" />
+                            <span className="text-xs text-muted-foreground">
+                              {task.data_dependencies.length}
+                            </span>
+                          </div>
+                        ) : (
+                          <span className="text-muted-foreground text-xs">-</span>
+                        )}
+                      </td>
                       <td className="py-2 pr-4">{task.run_count}</td>
+                      <td className="py-2 pr-4 font-mono text-xs text-muted-foreground">
+                        {task.last_duration_seconds > 0
+                          ? `${task.last_duration_seconds.toFixed(1)}s`
+                          : "-"}
+                      </td>
                       <td className="py-2 pr-4 text-xs text-red-500 max-w-xs truncate">
                         {task.last_error || "-"}
                       </td>

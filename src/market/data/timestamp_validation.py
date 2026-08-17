@@ -34,6 +34,22 @@ EXPECTED_CLOSE_UTC: dict[str, tuple[int, int]] = {
     "XFXS": (22, 0),    # FX market 17:00 EST = 22:00 UTC (STD) / 21:00 UTC (DST)
     "XKLSE": (9, 0),    # Bursa Malaysia close 17:00 MYT = 09:00 UTC (no DST, UTC+8)
     "XSHG": (7, 0),     # Shanghai close 15:00 CST = 07:00 UTC (no DST)
+    # New exchanges (Aug 2026)
+    "XBKK": (9, 30),    # SET close 16:30 ICT = 09:30 UTC (no DST, UTC+7)
+    "XPHS": (7, 30),    # PSE close 15:30 PHT = 07:30 UTC (no DST, UTC+8)
+    "XNSE": (10, 0),    # NSE close 15:30 IST = 10:00 UTC (no DST, UTC+5:30)
+    "XTAI": (5, 30),    # TWSE close 13:30 TWT = 05:30 UTC (no DST, UTC+8)
+    "XPAR": (15, 30),   # Euronext Paris close 17:30 CET = 16:30 UTC (STD) / 15:30 UTC (DST)
+    "XMTA": (15, 30),   # Borsa Italiana close 17:30 CET = 16:30 UTC (STD) / 15:30 UTC (DST)
+    "XMAD": (15, 30),   # BME Madrid close 17:30 CET = 16:30 UTC (STD) / 15:30 UTC (DST)
+    "BVMF": (20, 30),   # B3 close 17:30 BRT = 20:30 UTC (STD) / 19:30 UTC (DST)
+    "XTSX": (20, 0),    # TSX close 16:00 EST = 21:00 UTC (STD) / 20:00 UTC (DST)
+    "XSAU": (12, 0),    # Tadawul close 15:00 AST = 12:00 UTC (no DST, UTC+3)
+    "XJSE": (15, 0),    # JSE close 17:00 SAST = 15:00 UTC (STD) / 14:00 UTC (DST)
+    "XKRX": (6, 30),    # KRX close 15:30 KST = 06:30 UTC (no DST)
+    "XSES": (9, 0),     # SGX close 17:00 SGT = 09:00 UTC (no DST, UTC+8)
+    "XASX": (6, 0),     # ASX close 16:00 AEST = 06:00 UTC (STD) / 07:00 UTC (DST)
+    "XBOM": (10, 0),    # BSE close 15:30 IST = 10:00 UTC (no DST, UTC+5:30)
 }
 
 # Expected UTC open times per MIC — STANDARD TIME (winter, non-DST)
@@ -50,6 +66,22 @@ EXPECTED_OPEN_UTC: dict[str, tuple[int, int]] = {
     "XFXS": (22, 0),    # FX market 24h (use Sunday 22:00 UTC as weekly open)
     "XKLSE": (1, 0),    # Bursa Malaysia open 09:00 MYT = 01:00 UTC (no DST, UTC+8)
     "XSHG": (1, 0),     # Shanghai open 09:00 CST = 01:00 UTC (no DST)
+    # New exchanges
+    "XBKK": (3, 0),     # SET open 10:00 ICT = 03:00 UTC (no DST, UTC+7)
+    "XPHS": (1, 30),    # PSE open 09:30 PHT = 01:30 UTC (no DST, UTC+8)
+    "XNSE": (3, 45),    # NSE open 09:15 IST = 03:45 UTC (no DST, UTC+5:30)
+    "XTAI": (1, 0),     # TWSE open 09:00 TWT = 01:00 UTC (no DST, UTC+8)
+    "XPAR": (7, 0),     # Euronext Paris open 09:00 CET = 08:00 UTC (STD) / 07:00 UTC (DST)
+    "XMTA": (7, 0),     # Borsa Italiana open 09:00 CET = 08:00 UTC (STD) / 07:00 UTC (DST)
+    "XMAD": (7, 0),     # BME Madrid open 09:00 CET = 08:00 UTC (STD) / 07:00 UTC (DST)
+    "BVMF": (13, 0),    # B3 open 10:00 BRT = 13:00 UTC (STD) / 12:00 UTC (DST)
+    "XTSX": (13, 30),   # TSX open 09:30 EST = 14:30 UTC (STD) / 13:30 UTC (DST)
+    "XSAU": (7, 0),     # Tadawul open 10:00 AST = 07:00 UTC (no DST, UTC+3)
+    "XJSE": (7, 0),     # JSE open 09:00 SAST = 07:00 UTC (STD) / 06:00 UTC (DST)
+    "XKRX": (0, 0),     # KRX open 09:00 KST = 00:00 UTC (no DST)
+    "XSES": (1, 0),     # SGX open 09:00 SGT = 01:00 UTC (no DST, UTC+8)
+    "XASX": (0, 0),     # ASX open 10:00 AEST = 00:00 UTC (STD) / 01:00 UTC (DST)
+    "XBOM": (3, 45),    # BSE open 09:15 IST = 03:45 UTC (no DST, UTC+5:30)
 }
 
 # Simple holiday check — fixed-date holidays for major markets.
@@ -95,21 +127,127 @@ FIXED_HOLIDAYS: dict[str, set[tuple[int, int]]] = {
         (12, 26), # Boxing Day / St. Stephen's
         (12, 31), # New Year's Eve
     },
+    "XBKK": {  # SET Thailand — fixed holidays
+        (1, 1),   # New Year
+        (12, 5),  # King's Birthday
+        (12, 10), # Constitution Day
+        (12, 31), # New Year's Eve
+    },
+    "XPHS": {  # PSE Philippines — fixed holidays
+        (1, 1),   # New Year
+        (12, 25), # Christmas
+        (12, 30), # Rizal Day
+    },
+    "XNSE": {  # NSE India — fixed holidays
+        (1, 1),   # New Year
+        (1, 26),  # Republic Day
+        (8, 15),  # Independence Day
+        (10, 2),  # Gandhi Jayanti
+        (12, 25), # Christmas
+    },
+    "XBOM": {  # BSE India — same as NSE
+        (1, 1), (1, 26), (8, 15), (10, 2), (12, 25),
+    },
+    "XTAI": {  # TWSE Taiwan — fixed holidays
+        (1, 1),   # New Year
+        (10, 10), # National Day
+        (12, 25), # Christmas (not official but market closed)
+    },
+    "XPAR": {  # Euronext Paris — fixed holidays
+        (1, 1),   # New Year
+        (12, 25), # Christmas
+        (12, 26), # Boxing Day
+    },
+    "XMTA": {  # Borsa Italiana — fixed holidays
+        (1, 1),   # New Year
+        (12, 25), # Christmas
+        (12, 26), # St. Stephen's Day
+    },
+    "XMAD": {  # BME Madrid — fixed holidays
+        (1, 1),   # New Year
+        (12, 25), # Christmas
+    },
+    "BVMF": {  # B3 Brasil — fixed holidays
+        (1, 1),   # New Year
+        (9, 7),   # Independence Day
+        (12, 25), # Christmas
+    },
+    "XTSX": {  # TSX Canada — fixed holidays
+        (1, 1),   # New Year
+        (7, 1),   # Canada Day
+        (12, 25), # Christmas
+        (12, 26), # Boxing Day
+    },
+    "XSAU": {  # Tadawul Saudi — fixed holidays (Gregorian)
+        (1, 1),   # New Year (Islamic calendar used for Eid, not fixed)
+        (9, 23),  # Saudi National Day
+    },
+    "XJSE": {  # JSE South Africa — fixed holidays
+        (1, 1),   # New Year
+        (12, 25), # Christmas
+        (12, 26), # Day of Goodwill
+    },
+    "XKRX": {  # KRX Korea — fixed holidays
+        (1, 1),   # New Year
+        (3, 1),   # Independence Movement Day
+        (5, 5),   # Children's Day
+        (6, 6),   # Memorial Day
+        (8, 15),  # Liberation Day
+        (10, 3),  # National Foundation Day
+        (10, 9),  # Hangul Day
+        (12, 25), # Christmas
+    },
+    "XSES": {  # SGX Singapore — fixed holidays
+        (1, 1),   # New Year
+        (12, 25), # Christmas
+    },
+    "XASX": {  # ASX Australia — fixed holidays
+        (1, 1),   # New Year
+        (12, 25), # Christmas
+        (12, 26), # Boxing Day
+    },
 }
 
 # Ticker → MIC mapping for common global tickers
 TICKER_MIC: dict[str, str] = {
     "^JKSE": "XIDX", "^JKLQ45": "XIDX",
     "^GSPC": "XNYS", "^DJI": "XNYS", "^IXIC": "XNAS", "^VIX": "XNYS",
-    "^TNX": "XNYS", "DX-Y.NYB": "XNYS",
+    "^TNX": "XNYS", "DX-Y.NYB": "XNYS", "^IRX": "XNYS",
     "^N225": "XTSE",
     "^HSI": "XHKG",
-    "^FTSE": "XLON",
+    "^FTSE": "XLON", "NICK.L": "XLON", "TIN.L": "XLON",
     "^GDAXI": "XFRA",
     "000001.SS": "XSHG",
     "GC=F": "XCEC", "CL=F": "XCEC", "HG=F": "XCEC", "SI=F": "XCEC",
+    "BZ=F": "XCEC", "NG=F": "XCEC",
     "IDR=X": "XFXS",
-    "CPO=F": "XKLSE", "FCPO=F": "XKLSE",
+    "CPO=F": "XKLSE",
+    # New tickers
+    "^SET.BK": "XBKK",
+    "^PSE": "XPHS",
+    "^NSEI": "XNSE", "^BSESN": "XBOM",
+    "^TWII": "XTAI",
+    "^STOXX50E": "XPAR",
+    "FTSEMIB.MI": "XMTA",
+    "^IBEX": "XMAD",
+    "^BVSP": "BVMF",
+    "^GSPTSE": "XTSX",
+    "^TASI.SR": "XSAU",
+    "JSE.JO": "XJSE",
+    "^KS11": "XKRX",
+    "^STI": "XSES",
+    "^AXJO": "XASX",
+    # FX pairs (all on XFXS — synthetic FX MIC)
+    "THBIDR=X": "XFXS", "PHPIDR=X": "XFXS", "INRIDR=X": "XFXS",
+    "TWDIDR=X": "XFXS", "BRLIDR=X": "XFXS", "CADIDR=X": "XFXS",
+    "CNYIDR=X": "XFXS", "HKDIDR=X": "XFXS", "MYRIDR=X": "XFXS",
+    "ZARIDR=X": "XFXS", "CHFIDR=X": "XFXS", "SARIDR=X": "XFXS",
+    "EURTHB=X": "XFXS", "EURPHP=X": "XFXS", "EURINR=X": "XFXS",
+    "EURTWD=X": "XFXS", "EURBRL=X": "XFXS", "EURCAD=X": "XFXS",
+    "EURCNY=X": "XFXS", "EURHKD=X": "XFXS", "EURMYR=X": "XFXS",
+    "EURZAR=X": "XFXS", "EURAUD=X": "XFXS", "EURKRW=X": "XFXS",
+    "EURSAR=X": "XFXS",
+    "USDHKD=X": "XFXS", "USDSAR=X": "XFXS", "USDTWD=X": "XFXS",
 }
 
 
@@ -170,13 +308,26 @@ def get_expected_close_utc(mic: str, dt: datetime) -> datetime:
 
     hour, minute = base
 
-    # DST adjustments: during DST, US/Europe close 1 hour earlier in UTC
-    if mic in ("XNYS", "XNAS", "XCEC", "XFXS"):
+    # DST adjustments: during DST, US/Europe/Americas close 1 hour earlier in UTC
+    if mic in ("XNYS", "XNAS", "XCEC", "XFXS", "XTSX"):
         if is_us_dst(dt):
-            hour -= 1  # e.g., NYSE 20:00 UTC → 20:00 during EDT, 21:00 during EST
-    elif mic in ("XLON", "XFRA"):
+            hour -= 1
+    elif mic in ("XLON", "XFRA", "XPAR", "XMTA", "XMAD"):
         if is_eu_dst(dt):
-            hour -= 1  # e.g., London 15:30 UTC during BST, 16:30 UTC during GMT
+            hour -= 1
+    elif mic == "BVMF":
+        # Brasil DST: Oct–Feb (3rd Sunday Oct to 3rd Sunday Feb)
+        # Simplified: check if month in Nov, Dec, Jan, Feb
+        if dt.month in (11, 12, 1, 2):
+            hour -= 1
+    elif mic == "XJSE":
+        # South Africa DST: same as EU DST
+        if is_eu_dst(dt):
+            hour -= 1
+    elif mic == "XASX":
+        # Australia DST: Oct–Apr (1st Sunday Oct to 1st Sunday Apr)
+        if dt.month in (10, 11, 12, 1, 2, 3, 4):
+            hour += 1  # AEDT = UTC+11, so close is 1 hour later in UTC
 
     return datetime(dt.year, dt.month, dt.day, hour, minute, 0, tzinfo=UTC)
 
@@ -256,12 +407,21 @@ def get_expected_open_utc(mic: str, dt: datetime) -> datetime:
 
     hour, minute = base
 
-    if mic in ("XNYS", "XNAS", "XCEC", "XFXS"):
+    if mic in ("XNYS", "XNAS", "XCEC", "XFXS", "XTSX"):
         if is_us_dst(dt):
             hour -= 1
-    elif mic in ("XLON", "XFRA"):
+    elif mic in ("XLON", "XFRA", "XPAR", "XMTA", "XMAD"):
         if is_eu_dst(dt):
             hour -= 1
+    elif mic == "BVMF":
+        if dt.month in (11, 12, 1, 2):
+            hour -= 1
+    elif mic == "XJSE":
+        if is_eu_dst(dt):
+            hour -= 1
+    elif mic == "XASX":
+        if dt.month in (10, 11, 12, 1, 2, 3, 4):
+            hour += 1
 
     return datetime(dt.year, dt.month, dt.day, hour, minute, 0, tzinfo=UTC)
 

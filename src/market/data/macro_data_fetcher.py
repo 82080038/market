@@ -50,21 +50,16 @@ _BPS_BASE = "https://webapi.bps.go.id/v1"
 _WORLD_BANK_BASE = "https://api.worldbank.org/v2"
 _NOAA_ONI_URL = "https://psl.noaa.gov/data/correlation/oni.data"
 
-# Commodity futures tickers (yfinance). CPO has no direct US-listed futures
-# contract on Yahoo, so we use Bursa Malaysia FCPOc1 proxy via ^KLSE palm
-# exposure as a fallback. Newcastle coal is not on Yahoo; we keep the ticker
-# slot but it may return empty — logged as a warning.
+# Commodity futures tickers (yfinance). Verified Aug 17, 2026.
+# Dead tickers removed: FCPO=F, COAL=F, MTF=F, NI=F, TIN=F (all 404 on yfinance).
+# For nickel/tin/coal, use LME spot prices from other sources (not yfinance).
 COMMODITY_TICKERS: dict[str, str] = {
-    "cpo_proxy": "^KLSE",  # palm proxy (no direct FCPO on Yahoo)
-    "cpo_futures": "CPO=F",  # Bursa Malaysia palm oil futures
-    "fcpo_futures": "FCPO=F",  # FCPO alt ticker (may 404 on yfinance)
-    "newcastle_coal": "COAL=F",  # best-effort coal proxy
-    "api2_coal": "MTF=F",  # ICE API2 coal futures
-    "nickel": "NI=F",
-    "copper": "HG=F",
-    "tin": "TIN=F",  # may be unavailable; handled gracefully
-    "gold": "GC=F",
-    "oil": "CL=F",
+    "cpo_proxy": "^KLSE",  # KLSE index as palm oil proxy
+    "cpo_futures": "CPO=F",  # Bursa Malaysia palm oil futures (3-month)
+    "silver": "SI=F",  # COMEX silver futures
+    "copper": "HG=F",  # COMEX copper futures
+    "gold": "GC=F",  # COMEX gold futures
+    "oil": "CL=F",  # NYMEX crude oil futures
 }
 
 

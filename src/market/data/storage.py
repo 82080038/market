@@ -67,7 +67,7 @@ class DataRepository:
                         StockPrice.timestamp == r.timestamp,
                         StockPrice.timeframe == tf,
                     )
-                ).scalar_one_or_none()
+                ).scalars().first()
 
                 if existing:
                     existing.open = r.open
@@ -100,7 +100,7 @@ class DataRepository:
                         OHLCV.timestamp == r.timestamp,
                         OHLCV.timeframe == tf,
                     )
-                ).scalar_one_or_none()
+                ).scalars().first()
 
                 if existing:
                     existing.open = r.open

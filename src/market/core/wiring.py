@@ -7,10 +7,11 @@ This replaces direct imports between modules.
 Flow (decoupled — fetch does NOT auto-trigger recompute/export):
 
     PHASE 1 — FETCH (scheduler triggers each independently):
-        data.fetch.requested          →  DataFetchPipeline → data.fetch.stored
-        data.fetch_global.requested   →  DataFetchPipeline → data.fetch.stored
-        data.fetch_macro.requested    →  DataFetchPipeline → data.fetch.stored
-        data.fetch.intraday.requested →  DataFetchPipeline → data.fetch.intraday.completed
+        data.fetch.requested           →  DataFetchPipeline → data.fetch.stored (IDX equities)
+        data.fetch_global.requested    →  DataFetchPipeline → data.fetch.stored (global indices)
+        data.fetch_commodity.requested →  DataFetchPipeline → data.fetch.stored (commodity futures)
+        data.fetch_macro.requested     →  DataFetchPipeline → data.fetch.stored (macro rates → macro_data)
+        data.fetch.intraday.requested  →  DataFetchPipeline → data.fetch.intraday.completed
 
     PHASE 2 — RECOMPUTE (scheduler triggers after all fetches done):
         data.recompute.requested      →  RecomputePipeline → data.recompute.completed
@@ -60,16 +61,20 @@ def wire_all_events() -> None:
     logger.info("Wiring event handlers...")
 
     # ── PHASE 1: Data fetch pipeline ────────────────────────────
-    # Listens to: data.fetch.requested, data.fetch_global.requested,
-    #             data.fetch_macro.requested, data.fetch.intraday.requested
-    # Emits:      data.fetch.stored (eod/global/macro — no auto-recompute)
-    #             data.fetch.intraday.completed (intraday — price snapshot)
+    # Layer 1: IDX equities (emiten/saham)
+    # Layer 2: Global indices (sentiment drivers)
+    # Layer 3: Commodity futures (sector drivers)
+    # Layer 4: Macro rates (→ macro_data table)
+    # Layer 5: FX exchange rates (61 pairs: USD, IDR crosses, EUR crosses)
+    # Layer 6: Intraday polling (15-min price snapshot)
     from market.pipelines.data_fetch import DataFetchPipeline
 
     fetch_pipeline = DataFetchPipeline()
     broker.subscribe("data.fetch.requested", fetch_pipeline.on_fetch_requested)
     broker.subscribe("data.fetch_global.requested", fetch_pipeline.on_fetch_global_requested)
+    broker.subscribe("data.fetch_commodity.requested", fetch_pipeline.on_fetch_commodity_requested)
     broker.subscribe("data.fetch_macro.requested", fetch_pipeline.on_fetch_macro_requested)
+    broker.subscribe("data.fetch_fx.requested", fetch_pipeline.on_fetch_fx_requested)
     broker.subscribe("data.fetch.intraday.requested", fetch_pipeline.on_intraday_requested)
 
     # ── PHASE 2: Recompute pipeline ─────────────────────────────

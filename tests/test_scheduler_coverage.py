@@ -130,7 +130,7 @@ class TestLoadSaveState:
         sched = DailyScheduler(persist=True)
         sched._session_factory = MagicMock(return_value=MagicMock())
         mock_session = sched._session_factory()
-        mock_session.execute.return_value.all.return_value = []
+        mock_session.execute.return_value.scalars.return_value.all.return_value = []
 
         with patch("market.db.engine.get_sessionmaker", return_value=lambda: mock_session):
             result = sched.load_state()
@@ -140,17 +140,22 @@ class TestLoadSaveState:
         sched = DailyScheduler(persist=True)
         sched.register_task("T1", "Test", lambda: None, "daily")
 
-        state_json = json.dumps({
-            "last_run": datetime.now(UTC).isoformat(),
-            "last_status": "success",
-            "last_error": "",
-            "run_count": 5,
-        })
+        mock_row = MagicMock()
+        mock_row.task_id = "T1"
+        mock_row.last_run = datetime.now(UTC)
+        mock_row.last_status = "success"
+        mock_row.last_error = ""
+        mock_row.run_count = 5
+        mock_row.next_run_at = None
+        mock_row.is_stale = False
+        mock_row.data_dependencies = None
+        mock_row.data_ready = False
+        mock_row.last_result = None
+        mock_row.is_catchup = False
+        mock_row.last_duration_seconds = None
 
         mock_session = MagicMock()
-        mock_session.execute.return_value.all.return_value = [
-            ("scheduler:T1", state_json),
-        ]
+        mock_session.execute.return_value.scalars.return_value.all.return_value = [mock_row]
 
         sched._session_factory = lambda: mock_session
         result = sched.load_state()
@@ -165,9 +170,7 @@ class TestLoadSaveState:
         sched.register_task("T1", "Test", lambda: None, "daily")
 
         mock_session = MagicMock()
-        mock_session.execute.return_value.all.return_value = [
-            ("scheduler:T1", "invalid json"),
-        ]
+        mock_session.execute.return_value.scalars.return_value.all.return_value = []
 
         sched._session_factory = lambda: mock_session
         result = sched.load_state()
@@ -177,11 +180,22 @@ class TestLoadSaveState:
     def test_load_state_unknown_task_skipped(self):
         sched = DailyScheduler(persist=True)
 
-        state_json = json.dumps({"last_run": "2026-01-01", "last_status": "success"})
+        mock_row = MagicMock()
+        mock_row.task_id = "UNKNOWN"
+        mock_row.last_run = datetime.now(UTC)
+        mock_row.last_status = "success"
+        mock_row.last_error = ""
+        mock_row.run_count = 1
+        mock_row.next_run_at = None
+        mock_row.is_stale = False
+        mock_row.data_dependencies = None
+        mock_row.data_ready = False
+        mock_row.last_result = None
+        mock_row.is_catchup = False
+        mock_row.last_duration_seconds = None
+
         mock_session = MagicMock()
-        mock_session.execute.return_value.all.return_value = [
-            ("scheduler:UNKNOWN", state_json),
-        ]
+        mock_session.execute.return_value.scalars.return_value.all.return_value = [mock_row]
 
         sched._session_factory = lambda: mock_session
         result = sched.load_state()
@@ -191,20 +205,25 @@ class TestLoadSaveState:
         sched = DailyScheduler(persist=True)
         sched.register_task("T1", "Test", lambda: None, "daily")
 
-        state_json = json.dumps({
-            "last_run": datetime.now(UTC).isoformat(),
-            "last_status": "invalid_status",
-            "run_count": 3,
-        })
+        mock_row = MagicMock()
+        mock_row.task_id = "T1"
+        mock_row.last_run = datetime.now(UTC)
+        mock_row.last_status = "invalid_status"
+        mock_row.last_error = ""
+        mock_row.run_count = 3
+        mock_row.next_run_at = None
+        mock_row.is_stale = False
+        mock_row.data_dependencies = None
+        mock_row.data_ready = False
+        mock_row.last_result = None
+        mock_row.is_catchup = False
+        mock_row.last_duration_seconds = None
 
         mock_session = MagicMock()
-        mock_session.execute.return_value.all.return_value = [
-            ("scheduler:T1", state_json),
-        ]
+        mock_session.execute.return_value.scalars.return_value.all.return_value = [mock_row]
 
         sched._session_factory = lambda: mock_session
         result = sched.load_state()
-        # Task should still be restored (run_count), but status stays PENDING
         assert result == 1
         task = sched.get_task("T1")
         assert task.last_status == TaskStatus.PENDING
@@ -247,7 +266,7 @@ class TestLoadSaveState:
         sched._session_factory = lambda: mock_session
 
         sched.save_state(task)
-        assert mock_existing.value is not None
+        assert mock_existing.last_run is not None
         mock_session.commit.assert_called_once()
         mock_session.close.assert_called_once()
 
@@ -307,7 +326,7 @@ class TestRunAllDueWithPersistence:
         sched.register_task("T1", "Test", lambda: None, "daily", "00:00")
 
         mock_session = MagicMock()
-        mock_session.execute.return_value.all.return_value = []
+        mock_session.execute.return_value.scalars.return_value.all.return_value = []
         # Also need scalar_one_or_none for save_state
         mock_session.execute.return_value.scalar_one_or_none.return_value = None
         sched._session_factory = lambda: mock_session

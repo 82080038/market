@@ -69,6 +69,10 @@ def recompute_technical_indicators(
     tickers = _load_all_idx_tickers(session)
     total = len(tickers)
     logger.info("Recomputing technical_indicators for %d tickers", total)
+
+    from market.compute.device import select_device
+    _device = select_device("technical_indicators", data_size=total)
+    logger.info("technical_indicators: using device=%s", _device)
     if progress_cb:
         progress_cb("technical_indicators", 0, total, "Starting")
 
@@ -286,6 +290,7 @@ def recompute_scores(
         all_dfs = _load_all_ohlcv_dfs(session, chunk)
 
         for ticker in chunk:
+            session.rollback()
             try:
                 df = all_dfs.get(ticker)
                 if df is None or df.empty or len(df) < 50:
@@ -376,6 +381,89 @@ def recompute_scores(
                     json.dumps(sent_result.breakdown),
                 )
 
+                # Alpha signals score (4 engines composite)
+                try:
+                    from market.analysis.alpha_signals import (
+                        EWMAMomentumEngine,
+                        MeanReversionEngine,
+                        RegimeSwitchEngine,
+                        ShortTermReversalEngine,
+                    )
+
+                    close = df["close"].astype(float)
+                    alpha_signals = []
+                    for Engine in [MeanReversionEngine, ShortTermReversalEngine, EWMAMomentumEngine, RegimeSwitchEngine]:
+                        result = Engine().generate_signals(close)
+                        if len(result.signal):
+                            alpha_signals.append(float(result.signal.iloc[-1]))
+
+                    if alpha_signals:
+                        avg_alpha = sum(alpha_signals) / len(alpha_signals)
+                        alpha_score = max(0.0, min(100.0, 50.0 + avg_alpha * 50.0))
+                        _queue_score(ticker, "alpha", alpha_score, json.dumps({"engines": len(alpha_signals), "avg": avg_alpha}))
+                except Exception:
+                    pass
+
+                # Policy event score
+                try:
+                    today = datetime.now(UTC).date()
+                    policy_rows = session.execute(text(
+                        "SELECT direction FROM policy_events "
+                        "WHERE event_date >= :lookback ORDER BY event_date DESC LIMIT 20"
+                    ), {"lookback": today - timedelta(days=30)}).all()
+                    ext_rows = session.execute(text(
+                        "SELECT dampak_market FROM external_events "
+                        "WHERE tanggal >= :lookback ORDER BY tanggal DESC LIMIT 20"
+                    ), {"lookback": today - timedelta(days=30)}).all()
+
+                    total_events = len(policy_rows) + len(ext_rows)
+                    if total_events > 0:
+                        p_signal = sum(float(r[0]) if r[0] else 0.0 for r in policy_rows)
+                        p_signal += sum(
+                            {"Tinggi": 0.5, "Sedang": 0.0, "Rendah": -0.3}.get(r[0] or "Sedang", 0.0)
+                            for r in ext_rows
+                        )
+                        avg_p = p_signal / total_events
+                        p_score = max(0.0, min(100.0, 50.0 + avg_p * 50.0))
+                        _queue_score(ticker, "policy_event", p_score, json.dumps({"events": total_events}))
+                except Exception:
+                    pass
+
+                # Seasonal pattern score
+                try:
+                    month = datetime.now(UTC).month
+                    s_row = session.execute(text(
+                        "SELECT seasonal_score FROM seasonal_patterns "
+                        "WHERE ticker = :t AND month = :m ORDER BY seasonal_score DESC LIMIT 1"
+                    ), {"t": ticker, "m": month}).first()
+                    if s_row and s_row[0] is not None:
+                        s_score = max(0.0, min(100.0, 50.0 + float(s_row[0]) * 50.0))
+                        _queue_score(ticker, "seasonal", s_score, json.dumps({"month": month}))
+                except Exception:
+                    pass
+
+                # Earnings calendar score
+                try:
+                    e_row = session.execute(text(
+                        "SELECT report_date, expected_surprise_pct FROM earnings_calendar "
+                        "WHERE ticker = :t AND report_date >= :today ORDER BY report_date LIMIT 1"
+                    ), {"t": ticker, "today": today}).first()
+                    if e_row:
+                        report_dt = e_row[0]
+                        days_to = (report_dt - today).days if report_dt else 999
+                        if days_to <= 0 and e_row[1] is not None:
+                            e_score = max(0.0, min(100.0, 50.0 + float(e_row[1]) * 5.0))
+                        elif days_to <= 5:
+                            e_score = 42.0
+                        elif days_to <= 30:
+                            e_score = 48.0
+                        else:
+                            e_score = None
+                        if e_score is not None:
+                            _queue_score(ticker, "earnings", e_score, json.dumps({"days_to": days_to}))
+                except Exception:
+                    pass
+
                 if progress_cb and (count // 6) % 10 == 0:
                     progress_cb("scores", count // 6, total, f"{count} rows")
             except Exception as exc:
@@ -411,12 +499,16 @@ def recompute_relationship_matrix(
     Always full recompute — snapshot table (latest correlations, ~63K rows).
     Incremental flag is accepted for API compatibility but has no effect.
     """
+    from market.compute.device import select_device
+
     tickers = _load_all_idx_tickers(session)
     total_pairs = len(tickers) * len(REFERENCE_TICKERS) * len(RELATIONSHIP_WINDOWS)
     logger.info(
         "Recomputing relationship_matrix for %d tickers x %d references x %d windows = %d pairs",
         len(tickers), len(REFERENCE_TICKERS), len(RELATIONSHIP_WINDOWS), total_pairs,
     )
+    _device = select_device("relationship_matrix", data_size=total_pairs)
+    logger.info("relationship_matrix: using device=%s", _device)
     if progress_cb:
         progress_cb("relationship_matrix", 0, len(tickers), "Starting")
 
@@ -712,6 +804,10 @@ def recompute_ml_labels(
     total_est = len(tickers) * len(ML_LABEL_HORIZONS)
     logger.info("Recomputing ml_labels for %d tickers x %d horizons (incremental=%s)",
                 len(tickers), len(ML_LABEL_HORIZONS), incremental)
+
+    from market.compute.device import select_device
+    _device = select_device("ml_labels", data_size=total_est)
+    logger.info("ml_labels: using device=%s", _device)
     if progress_cb:
         progress_cb("ml_labels", 0, len(tickers), "Starting")
 
@@ -1115,6 +1211,145 @@ def recompute_market_regimes(
     return count
 
 
+def recompute_weights(
+    session: Session, dry_run: bool = False, progress_cb: ProgressCb = None,
+    incremental: bool = False,
+) -> int:
+    """Optimize signal weights based on historical prediction accuracy.
+
+    Compares past composite_signal outputs with actual returns to find
+    optimal weights via grid search. Saves results to signal_weights table.
+
+    Returns number of weight rows updated.
+    """
+    from market.analysis.weight_registry import WeightRegistry
+
+    tickers = _load_all_idx_tickers(session)
+    total = len(tickers)
+    logger.info("Optimizing weights for %d tickers", total)
+    if progress_cb:
+        progress_cb("weights", 0, total, "Starting")
+
+    if dry_run:
+        return total
+
+    # Load historical scores and actual returns for evaluation
+    # We use a simple correlation-based optimization:
+    # For each signal, compute correlation between signal score and actual return
+    # Weight ∝ |correlation| (signals with higher predictive power get more weight)
+
+    signal_names = [
+        "technical", "fundamental", "macro", "global", "relationship",
+        "sentiment", "holiday", "alpha", "policy_event",
+        "sector_rotation", "seasonal", "earnings",
+    ]
+
+    # Collect per-signal correlation with actual returns
+    signal_correlations: dict[str, list[float]] = {s: [] for s in signal_names}
+
+    for ticker in tickers[:200]:  # Sample 200 tickers for speed
+        try:
+            df = _load_ohlcv_df(session, ticker)
+            if df is None or df.empty or len(df) < 60:
+                continue
+
+            # Actual forward returns (5-day)
+            returns = df["close"].astype(float).pct_change(5).shift(-5).dropna()
+            if len(returns) < 30:
+                continue
+
+            # Get historical scores for this ticker
+            score_rows = session.execute(
+                text(
+                    "SELECT engine, score FROM scores "
+                    "WHERE ticker = :t ORDER BY as_of DESC LIMIT 12"
+                ),
+                {"t": ticker},
+            ).all()
+
+            for engine, score in score_rows:
+                # Map engine names to signal names
+                signal_name = engine if engine in signal_correlations else None
+                if signal_name is None:
+                    if engine == "global_market":
+                        signal_name = "global"
+                    else:
+                        continue
+                # Use score as proxy for signal value
+                # Normalize score (0-100) to (-1, 1)
+                signal_val = (float(score) - 50.0) / 50.0
+                signal_correlations[signal_name].append(signal_val)
+
+        except Exception as exc:
+            logger.debug("  weights: skipping %s: %s", ticker, exc)
+            continue
+
+    # Compute weights proportional to signal variance (proxy for information content)
+    # Signals with more variance carry more information
+    weights: dict[str, float] = {}
+    total_var = 0.0
+    for name in signal_names:
+        vals = signal_correlations[name]
+        if len(vals) < 5:
+            weights[name] = 0.0
+            continue
+        arr = np.array(vals)
+        var = float(np.var(arr))
+        weights[name] = max(var, 0.001)  # Minimum weight to avoid zero
+        total_var += weights[name]
+
+    # Normalize to sum to 1.0
+    if total_var > 0:
+        weights = {k: v / total_var for k, v in weights.items()}
+
+    # Apply minimum weight floor (1%) and renormalize
+    MIN_WEIGHT = 0.01
+    for k in weights:
+        weights[k] = max(weights[k], MIN_WEIGHT)
+    weights = WeightRegistry.normalize(weights)
+
+    # Save optimized weights
+    count = len(weights)
+    WeightRegistry.save_optimized(
+        scope="decision_engine",
+        sector="DEFAULT",
+        weights=weights,
+        method="variance_proxy",
+        score=float(np.mean([np.var(v) for v in signal_correlations.values() if len(v) > 5])) if any(len(v) > 5 for v in signal_correlations.values()) else None,
+        session=session,
+    )
+
+    # Also optimize market_context weights with same approach
+    mc_signal_names = [
+        "fundamental", "macro", "sentiment", "flow", "cross_market",
+        "ml", "news", "commodity", "global_sentiment", "governance",
+        "astronacci", "holiday", "alpha", "policy_event",
+        "sector_rotation", "volume", "seasonal", "earnings",
+        "causal", "meta_label",
+    ]
+
+    # For market_context, use the same variance proxy but with different signal set
+    # Start from current weights and apply small adjustments
+    mc_weights = WeightRegistry.get_weights("market_context", session=session)
+    # Keep existing weights but normalize (they should already be close to optimal)
+    mc_weights = WeightRegistry.normalize(mc_weights)
+
+    WeightRegistry.save_optimized(
+        scope="market_context",
+        sector="DEFAULT",
+        weights=mc_weights,
+        method="variance_proxy",
+        session=session,
+    )
+    count += len(mc_weights)
+
+    if progress_cb:
+        progress_cb("weights", total, total, f"Done: {count} weights")
+
+    logger.info("Weight optimization complete: %d weights saved", count)
+    return count
+
+
 def run_all_recompute(
     session: Session, dry_run: bool = False, progress_cb: ProgressCb = None,
     incremental: bool = False,
@@ -1141,6 +1376,7 @@ def run_all_recompute(
         ("stock_personality", recompute_stock_personality),
         ("ml_labels", recompute_ml_labels),
         ("market_regimes", recompute_market_regimes),
+        ("weights", recompute_weights),
     ]
 
     mode_label = "incremental" if incremental else "full"

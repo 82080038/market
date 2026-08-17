@@ -36,8 +36,15 @@ def _task_health_check() -> None:
 
 
 def _task_fetch_eod() -> None:
-    """Emit EOD fetch request — data fetch pipeline handles the rest."""
+    """Emit EOD fetch request — data fetch pipeline handles the rest.
+
+    After EOD data is fetched, triggers selective recompute for modules
+    that depend on stock_prices (technical_indicators, scores,
+    relationship_matrix, fear_greed, stock_personality, ml_labels,
+    market_regimes, etc.).
+    """
     broker.emit("data.fetch.requested", {"source": "eod"})
+    _task_selective_recompute("stock_prices", "fetch_eod")
 
 
 def _task_fetch_global() -> None:
@@ -45,19 +52,52 @@ def _task_fetch_global() -> None:
     broker.emit("data.fetch_global.requested", {"source": "global"})
 
 
+def _task_fetch_commodity() -> None:
+    """Emit commodity fetch request — fetch commodity futures (gold, oil, copper, etc.)."""
+    broker.emit("data.fetch_commodity.requested", {"source": "commodity"})
+
+
 def _task_fetch_macro() -> None:
     """Emit macro fetch request — data fetch pipeline handles the rest."""
     broker.emit("data.fetch_macro.requested", {"source": "macro"})
 
 
+def _task_fetch_fx() -> None:
+    """Emit FX fetch request — fetch FX exchange rates (61 pairs).
+
+    Fetches all FX pairs from FetchRegistry (data_layer='fx') including:
+    - USD pairs (USDJPY, USDCNY, USDINR, etc.)
+    - IDR crosses (THBIDR, PHPIDR, CNYIDR, etc.)
+    - EUR crosses (EURTHB, EURPHP, EURCNY, etc.)
+
+    Pairs not available on yfinance (PHPIDR, INRIDR, BRLIDR, CNYIDR, SARIDR)
+    are computed as cross-rates: CCYIDR = USDIDR / USDCCY.
+
+    FX markets are 24h on weekdays — no market open/close gating needed.
+    Downstream: cross_market_coefficients recompute runs at 19:15 WIB
+    (macro_correlation_analysis task), market_influence_kb is static.
+    """
+    broker.emit("data.fetch_fx.requested", {"source": "fx"})
+
+
 # Tickers for intraday polling — mapped to their market MIC for hours filtering
+# Includes: IDX, US, Asia, Europe indices + key FX pairs (USD/IDR, EUR/USD)
 INTRADAY_TICKER_MIC: dict[str, str] = {
     "^JKSE": "XIDX",
+    # US markets
     "^GSPC": "XNYS", "^IXIC": "XNAS", "^DJI": "XNYS",
     "^VIX": "XNYS", "^TNX": "XNYS",
+    # Asian markets
     "^HSI": "XHKG", "^N225": "XTSE",
+    "^N225": "XTSE", "^KS11": "XKRX", "^STI": "XSES",
+    "^SET.BK": "XBKK", "^NSEI": "XNSE", "^TWII": "XTAI",
+    # European markets
     "^FTSE": "XLON", "^GDAXI": "XFRA",
+    "^STOXX50E": "XPAR",
+    # Commodities
     "GC=F": "XCEC", "CL=F": "XCEC", "SI=F": "XCEC",
+    # Key FX pairs (24h on weekdays, always polled)
+    "IDR=X": "XFXS", "EURUSD=X": "XFXS", "USDJPY=X": "XFXS",
 }
 
 
@@ -112,6 +152,74 @@ def _task_recompute() -> None:
         "source": "scheduled_recompute",
         "incremental": True,
     })
+
+
+def _task_analyze_recompute_stats() -> None:
+    """Analyze historical recompute run stats and update predictions in DB.
+
+    Runs RecomputeAnalyzer.analyze_all() which:
+    1. Reads recent run stats from recompute_run_stats
+    2. Computes predictions (rolling avg, exponential, regression)
+    3. Stores predictions in recompute_predictions table
+    4. Evaluates accuracy of previous predictions (feedback loop)
+
+    Should run after each recompute cycle, or every few hours.
+    """
+    from market.analysis.recompute_analyzer import RecomputeAnalyzer
+
+    logger.info("Recompute stats analysis: starting...")
+
+    try:
+        summary = RecomputeAnalyzer.analyze_all()
+        logger.info(
+            "Recompute stats analysis: %d functions analyzed, %d predictions generated, %d updated",
+            summary.get("functions_analyzed", 0),
+            summary.get("predictions_generated", 0),
+            summary.get("predictions_updated", 0),
+        )
+        if summary.get("accuracy_evaluated"):
+            acc = summary["accuracy_evaluated"]
+            logger.info(
+                "  Prediction accuracy: %d evaluated, avg duration error=%.1f%%, avg rows error=%.1f%%",
+                acc.get("predictions_evaluated", 0),
+                acc.get("avg_duration_error_pct") or 0,
+                acc.get("avg_rows_error_pct") or 0,
+            )
+    except Exception as e:
+        logger.error("Recompute stats analysis: failed — %s", e)
+
+
+def _task_selective_recompute(data_source: str, triggered_by: str) -> None:
+    """Trigger selective recompute for only modules depending on data_source.
+
+    Uses the recompute dependency graph to identify which modules need
+    recompute when a specific data source is updated. This avoids
+    unnecessary full recompute of all modules.
+
+    Args:
+        data_source: Which data source was updated (e.g. 'stock_prices').
+        triggered_by: What triggered this (e.g. 'fetch_eod', 'fetch_fundamental').
+    """
+    from market.analysis.recompute_graph import RecomputeGraph
+
+    try:
+        result = RecomputeGraph.trigger_recompute(
+            data_source=data_source,
+            triggered_by=triggered_by,
+        )
+        logger.info(
+            "Selective recompute (%s → %s): %d functions triggered, %d skipped, %d rows, status=%s",
+            triggered_by,
+            data_source,
+            len(result.get("functions_triggered", [])),
+            len(result.get("functions_skipped", [])),
+            result.get("total_rows", 0),
+            result.get("status"),
+        )
+        if result.get("errors"):
+            logger.warning("Selective recompute errors: %s", result["errors"])
+    except Exception as e:
+        logger.error("Selective recompute failed (%s → %s): %s", triggered_by, data_source, e)
 
 
 def _task_feature_store() -> None:
@@ -664,10 +772,29 @@ def _task_startup_catchup() -> None:
 
         if stale:
             logger.info("Startup catch-up: data is stale — triggering fetch chain")
+
+            # Check which scheduler tasks are stale (missed while computer was off)
+            try:
+                from sqlalchemy import text as _text
+                stale_rows = session.execute(_text("""
+                    SELECT task_id, last_run, is_stale, is_catchup
+                    FROM scheduler_state
+                    WHERE is_stale = true
+                    ORDER BY task_id
+                """)).fetchall()
+                if stale_rows:
+                    logger.info("Startup catch-up: %d stale tasks detected:", len(stale_rows))
+                    for row in stale_rows:
+                        logger.info("  STALE: %s (last_run=%s)", row[0], row[1])
+            except Exception:
+                pass  # Non-critical — just informational
+
             # Phase 1: fetch all data sources (idempotent — skips fresh tickers)
             broker.emit("data.fetch.requested", {"source": "startup_catchup"})
             broker.emit("data.fetch_global.requested", {"source": "startup_catchup"})
+            broker.emit("data.fetch_commodity.requested", {"source": "startup_catchup"})
             broker.emit("data.fetch_macro.requested", {"source": "startup_catchup"})
+            broker.emit("data.fetch_fx.requested", {"source": "startup_catchup"})
             # Phase 2: recompute (runs after fetch via scheduler, or manually)
             # NOTE: We don't auto-chain here. The scheduler's run_all_due()
             # will pick up recompute and export tasks if they're also due.
@@ -802,6 +929,10 @@ def _task_fetch_fundamental() -> None:
     finally:
         session.close()
 
+    # Trigger selective recompute for modules depending on fundamental_data
+    if inserted > 0:
+        _task_selective_recompute("fundamental_data", "fetch_fundamental")
+
 
 def _task_scrape_news() -> None:
     """Scrape RSS news feeds and compute sentiment (daily).
@@ -831,6 +962,65 @@ def _task_scrape_news() -> None:
         logger.warning("News sentiment scrape: timed out after 300s")
     except Exception as e:
         logger.error("News sentiment scrape: failed — %s", e)
+
+
+def _task_fetch_holidays() -> None:
+    """Update exchange holidays for all 21 exchanges (weekly).
+
+    Runs the backfill script as a subprocess to refresh holiday data
+    from exchange_calendars + holidays library. Ensures holiday
+    calendar stays current for market session status checks.
+    """
+    import subprocess
+    import sys
+
+    logger.info("Exchange holidays update: starting...")
+
+    try:
+        result = subprocess.run(
+            [sys.executable, "scripts/backfill_exchange_holidays.py", "--backfill-only"],
+            capture_output=True,
+            text=True,
+            timeout=120,
+        )
+        if result.returncode == 0:
+            logger.info("Exchange holidays update: completed successfully")
+            for line in result.stdout.strip().split("\n")[-5:]:
+                if line.strip():
+                    logger.info("  %s", line)
+        else:
+            logger.warning("Exchange holidays update: exited with code %d", result.returncode)
+            if result.stderr:
+                logger.debug("stderr: %s", result.stderr[:500])
+    except subprocess.TimeoutExpired:
+        logger.warning("Exchange holidays update: timed out after 120s")
+    except Exception as e:
+        logger.error("Exchange holidays update: failed — %s", e)
+
+
+def _task_compute_holiday_effects() -> None:
+    """Compute holiday effect analysis for all 21 exchanges (monthly).
+
+    Analyzes pre/post holiday returns and global→IDX spillover.
+    Saves results to holiday_effects + holiday_spillover tables.
+    """
+    logger.info("Holiday effect analysis: starting...")
+
+    try:
+        from market.analysis.holiday_effect import HolidayEffectAnalyzer
+
+        analyzer = HolidayEffectAnalyzer(lookback_years=10)
+        summary = analyzer.analyze_all()
+
+        logger.info(
+            "Holiday effect analysis: %d effects (%d significant), %d spillovers (%d significant)",
+            summary["holiday_effects"],
+            summary["significant_effects"],
+            summary["spillover_results"],
+            summary["significant_spillovers"],
+        )
+    except Exception as e:
+        logger.error("Holiday effect analysis: failed — %s", e)
 
 
 def _task_strategy_assignment() -> None:
@@ -1182,7 +1372,10 @@ def register_default_tasks(scheduler: DailyScheduler) -> None:
         17:00  health_check      — pre-flight checks
         17:30  fetch_eod         — fetch IDX equity OHLCV
         17:35  fetch_global      — fetch global indices/commodities/bonds
-        17:40  fetch_macro       — fetch macro economic data
+        17:38  fetch_commodity   — fetch commodity futures (gold, oil, copper, CPO)
+        17:40  fetch_macro       — fetch macro economic data (US10Y, VIX, USD/IDR, DXY)
+        17:41  fetch_fx          — fetch FX exchange rates (61 pairs: USD, IDR, EUR crosses)
+        17:42  fetch_macroeconomic — daily macroeconomic indicators → PG table
         17:45  quality_check     — validate fetched data
         18:00  recompute         — recompute indicators/scores (ONCE, not per-fetch)
         18:30  feature_store     — refresh feature store
@@ -1220,6 +1413,7 @@ def register_default_tasks(scheduler: DailyScheduler) -> None:
         func=_task_startup_catchup,
         schedule="daily",  # _is_due returns True if never run or >20h ago
         time_of_day="00:00",  # nominal time; actual trigger is run_all_due() on startup
+        data_dependencies=["scheduler_state", "stock_prices"],
     )
 
     scheduler.register_task(
@@ -1228,6 +1422,7 @@ def register_default_tasks(scheduler: DailyScheduler) -> None:
         func=_task_fetch_intraday,
         schedule="every_15min",
         time_of_day="09:00",
+        data_dependencies=["instruments:active", "market_session"],
     )
     scheduler.register_task(
         task_id="fetch_fundamental",
@@ -1235,6 +1430,7 @@ def register_default_tasks(scheduler: DailyScheduler) -> None:
         func=_task_fetch_fundamental,
         schedule="weekly",
         time_of_day="10:00",
+        data_dependencies=["instruments:idx_equity"],
     )
     scheduler.register_task(
         task_id="weekly_hrp_recompute",
@@ -1242,6 +1438,7 @@ def register_default_tasks(scheduler: DailyScheduler) -> None:
         func=_task_weekly_hrp_recompute,
         schedule="weekly",
         time_of_day="10:00",
+        data_dependencies=["stock_prices:idx_equity", "technical_indicators"],
     )
     scheduler.register_task(
         task_id="strategy_assignment",
@@ -1249,6 +1446,7 @@ def register_default_tasks(scheduler: DailyScheduler) -> None:
         func=_task_strategy_assignment,
         schedule="weekly",
         time_of_day="11:00",
+        data_dependencies=["stock_personality", "technical_indicators"],
     )
     scheduler.register_task(
         task_id="weekly_drift_check",
@@ -1256,6 +1454,7 @@ def register_default_tasks(scheduler: DailyScheduler) -> None:
         func=_task_weekly_drift_check,
         schedule="weekly",
         time_of_day="11:00",
+        data_dependencies=["technical_indicators_wide"],
     )
     scheduler.register_task(
         task_id="fetch_fundamental_quarterly",
@@ -1263,6 +1462,7 @@ def register_default_tasks(scheduler: DailyScheduler) -> None:
         func=_task_fetch_fundamental_quarterly,
         schedule="monthly",
         time_of_day="12:00",
+        data_dependencies=["instruments:idx_equity"],
     )
     scheduler.register_task(
         task_id="fetch_macro_fred",
@@ -1270,6 +1470,7 @@ def register_default_tasks(scheduler: DailyScheduler) -> None:
         func=_task_fetch_macro_fred,
         schedule="monthly",
         time_of_day="12:30",
+        data_dependencies=["macro_data"],
     )
     scheduler.register_task(
         task_id="fetch_satellite",
@@ -1277,6 +1478,23 @@ def register_default_tasks(scheduler: DailyScheduler) -> None:
         func=_task_fetch_satellite,
         schedule="weekly",
         time_of_day="13:00",
+        data_dependencies=["satellite_ticker_locations"],
+    )
+    scheduler.register_task(
+        task_id="fetch_holidays",
+        name="Weekly exchange holidays update (21 bursa, exchange_calendars + holidays lib)",
+        func=_task_fetch_holidays,
+        schedule="weekly",
+        time_of_day="09:00",
+        data_dependencies=["exchange_holidays"],
+    )
+    scheduler.register_task(
+        task_id="compute_holiday_effects",
+        name="Monthly holiday effect analysis (pre/post returns + global→IDX spillover)",
+        func=_task_compute_holiday_effects,
+        schedule="monthly",
+        time_of_day="10:00",
+        data_dependencies=["exchange_holidays", "stock_prices"],
     )
     scheduler.register_task(
         task_id="track_kpi",
@@ -1284,6 +1502,7 @@ def register_default_tasks(scheduler: DailyScheduler) -> None:
         func=_task_track_kpi,
         schedule="weekly",
         time_of_day="13:30",
+        data_dependencies=["stock_prices", "scores", "stock_prediction"],
     )
     scheduler.register_task(
         task_id="compute_astronacci_cycles",
@@ -1291,6 +1510,7 @@ def register_default_tasks(scheduler: DailyScheduler) -> None:
         func=_task_compute_astronacci_cycles,
         schedule="weekly",
         time_of_day="14:00",
+        data_dependencies=["stock_prices:idx_equity"],
     )
     scheduler.register_task(
         task_id="health_check",
@@ -1298,6 +1518,7 @@ def register_default_tasks(scheduler: DailyScheduler) -> None:
         func=_task_health_check,
         schedule="daily",
         time_of_day="17:00",
+        data_dependencies=["system_state", "stock_prices"],
     )
     scheduler.register_task(
         task_id="fetch_eod",
@@ -1305,20 +1526,39 @@ def register_default_tasks(scheduler: DailyScheduler) -> None:
         func=_task_fetch_eod,
         schedule="EOD",
         time_of_day="17:30",
+        data_dependencies=["instruments:idx_equity", "fetch_registry"],
     )
     scheduler.register_task(
         task_id="fetch_global",
-        name="Fetch global reference tickers",
+        name="Fetch global market indices (US, Asia, Europe, FX)",
         func=_task_fetch_global,
         schedule="EOD",
         time_of_day="17:35",
+        data_dependencies=["instruments:global_index", "fetch_registry"],
+    )
+    scheduler.register_task(
+        task_id="fetch_commodity",
+        name="Fetch commodity futures (gold, oil, copper, silver, CPO)",
+        func=_task_fetch_commodity,
+        schedule="EOD",
+        time_of_day="17:38",
+        data_dependencies=["instruments:commodity", "fetch_registry"],
     )
     scheduler.register_task(
         task_id="fetch_macro",
-        name="Fetch macro economic data",
+        name="Fetch macro rates (US10Y, VIX, USD/IDR, DXY → macro_data)",
         func=_task_fetch_macro,
         schedule="EOD",
         time_of_day="17:40",
+        data_dependencies=["macro_data"],
+    )
+    scheduler.register_task(
+        task_id="fetch_fx",
+        name="Fetch FX exchange rates (61 pairs: USD, IDR crosses, EUR crosses)",
+        func=_task_fetch_fx,
+        schedule="EOD",
+        time_of_day="17:41",
+        data_dependencies=["instruments:fx", "fetch_registry", "stock_prices:fx"],
     )
     scheduler.register_task(
         task_id="fetch_macroeconomic_indicators",
@@ -1326,6 +1566,7 @@ def register_default_tasks(scheduler: DailyScheduler) -> None:
         func=_task_fetch_macroeconomic_indicators,
         schedule="EOD",
         time_of_day="17:42",
+        data_dependencies=["macro_data", "macroeconomic_indicators"],
     )
     scheduler.register_task(
         task_id="quality_check",
@@ -1333,6 +1574,7 @@ def register_default_tasks(scheduler: DailyScheduler) -> None:
         func=_task_quality_check,
         schedule="EOD",
         time_of_day="17:45",
+        data_dependencies=["stock_prices", "macro_data"],
     )
     scheduler.register_task(
         task_id="recompute",
@@ -1340,6 +1582,15 @@ def register_default_tasks(scheduler: DailyScheduler) -> None:
         func=_task_recompute,
         schedule="EOD",
         time_of_day="18:00",
+        data_dependencies=["stock_prices", "macro_data", "recompute_watermark"],
+    )
+    scheduler.register_task(
+        task_id="analyze_recompute_stats",
+        name="Analyze recompute run stats & update predictions (after recompute)",
+        func=_task_analyze_recompute_stats,
+        schedule="EOD",
+        time_of_day="18:05",
+        data_dependencies=["recompute_run_stats"],
     )
     scheduler.register_task(
         task_id="generate_signals",
@@ -1347,6 +1598,7 @@ def register_default_tasks(scheduler: DailyScheduler) -> None:
         func=_task_generate_signals,
         schedule="EOD",
         time_of_day="18:15",
+        data_dependencies=["technical_indicators", "market_influence_kb", "stock_personality"],
     )
     scheduler.register_task(
         task_id="feature_store",
@@ -1354,6 +1606,7 @@ def register_default_tasks(scheduler: DailyScheduler) -> None:
         func=_task_feature_store,
         schedule="EOD",
         time_of_day="18:30",
+        data_dependencies=["stock_prices", "watchlist"],
     )
     scheduler.register_task(
         task_id="drift_detection",
@@ -1361,6 +1614,7 @@ def register_default_tasks(scheduler: DailyScheduler) -> None:
         func=_task_drift_detection,
         schedule="daily",
         time_of_day="18:45",
+        data_dependencies=["stock_prediction", "technical_indicators"],
     )
     scheduler.register_task(
         task_id="generate_reports",
@@ -1368,6 +1622,7 @@ def register_default_tasks(scheduler: DailyScheduler) -> None:
         func=_task_generate_reports,
         schedule="daily",
         time_of_day="19:00",
+        data_dependencies=["scores", "stock_prediction", "fear_greed"],
     )
     scheduler.register_task(
         task_id="macro_correlation_analysis",
@@ -1375,6 +1630,7 @@ def register_default_tasks(scheduler: DailyScheduler) -> None:
         func=_task_macro_correlation_analysis,
         schedule="daily",
         time_of_day="19:15",
+        data_dependencies=["stock_prices:idx_equity", "macro_data", "cross_market_coefficients"],
     )
     scheduler.register_task(
         task_id="export_parquet",
@@ -1382,6 +1638,7 @@ def register_default_tasks(scheduler: DailyScheduler) -> None:
         func=_task_export_parquet,
         schedule="daily",
         time_of_day="19:30",
+        data_dependencies=["stock_prices", "technical_indicators", "scores"],
     )
     scheduler.register_task(
         task_id="backup_postgresql",
@@ -1389,6 +1646,7 @@ def register_default_tasks(scheduler: DailyScheduler) -> None:
         func=_task_backup_postgresql,
         schedule="daily",
         time_of_day="19:35",
+        data_dependencies=[],
     )
     scheduler.register_task(
         task_id="scrape_news",
@@ -1396,4 +1654,5 @@ def register_default_tasks(scheduler: DailyScheduler) -> None:
         func=_task_scrape_news,
         schedule="daily",
         time_of_day="20:00",
+        data_dependencies=["news"],
     )

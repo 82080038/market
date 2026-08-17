@@ -145,11 +145,14 @@ class NewsSentimentAnalyzer:
         self,
         method: str = "auto",  # "auto", "keyword", "transformer"
         model_name: str = "indobenchmark/indobert-base-p1",
-        device: str = "cuda:1",
+        device: str | None = None,
         tfidf_max_features: int = 100,
     ) -> None:
         self._method = method
         self._model_name = model_name
+        if device is None:
+            from market.compute.device import select_device
+            device = select_device("nlp_sentiment", data_size=1000)
         self._device = device
         self._tfidf_max_features = tfidf_max_features
 

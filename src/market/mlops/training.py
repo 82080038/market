@@ -23,17 +23,21 @@ import pandas as pd
 logger = logging.getLogger(__name__)
 
 
-def get_device() -> str:
+def get_device(data_size: int = 10_000) -> str:
     """Get best available device, checking cuda:1 first per project rules.
 
     Delegates to ``market.compute.device.select_device`` for VRAM-aware
     dispatch. Falls back to the legacy inline logic if the module is
     unavailable.
+
+    Args:
+        data_size: Number of samples in the training data. Below the LSTM
+            threshold (10,000), CPU is returned to avoid transfer overhead.
     """
     try:
         from market.compute.device import select_device
 
-        return select_device("lstm_training", data_size=0)
+        return select_device("lstm_training", data_size=data_size)
     except ImportError:
         pass
     # Legacy fallback.
@@ -93,7 +97,7 @@ class LSTMModel:
 
     def __init__(self, config: TrainingConfig) -> None:
         self.config = config
-        self.device = config.device or get_device()
+        self.device = config.device or None
         self._model: Any = None
         self._is_fitted = False
 
@@ -171,6 +175,8 @@ class LSTMModel:
             import torch.nn as nn
 
             n_features = X.shape[2]
+            if self.device is None:
+                self.device = get_device(data_size=X.shape[0])
             self._build_model(n_features)
 
             X_tensor = torch.FloatTensor(X).to(self.device)

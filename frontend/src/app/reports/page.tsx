@@ -68,8 +68,8 @@ export default function ReportsPage() {
     fetchTaxReport(taxYear);
   }, [fetchTradeLog, fetchDividends, fetchTaxReport, taxYear]);
 
-  const formatIDR = (v: number) =>
-    v.toLocaleString("id-ID", { minimumFractionDigits: 0, maximumFractionDigits: 0 });
+  const formatIDR = (v: number | undefined | null) =>
+    (v ?? 0).toLocaleString("id-ID", { minimumFractionDigits: 0, maximumFractionDigits: 0 });
 
   return (
     <div className="space-y-6">

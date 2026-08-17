@@ -9,12 +9,14 @@ from sqlalchemy.orm import Session
 
 from market.api._engines import engines
 from market.api._shared import _dataclass_to_dict, to_jakarta
+from market.api.cache import ttl_cache
 from market.db.engine import get_session
 
 router = APIRouter(prefix="/api", tags=["analysis"])
 
 
 @router.get("/stock/{ticker}")
+@ttl_cache(ttl_seconds=300, key_prefix="stock_summary")
 async def stock_summary(
     ticker: str,
     session: Annotated[Session, Depends(get_session)],
@@ -146,15 +148,12 @@ async def get_scores(
         v is None
         for v in [technical, fundamental, macro, global_market, relationship, sentiment]
     ):
-        return {
-            "ticker": ticker,
-            "message": "Provide factor scores as query params.",
-            "factors": [
-                "technical", "fundamental", "macro",
-                "global", "relationship", "sentiment",
-            ],
-        }
+        # Auto-fetch all scores from DB (including new factors)
+        result = engines.decision_engine.decide_with_db(ticker)
+        return dict(_dataclass_to_dict(result))
 
+    # Use provided scores + auto-fetch new factor scores from DB
+    extra_scores = engines.decision_engine.fetch_scores_from_db(ticker)
     result = engines.decision_engine.decide(
         ticker=ticker,
         technical=technical,
@@ -163,6 +162,12 @@ async def get_scores(
         global_market=global_market,
         relationship=relationship,
         sentiment=sentiment,
+        holiday=extra_scores.get("holiday"),
+        alpha=extra_scores.get("alpha"),
+        policy_event=extra_scores.get("policy_event"),
+        sector_rotation=extra_scores.get("sector_rotation"),
+        seasonal=extra_scores.get("seasonal"),
+        earnings=extra_scores.get("earnings"),
     )
     return dict(_dataclass_to_dict(result))
 
@@ -177,7 +182,22 @@ async def recommend(
     relationship: float | None = Query(None),
     sentiment: float | None = Query(None),
 ) -> dict[str, Any]:
-    """Get composite recommendation with XAI breakdown."""
+    """Get composite recommendation with XAI breakdown.
+
+    If no factor scores are provided, auto-fetches all available scores
+    from the database (including alpha, policy events, seasonal, earnings,
+    holiday effects) and combines them with prediction engine output.
+    """
+    if all(
+        v is None
+        for v in [technical, fundamental, macro, global_market, relationship, sentiment]
+    ):
+        # Full auto-decision: fetch all scores from DB
+        result = engines.decision_engine.decide_with_db(ticker)
+        return dict(_dataclass_to_dict(result))
+
+    # Use provided scores + auto-fetch new factor scores from DB
+    extra_scores = engines.decision_engine.fetch_scores_from_db(ticker)
     result = engines.decision_engine.decide(
         ticker=ticker,
         technical=technical,
@@ -186,11 +206,18 @@ async def recommend(
         global_market=global_market,
         relationship=relationship,
         sentiment=sentiment,
+        holiday=extra_scores.get("holiday"),
+        alpha=extra_scores.get("alpha"),
+        policy_event=extra_scores.get("policy_event"),
+        sector_rotation=extra_scores.get("sector_rotation"),
+        seasonal=extra_scores.get("seasonal"),
+        earnings=extra_scores.get("earnings"),
     )
     return dict(_dataclass_to_dict(result))
 
 
 @router.get("/advisory")
+@ttl_cache(ttl_seconds=300, key_prefix="advisory")
 async def advisory(
     market_regime: str = Query("neutral"),
     min_composite: float = Query(50.0),
@@ -209,6 +236,7 @@ async def advisory(
 
 
 @router.get("/readiness/{ticker}")
+@ttl_cache(ttl_seconds=600, key_prefix="readiness")
 async def readiness(
     ticker: str,
     sector: str | None = Query(None),
@@ -250,3 +278,131 @@ async def readiness(
         ticker, df, sector=sector, market_cap=market_cap, asset_class=asset_class,
     )
     return dict(_dataclass_to_dict(report))
+
+
+# ── Signal Weights ────────────────────────────────────────────────────────
+
+
+@router.get("/weights/{scope}")
+async def get_weights(
+    scope: str,
+    sector: str = Query("DEFAULT"),
+) -> dict[str, Any]:
+    """Get signal weights for a scope (market_context or decision_engine).
+
+    Query params:
+        sector: Sector-specific weights or 'DEFAULT'.
+    """
+    from market.analysis.weight_registry import WeightRegistry
+
+    weights = WeightRegistry.get_weights(scope, sector=sector)
+    return {"scope": scope, "sector": sector, "weights": weights, "count": len(weights)}
+
+
+@router.put("/weights/{scope}")
+async def update_weight(
+    scope: str,
+    signal_name: str = Query(...),
+    weight: float = Query(...),
+    sector: str = Query("DEFAULT"),
+) -> dict[str, Any]:
+    """Update a single signal weight.
+
+    Query params:
+        signal_name: Signal to update (e.g. 'alpha', 'fundamental').
+        weight: New weight value (0.0 to 1.0).
+        sector: Sector-specific or 'DEFAULT'.
+    """
+    from market.analysis.weight_registry import WeightRegistry
+
+    if not 0.0 <= weight <= 1.0:
+        raise HTTPException(400, "Weight must be between 0.0 and 1.0")
+
+    success = WeightRegistry.set_weight(scope, sector, signal_name, weight)
+    if not success:
+        raise HTTPException(500, "Failed to update weight")
+
+    return {"scope": scope, "sector": sector, "signal_name": signal_name, "weight": weight, "updated": True}
+
+
+@router.get("/weights/{scope}/history")
+async def get_weight_history(
+    scope: str,
+    sector: str = Query("DEFAULT"),
+    limit: int = Query(20),
+) -> dict[str, Any]:
+    """Get optimization history for a scope/sector."""
+    from market.analysis.weight_registry import WeightRegistry
+
+    history = WeightRegistry.get_optimization_history(scope, sector=sector, limit=limit)
+    return {"scope": scope, "sector": sector, "history": history, "count": len(history)}
+
+
+# ── Recompute Dependency Graph ────────────────────────────────────────────
+
+
+@router.get("/recompute/graph")
+async def get_recompute_graph() -> dict[str, Any]:
+    """Get the full recompute dependency graph.
+
+    Returns {function_name: [data_sources]} for all registered functions.
+    """
+    from market.analysis.recompute_graph import RecomputeGraph
+
+    graph = RecomputeGraph.get_full_graph()
+    sources = RecomputeGraph.get_all_data_sources()
+    return {"graph": graph, "data_sources": sources, "function_count": len(graph)}
+
+
+@router.get("/recompute/affected/{data_source}")
+async def get_affected_functions(data_source: str) -> dict[str, Any]:
+    """Get recompute functions affected by a data source update.
+
+    Args:
+        data_source: Table or data source name (e.g. 'stock_prices').
+    """
+    from market.analysis.recompute_graph import RecomputeGraph
+
+    affected = RecomputeGraph.get_affected_functions(data_source)
+    return {"data_source": data_source, "affected_functions": affected, "count": len(affected)}
+
+
+@router.post("/recompute/trigger")
+async def trigger_selective_recompute(
+    data_source: str = Query(..., description="Data source that was updated"),
+    triggered_by: str = Query("manual", description="What triggered this"),
+    dry_run: bool = Query(False, description="Only show what would be triggered"),
+) -> dict[str, Any]:
+    """Trigger selective recompute for functions depending on data_source.
+
+    Only modules that depend on the specified data source are recomputed.
+    Other modules are skipped. Results are logged to recompute_triggers table.
+    """
+    from market.analysis.recompute_graph import RecomputeGraph
+
+    result = RecomputeGraph.trigger_recompute(
+        data_source=data_source,
+        triggered_by=triggered_by,
+        dry_run=dry_run,
+    )
+    return result
+
+
+@router.get("/recompute/history")
+async def get_recompute_history(
+    limit: int = Query(20),
+) -> dict[str, Any]:
+    """Get recent selective recompute trigger history."""
+    from market.analysis.recompute_graph import RecomputeGraph
+
+    history = RecomputeGraph.get_trigger_history(limit=limit)
+    return {"history": history, "count": len(history)}
+
+
+@router.get("/recompute/dependencies/{function_name}")
+async def get_function_dependencies(function_name: str) -> dict[str, Any]:
+    """Get all data sources a recompute function depends on."""
+    from market.analysis.recompute_graph import RecomputeGraph
+
+    deps = RecomputeGraph.get_function_dependencies(function_name)
+    return {"function_name": function_name, "dependencies": deps, "count": len(deps)}

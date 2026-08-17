@@ -10,6 +10,7 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from market.api._shared import to_jakarta
+from market.api.cache import ttl_cache
 from market.db.engine import get_session
 from market.db.models import (
     OHLCV,
@@ -150,6 +151,7 @@ async def data_fetch(
 
 
 @router.get("/quality/{ticker}")
+@ttl_cache(ttl_seconds=300, key_prefix="data_quality")
 async def data_quality(
     ticker: str,
     session: Annotated[Session, Depends(get_session)] = None,  # type: ignore[assignment]

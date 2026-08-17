@@ -1,8 +1,10 @@
 """Market Session Manager (catatan.md TAHAP 1 -- Prompt 1.1).
 
-Menyediakan status sesi real-time untuk 10 bursa utama: IDX, NYSE, NASDAQ,
+Menyediakan status sesi real-time untuk 21 bursa: IDX, NYSE, NASDAQ,
 TSE (Tokyo), HSE (Hong Kong), LSE (London), XETRA (Frankfurt), KRX (Korea),
-SGX (Singapore), ASX (Australia).
+SGX (Singapore), ASX (Australia), SET (Thailand), PSE (Philippines),
+NSE (India), TWSE (Taiwan), Euronext Paris, Borsa Italiana, BME Madrid,
+B3 Brasil, TSX (Toronto), Tadawul (Saudi), JSE (South Africa).
 
 Fitur:
 - Jam buka/tutup per bursa dalam UTC dan WIB (UTC+7).
@@ -61,7 +63,7 @@ class ExchangeSchedule:
     after_close_local: tuple[int, int] | None = None  # end of after-hours
 
 
-# ── 10 bursa utama (catatan.md L564) ────────────────────────────────────────
+# ── 21 bursa utama ───────────────────────────────────────────────────────────
 # Jam lokal regular session; pre/after-hours opsional.
 # Sumber: situs resmi masing-masing bursa (per 2026).
 _EXCHANGES: dict[str, ExchangeSchedule] = {
@@ -105,6 +107,56 @@ _EXCHANGES: dict[str, ExchangeSchedule] = {
         "XASX", "Australian Securities Exchange", ZoneInfo("Australia/Sydney"),
         (10, 0), (16, 0), pre_open_local=(7, 0),
     ),
+    # ── ASEAN peers (2-way causality dengan IDX) ──
+    "XBKK": ExchangeSchedule(
+        "XBKK", "Stock Exchange of Thailand", ZoneInfo("Asia/Bangkok"),
+        (10, 0), (16, 30), pre_open_local=(9, 30),
+    ),
+    "XPHS": ExchangeSchedule(
+        "XPHS", "Philippine Stock Exchange", ZoneInfo("Asia/Manila"),
+        (9, 30), (15, 30), pre_open_local=(9, 0),
+    ),
+    # ── Asia peers ──
+    "XNSE": ExchangeSchedule(
+        "XNSE", "National Stock Exchange of India", ZoneInfo("Asia/Kolkata"),
+        (9, 15), (15, 30), pre_open_local=(9, 0),
+    ),
+    "XTAI": ExchangeSchedule(
+        "XTAI", "Taiwan Stock Exchange", ZoneInfo("Asia/Taipei"),
+        (9, 0), (13, 30),
+    ),
+    # ── EU ──
+    "XPAR": ExchangeSchedule(
+        "XPAR", "Euronext Paris", ZoneInfo("Europe/Paris"),
+        (9, 0), (17, 30), pre_open_local=(7, 15),
+    ),
+    "XMTA": ExchangeSchedule(
+        "XMTA", "Borsa Italiana", ZoneInfo("Europe/Rome"),
+        (9, 0), (17, 30), pre_open_local=(8, 0),
+    ),
+    "XMAD": ExchangeSchedule(
+        "XMAD", "BME Spanish Exchanges", ZoneInfo("Europe/Madrid"),
+        (9, 0), (17, 30), pre_open_local=(8, 0),
+    ),
+    # ── Americas ──
+    "BVMF": ExchangeSchedule(
+        "BVMF", "B3 Brasil Bolsa Balcão", ZoneInfo("America/Sao_Paulo"),
+        (10, 0), (17, 30), pre_open_local=(9, 45),
+    ),
+    "XTSX": ExchangeSchedule(
+        "XTSX", "TMX Group (Toronto)", ZoneInfo("America/Toronto"),
+        (9, 30), (16, 0), pre_open_local=(7, 0),
+    ),
+    # ── Middle East ──
+    "XSAU": ExchangeSchedule(
+        "XSAU", "Saudi Stock Exchange (Tadawul)", ZoneInfo("Asia/Riyadh"),
+        (10, 0), (15, 0),
+    ),
+    # ── Africa ──
+    "XJSE": ExchangeSchedule(
+        "XJSE", "Johannesburg Stock Exchange", ZoneInfo("Africa/Johannesburg"),
+        (9, 0), (17, 0),
+    ),
 }
 
 # Alias ramah pengguna (catatan.md menyebut IDX, NYSE, NASDAQ, TSE, HSI, LSE,
@@ -126,6 +178,30 @@ _ALIASES: dict[str, str] = {
     "SINGAPORE": "XSES",
     "ASX": "XASX",
     "AUSTRALIA": "XASX",
+    # New exchanges
+    "SET": "XBKK",
+    "THAILAND": "XBKK",
+    "PSE": "XPHS",
+    "PHILIPPINES": "XPHS",
+    "NSE": "XNSE",
+    "INDIA": "XNSE",
+    "TWSE": "XTAI",
+    "TAIWAN": "XTAI",
+    "PARIS": "XPAR",
+    "EURONEXT": "XPAR",
+    "MILAN": "XMTA",
+    "ITALY": "XMTA",
+    "MADRID": "XMAD",
+    "SPAIN": "XMAD",
+    "B3": "BVMF",
+    "BRASIL": "BVMF",
+    "BRAZIL": "BVMF",
+    "TSX": "XTSX",
+    "CANADA": "XTSX",
+    "TADAWUL": "XSAU",
+    "SAUDI": "XSAU",
+    "JSE": "XJSE",
+    "SOUTH_AFRICA": "XJSE",
 }
 
 
@@ -271,6 +347,83 @@ class MarketSessionManager:
             "next_open_utc": next_open.isoformat(),
             "next_open_wib": next_open.astimezone(WIB).isoformat(),
         }
+
+    def get_next_holiday(self, exchange: str, max_days: int = 90) -> dict | None:
+        """Get next upcoming holiday for an exchange.
+
+        Returns dict with keys: mic_code, date, name, days_until.
+        Returns None if no holiday within max_days.
+        """
+        mic = _resolve_mic(exchange)
+        local = self._now.astimezone(_EXCHANGES[mic].tz)
+        try:
+            with get_engine().connect() as conn:
+                row = conn.execute(
+                    text(
+                        "SELECT holiday_date, holiday_name "
+                        "FROM exchange_holidays "
+                        "WHERE mic_code = :mic AND holiday_date > :d "
+                        "ORDER BY holiday_date LIMIT 1"
+                    ),
+                    {"mic": mic, "d": local.date()},
+                ).first()
+        except Exception as exc:
+            logger.debug("exchange_holidays lookup failed: %s", exc)
+            return None
+        if row is None:
+            return None
+        h_date = row[0]
+        h_name = row[1] or "Market Holiday"
+        days_until = (h_date - local.date()).days
+        if days_until > max_days:
+            return None
+        return {
+            "mic_code": mic,
+            "date": h_date.isoformat(),
+            "name": h_name,
+            "days_until": days_until,
+        }
+
+    def get_upcoming_holidays(self, days: int = 30) -> list[dict]:
+        """Get upcoming holidays for ALL exchanges within N days.
+
+        Returns list of dicts sorted by date:
+            {mic_code, exchange_name, date, name, days_until}
+        """
+        local_now = self._now
+        results = []
+        try:
+            with get_engine().connect() as conn:
+                rows = conn.execute(
+                    text(
+                        "SELECT mic_code, holiday_date, holiday_name "
+                        "FROM exchange_holidays "
+                        "WHERE holiday_date > :d AND holiday_date <= :end "
+                        "ORDER BY holiday_date, mic_code"
+                    ),
+                    {
+                        "d": local_now.date(),
+                        "end": local_now.date() + timedelta(days=days),
+                    },
+                ).fetchall()
+        except Exception as exc:
+            logger.debug("exchange_holidays lookup failed: %s", exc)
+            return []
+        for r in rows:
+            mic = r[0]
+            h_date = r[1]
+            h_name = r[2] or "Market Holiday"
+            sched = _EXCHANGES.get(mic)
+            ex_name = sched.name if sched else mic
+            days_until = (h_date - local_now.date()).days
+            results.append({
+                "mic_code": mic,
+                "exchange_name": ex_name,
+                "date": h_date.isoformat(),
+                "name": h_name,
+                "days_until": days_until,
+            })
+        return results
 
     # ── Integrasi cron ──────────────────────────────────────────────────────
 

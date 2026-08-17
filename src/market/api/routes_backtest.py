@@ -8,12 +8,14 @@ from fastapi import APIRouter, Query
 
 from market.api._engines import engines
 from market.api._shared import _dataclass_to_dict, _generate_mock_instruments
+from market.api.cache import ttl_cache
 from market.backtest.autonomous import BacktestTrigger
 
 router = APIRouter(prefix="/api", tags=["backtest"])
 
 
 @router.get("/backtest/run")
+@ttl_cache(ttl_seconds=600, key_prefix="backtest_run")
 async def run_backtest(
     ticker: str = Query(...),
     strategy: str = Query("buy_hold", pattern="^(buy_hold|ma_crossover|conviction)$"),

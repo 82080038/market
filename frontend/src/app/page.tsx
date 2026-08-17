@@ -26,18 +26,17 @@ interface IhsgData {
 }
 
 interface PortfolioSummary {
-  nav: number;
-  pnl_unrealized: number;
-  pnl_realized: number;
-  positions: Array<{
-    ticker: string;
+  total_nav: number;
+  cash: number;
+  positions: Record<string, {
     shares: number;
     avg_cost: number;
     current_price: number;
     market_value: number;
-    pnl: number;
-    weight: number;
+    unrealized_pnl: number;
+    weight_pct: number;
   }>;
+  n_positions: number;
 }
 
 export default function DashboardPage() {
@@ -88,11 +87,11 @@ export default function DashboardPage() {
           </CardHeader>
           <CardContent>
             <p className="text-2xl font-bold">
-              Rp {portfolio ? portfolio.nav.toLocaleString("id-ID") : "0"}
+              Rp {portfolio ? portfolio.total_nav.toLocaleString("id-ID") : "0"}
             </p>
             <p className="text-xs text-muted-foreground mt-1">
-              {portfolio && portfolio.positions?.length > 0
-                ? `${portfolio.positions.length} posisi aktif`
+              {portfolio && portfolio.n_positions > 0
+                ? `${portfolio.n_positions} posisi aktif`
                 : "Belum ada posisi aktif"}
             </p>
           </CardContent>
@@ -107,8 +106,8 @@ export default function DashboardPage() {
           </CardHeader>
           <CardContent>
             <p className="text-2xl font-bold text-primary">
-              {portfolio && portfolio.pnl_unrealized
-                ? `${portfolio.pnl_unrealized >= 0 ? "+" : ""}${portfolio.pnl_unrealized.toLocaleString("id-ID", { style: "currency", currency: "IDR", maximumFractionDigits: 0 })}`
+              {portfolio && portfolio.n_positions > 0
+                ? `${Object.values(portfolio.positions).reduce((s, p) => s + (p.unrealized_pnl ?? 0), 0) >= 0 ? "+" : ""}Rp ${Object.values(portfolio.positions).reduce((s, p) => s + (p.unrealized_pnl ?? 0), 0).toLocaleString("id-ID", { maximumFractionDigits: 0 })}`
                 : "+0.00%"}
             </p>
             <p className="text-xs text-muted-foreground mt-1">
@@ -125,9 +124,9 @@ export default function DashboardPage() {
             </div>
           </CardHeader>
           <CardContent>
-            <p className="text-2xl font-bold">{portfolio?.positions?.length ?? 0}</p>
+            <p className="text-2xl font-bold">{portfolio?.n_positions ?? 0}</p>
             <p className="text-xs text-muted-foreground mt-1">
-              {portfolio?.positions?.length ? `${new Set(portfolio.positions.map((p) => p.ticker)).size} sektor` : "0 sektor"}
+              {portfolio && portfolio.n_positions > 0 ? `${new Set(Object.keys(portfolio.positions)).size} sektor` : "0 sektor"}
             </p>
           </CardContent>
         </Card>

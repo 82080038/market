@@ -15,6 +15,7 @@ from sqlalchemy import (
     CheckConstraint,
     Date,
     DateTime,
+    Float,
     ForeignKey,
     Index,
     Integer,
@@ -24,6 +25,7 @@ from sqlalchemy import (
     String,
     Text,
     UniqueConstraint,
+    func,
     text,
 )
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column, relationship
@@ -214,6 +216,146 @@ class Score(Base):
     score: Mapped[float] = mapped_column(Numeric(5, 2), nullable=False)
     breakdown: Mapped[str | None] = mapped_column(Text, nullable=True)
     as_of: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_utcnow)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_utcnow)
+
+
+class SignalWeight(Base):
+    """Dynamic signal weights for MarketContext and DecisionEngine.
+
+    Scope: 'market_context' or 'decision_engine'.
+    Sector: sector-specific override or 'DEFAULT'.
+    Allows runtime weight updates without code changes.
+    """
+
+    __tablename__ = "signal_weights"
+    __table_args__ = (
+        UniqueConstraint("scope", "sector", "signal_name", name="uq_signal_weights_scope_sector_signal"),
+    )
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    scope: Mapped[str] = mapped_column(String(50), nullable=False, index=True)
+    sector: Mapped[str] = mapped_column(String(50), nullable=False, index=True)
+    signal_name: Mapped[str] = mapped_column(String(50), nullable=False)
+    weight: Mapped[float] = mapped_column(Numeric(6, 4), nullable=False)
+    is_active: Mapped[bool] = mapped_column(Boolean, default=True)
+    optimized_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    optimization_score: Mapped[float | None] = mapped_column(Numeric(8, 4), nullable=True)
+    optimization_method: Mapped[str | None] = mapped_column(String(50), nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_utcnow)
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_utcnow)
+
+
+class RecomputeDependency(Base):
+    """Maps recompute functions to their input data sources.
+
+    When a data source is updated, only functions that depend on it
+    are triggered for recompute — avoiding unnecessary full recompute.
+
+    Also tracks per-function runtime statistics for duration/row estimation.
+    """
+
+    __tablename__ = "recompute_dependencies"
+    __table_args__ = (
+        UniqueConstraint("function_name", "data_source", name="uq_recompute_dep_fn_source"),
+    )
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    function_name: Mapped[str] = mapped_column(String(100), nullable=False, index=True)
+    data_source: Mapped[str] = mapped_column(String(100), nullable=False, index=True)
+    source_type: Mapped[str] = mapped_column(String(20), nullable=False, default="table")
+    is_required: Mapped[bool] = mapped_column(Boolean, default=True)
+    description: Mapped[str | None] = mapped_column(Text, nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_utcnow)
+
+    # Runtime statistics
+    last_run_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    last_duration_seconds: Mapped[float | None] = mapped_column(Numeric(10, 2), nullable=True)
+    last_rows_affected: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    avg_duration_seconds: Mapped[float | None] = mapped_column(Numeric(10, 2), nullable=True)
+    avg_rows_affected: Mapped[float | None] = mapped_column(Numeric(12, 2), nullable=True)
+    run_count: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    last_data_seen: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+
+
+class RecomputeRunStats(Base):
+    """Per-run statistics for each recompute function execution.
+
+    Tracks duration, rows, tickers processed/skipped, and data freshness
+    for historical analysis and future estimation.
+    """
+
+    __tablename__ = "recompute_run_stats"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    function_name: Mapped[str] = mapped_column(String(100), nullable=False, index=True)
+    trigger_id: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    started_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    completed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    duration_seconds: Mapped[float | None] = mapped_column(Numeric(10, 2), nullable=True)
+    rows_affected: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    tickers_processed: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    tickers_skipped: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    incremental: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
+    data_freshness_seconds: Mapped[float | None] = mapped_column(Numeric(12, 2), nullable=True)
+    status: Mapped[str] = mapped_column(String(20), nullable=False, default="completed")
+    error_message: Mapped[str | None] = mapped_column(Text, nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_utcnow)
+
+
+class RecomputePrediction(Base):
+    """Pre-computed duration/row predictions for recompute functions.
+
+    Generated by RecomputeAnalyzer from historical run stats.
+    Read by RecomputeEstimator to provide estimates before running.
+    Includes a feedback loop: actual vs predicted is tracked.
+    """
+
+    __tablename__ = "recompute_predictions"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    function_name: Mapped[str] = mapped_column(String(100), nullable=False, index=True)
+    predicted_duration_s: Mapped[float] = mapped_column(Numeric(10, 2), nullable=False)
+    predicted_rows: Mapped[int] = mapped_column(Integer, nullable=False)
+    predicted_tickers: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    confidence_score: Mapped[float] = mapped_column(Numeric(4, 3), nullable=False, default=0.0)
+    # Factors
+    ticker_count: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    data_volume_mb: Mapped[float | None] = mapped_column(Numeric(10, 2), nullable=True)
+    incremental: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
+    time_of_day: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    day_of_week: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    # Accuracy tracking
+    actual_duration_s: Mapped[float | None] = mapped_column(Numeric(10, 2), nullable=True)
+    actual_rows: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    duration_error_pct: Mapped[float | None] = mapped_column(Numeric(8, 2), nullable=True)
+    rows_error_pct: Mapped[float | None] = mapped_column(Numeric(8, 2), nullable=True)
+    was_used: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
+    # Metadata
+    analysis_method: Mapped[str] = mapped_column(String(50), nullable=False, default="rolling_avg")
+    sample_size: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    analyzed_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, default=_utcnow)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_utcnow)
+
+
+class RecomputeTrigger(Base):
+    """Logs data update events and which recomputes were triggered.
+
+    Tracks selective recompute execution for audit and debugging.
+    """
+
+    __tablename__ = "recompute_triggers"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    triggered_by: Mapped[str] = mapped_column(String(100), nullable=False)
+    data_source_updated: Mapped[str] = mapped_column(String(100), nullable=False, index=True)
+    functions_triggered: Mapped[str] = mapped_column(Text, nullable=False, comment="JSON list")
+    functions_skipped: Mapped[str | None] = mapped_column(Text, nullable=True, comment="JSON list")
+    status: Mapped[str] = mapped_column(String(20), nullable=False, default="pending", index=True)
+    started_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    completed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    duration_seconds: Mapped[float | None] = mapped_column(Numeric(10, 2), nullable=True)
+    error_message: Mapped[str | None] = mapped_column(Text, nullable=True)
+    rows_affected: Mapped[int | None] = mapped_column(Integer, nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_utcnow)
 
 
@@ -738,6 +880,20 @@ class Instrument(Base):
     index_category: Mapped[str | None] = mapped_column(String(30), nullable=True)
     region: Mapped[str | None] = mapped_column(String(10), nullable=True)
     updated_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    # Fetch metadata (migration 0027) — DB as source of truth for fetch scheduling
+    data_layer: Mapped[str | None] = mapped_column(String(20), nullable=True)
+    fetch_frequency: Mapped[str | None] = mapped_column(String(20), nullable=True)
+    last_fetch_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    next_fetch_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    fetch_status: Mapped[str | None] = mapped_column(String(20), nullable=True, default="NEVER_FETCHED")
+    # Data source metadata (migration 0028-0029) — WHERE & HOW to fetch data
+    data_source_type: Mapped[str | None] = mapped_column(String(30), nullable=True)
+    data_source_url: Mapped[str | None] = mapped_column(String(500), nullable=True)
+    data_source_fallback: Mapped[str | None] = mapped_column(String(30), nullable=True)
+    fetch_adapter: Mapped[str | None] = mapped_column(String(50), nullable=True)
+    data_source_metadata: Mapped[dict | None] = mapped_column(JSON, nullable=True)
+    delisting_reason: Mapped[str | None] = mapped_column(Text, nullable=True)
+    merged_to_ticker: Mapped[str | None] = mapped_column(String(30), nullable=True)
 
 
 class StockPrice(Base):
@@ -788,6 +944,10 @@ class Exchange(Base):
     data_suffix: Mapped[str | None] = mapped_column(String(10), nullable=True)
     trading_status: Mapped[str] = mapped_column(String(20), default="active")
     updated_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    # Data source metadata (migration 0029) — exchange-level fetch routing
+    primary_data_source: Mapped[str | None] = mapped_column(String(30), nullable=True)
+    data_source_url: Mapped[str | None] = mapped_column(String(500), nullable=True)
+    data_source_fallback: Mapped[str | None] = mapped_column(String(30), nullable=True)
 
 
 class BrokerFlow(Base):
@@ -1094,6 +1254,9 @@ class SchedulerState(Base):
 
     Stores last_run timestamp and last_status per task so the scheduler
     can resume after application restart and catch up on missed executions.
+    Also tracks next_run_at (pre-computed), is_stale (missed runs),
+    data_dependencies (what DB data the task needs), and data_ready
+    (whether pre-loaded data is available).
     """
 
     __tablename__ = "scheduler_state"
@@ -1104,6 +1267,13 @@ class SchedulerState(Base):
     last_error: Mapped[str | None] = mapped_column(Text, nullable=True)
     run_count: Mapped[int] = mapped_column(Integer, default=0)
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_utcnow, onupdate=_utcnow)
+    next_run_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    is_stale: Mapped[bool] = mapped_column(Boolean, default=False)
+    data_dependencies: Mapped[dict | None] = mapped_column(JSON, nullable=True)
+    data_ready: Mapped[bool] = mapped_column(Boolean, default=False)
+    last_result: Mapped[dict | None] = mapped_column(JSON, nullable=True)
+    is_catchup: Mapped[bool] = mapped_column(Boolean, default=False)
+    last_duration_seconds: Mapped[float | None] = mapped_column(Float, nullable=True)
 
 
 class RecomputeWatermark(Base):
@@ -1523,3 +1693,45 @@ class StyleRecommendationReason(Base):
     reason_text: Mapped[str] = mapped_column(Text, nullable=False)
     supporting_data: Mapped[dict | None] = mapped_column(JSON, nullable=True)
     created_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+
+
+class MarketInfluenceKB(Base):
+    """Market Influence Knowledge Base — central influence mapping.
+
+    Consolidates sector-global links, commodity sensitivity, Granger causality,
+    cross-market coefficients, and macro policy into one queryable table.
+    Migration 0030.
+    """
+
+    __tablename__ = "market_influence_kb"
+    __table_args__ = (
+        UniqueConstraint(
+            "target_ticker",
+            "source_ticker",
+            "lag_days",
+            "influence_type",
+            name="uq_mikb_target_source_lag_type",
+        ),
+    )
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    target_ticker: Mapped[str] = mapped_column(String(30), nullable=False, index=True)
+    target_sector: Mapped[str | None] = mapped_column(String(50), nullable=True)
+    source_ticker: Mapped[str] = mapped_column(String(30), nullable=False, index=True)
+    source_name: Mapped[str | None] = mapped_column(String(100), nullable=True)
+    source_layer: Mapped[str | None] = mapped_column(String(20), nullable=True)
+    influence_type: Mapped[str] = mapped_column(String(30), nullable=False)
+    direction: Mapped[str] = mapped_column(String(10), nullable=False)
+    lag_days: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    strength: Mapped[Decimal | None] = mapped_column(Numeric(5, 4), nullable=True)
+    p_value: Mapped[Decimal | None] = mapped_column(Numeric(8, 5), nullable=True)
+    mechanism: Mapped[str | None] = mapped_column(Text, nullable=True)
+    regime: Mapped[str | None] = mapped_column(String(10), nullable=True)
+    source_table: Mapped[str | None] = mapped_column(String(50), nullable=True)
+    is_active: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)
+    created_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), nullable=True
+    )
+    updated_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), nullable=True
+    )

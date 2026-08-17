@@ -1123,3 +1123,321 @@ ruff lint clean, 3 Alembic migrations (0024-0026) applied ke PostgreSQL.
   Next.js bisa menampilkan rekomendasi.
 - Integrasi `MarketSessionManager.should_run_pipeline()` ke cron trigger
   untuk auto-trigger setelah IDX close (saat ini cron jalan fixed 16:15 WIB).
+
+---
+
+## Audit Render Data ke Database (17 Agustus 2026)
+
+### 1. INVENTARISASI DATA RENDER
+
+#### 1.1 Modul Data Fetching (External → DB)
+
+| Modul | File | Target Table | Sumber Data | Frekuensi | Scheduler Task |
+|-------|------|-------------|-------------|-----------|----------------|
+| DataFetchPipeline EOD | `src/market/pipelines/data_fetch.py` | `stock_prices` | yfinance (IDX OHLCV) | EOD 17:30 WIB | `fetch_eod` |
+| DataFetchPipeline Global | `src/market/pipelines/data_fetch.py` | `stock_prices` | yfinance (global indices/commodities) | EOD 17:35 WIB | `fetch_global` |
+| DataFetchPipeline Macro | `src/market/pipelines/data_fetch.py` | `macro_data` | yfinance (^TNX, ^VIX, GC=F, CL=F, IDR=X, DX-Y.NYB) | EOD 17:40 WIB | `fetch_macro` |
+| DataFetchPipeline Intraday | `src/market/pipelines/data_fetch.py` | `stock_prices` (15m) | yfinance (15-min poll) | every_15min 09:00-17:00 | `fetch_intraday` |
+| MacroeconomicIndicators | `src/market/scheduler_tasks.py` | `macroeconomic_indicators` | yfinance (USD/IDR, VIX, Gold, Brent) | EOD 17:42 WIB | `fetch_macroeconomic_indicators` |
+| FundamentalFetcher | `scripts/fetch_fundamental.py` | `fundamental_data` | yfinance Ticker.info snapshot | Weekly Sat 10:00 WIB | `fetch_fundamental` |
+| FundamentalQuarterly | `scripts/backfill_fundamental_quarterly.py` | `fundamental_data` | yfinance quarterly financials | Monthly 12:00 WIB | `fetch_fundamental_quarterly` |
+| SatelliteFetcher | `src/market/data/satellite_fetcher.py` | `satellite_observations`, `satellite_ticker_locations` | NASA POWER API + Sentinel-2 (Planetary Computer) | Weekly Sat 13:00 WIB | `fetch_satellite` |
+| MacroDataFetcher | `src/market/data/macro_data_fetcher.py` | `macro_data` | BPS, World Bank, NOAA, yfinance commodities | Monthly 12:30 WIB | `fetch_macro_fred` |
+| NewsScraper | `src/market/scheduler_tasks.py` | `news`, `news_sentiment` | RSS feeds (keyword NLP EN+ID) | Daily | `scrape_news` |
+| AstronacciEngine | `src/market/analysis/astronacci.py` | `astronacci_cycles` | PyEphem (astronomical computation) | Weekly Sat 14:00 WIB | `compute_astronacci_cycles` |
+| BackfillIndices | `scripts/backfill_indices.py` | `stock_prices` | yfinance (IDX/global indices) | Manual | — |
+| BackfillIdxApiIndices | `scripts/backfill_idx_api_indices.py` | `stock_prices` | idx.co.id API (cloudscraper) | Manual | — |
+| BackfillCommodityFutures | `scripts/backfill_commodity_futures.py` | `stock_prices` | yfinance (CL=F, GC=F, HG=F, etc.) | Manual | — |
+| BackfillForex | `scripts/backfill_forex.py` | `stock_prices` | yfinance (FX pairs) | Manual | — |
+| BackfillFearGreed | `scripts/backfill_fear_greed.py` | `fear_greed` | alternative.me F&G API | Manual | — |
+| BackfillRiskMetrics | `scripts/backfill_risk_metrics.py` | `daily_risk_metrics` | Computed from OHLCV (historical VaR/CVaR) | Manual | — |
+| BackfillTechnicalIndicators | `scripts/backfill_technical_indicators.py` | `technical_indicators` | Computed from OHLCV (historical) | Manual | — |
+| BackfillAvgVolume | `scripts/backfill_avg_volume.py` | `stock_personality` | Computed from OHLCV | Manual | — |
+| BackfillBrokerTxns | `scripts/backfill_broker_transactions.py` | `broker_transactions` | Rendered from OHLCV volume | Manual | — |
+| BackfillWideTables | `scripts/backfill_wide_tables.py` | `technical_indicators_wide`, `stock_prediction` | Computed from OHLCV | Manual | — |
+| BackfillHistoricalNews | `scripts/backfill_historical_news.py` | `news`, `news_sentiment` | yfinance news API | Manual | — |
+| BatchComputePredictions | `scripts/batch_compute_predictions.py` | `stock_personality`, `stock_prediction` | MLSignalProvider + PredictionEngine | Manual | — |
+| PopulateGhostTables | `scripts/populate_ghost_tables.py` | `brokers`, `system_state`, `render_log`, `watchlist`, `orders`, `positions`, `trade_journal`, `equity_snapshots` | DB-derived seed data | Manual | — |
+| PersistAiWeights | `scripts/persist_ai_weights.py` | `ai_weights` | AI weight computation | Manual | — |
+| SeedFromParquet | `scripts/seed_from_parquet.py` | `instruments`, `stock_prices` | Parquet archive | Manual | — |
+
+#### 1.2 Modul Recompute (OHLCV → Derived Data)
+
+| Modul | File | Target Table | Sumber Data | Frekuensi | Scheduler Task |
+|-------|------|-------------|-------------|-----------|----------------|
+| recompute_technical_indicators | `src/market/analysis/recompute.py` | `technical_indicators`, `technical_indicators_wide` | Computed from OHLCV | EOD 18:00 WIB | `recompute` |
+| recompute_scores | `src/market/analysis/recompute.py` | `scores` | 6 analysis engines (tech, fund, macro, global, rel, sentiment) | EOD 18:00 WIB | `recompute` |
+| recompute_relationship_matrix | `src/market/analysis/recompute.py` | `relationship_matrix` | Cross-asset correlation (30/60/90/180/360 windows) | EOD 18:00 WIB | `recompute` |
+| recompute_cross_market | `src/market/multi_asset/cross_market.py` | `relationship_matrix` | Cross-market coefficients | EOD 18:00 WIB | `recompute` |
+| recompute_fear_greed | `src/market/analysis/recompute.py` | `fear_greed` | Computed from market data | EOD 18:00 WIB | `recompute` |
+| recompute_stock_personality | `src/market/analysis/recompute.py` | `stock_personality` | InstrumentProfiler | EOD 18:00 WIB | `recompute` |
+| recompute_ml_labels | `src/market/analysis/recompute.py` | `ml_labels` | ATR-adjusted barriers from OHLCV | EOD 18:00 WIB | `recompute` |
+| recompute_market_regimes | `src/market/analysis/recompute.py` | `market_regimes` | IHSG MA50/MA200 + VIX + FG + foreign flow | EOD 18:00 WIB | `recompute` |
+
+#### 1.3 Modul Analysis (On-Demand / Scheduled)
+
+| Modul | File | Target Table | Sumber Data | Frekuensi | Scheduler Task |
+|-------|------|-------------|-------------|-----------|----------------|
+| InstrumentBehaviorProfiler | `src/market/analysis/instrument_profiler.py` | `instrument_behavior_profiles` | Computed from OHLCV (28 profile metrics) | On-demand | — |
+| CrossMarketCoefficientEngine | `src/market/analysis/cross_market_coefficients.py` | `cross_market_coefficients` | Granger causality + asymmetric up/down | On-demand | — |
+| TradingStyleAdvisor | `src/market/advisory/trading_style_advisor.py` | `user_trading_profiles`, `trading_style_recommendations`, `style_recommendation_reasons` | User profile + instrument profiles | On-demand | — |
+| RecommendationEngine | `src/market/analysis/recommendation_engine.py` | — (in-memory) | Enhanced signal generator | On-demand | — |
+| PatternDetector | `src/market/analysis/pattern_detector.py` | `pattern_analysis` | Chart pattern detection from OHLCV | On-demand | — |
+| MacroCorrelationAnalysis | `src/market/scheduler_tasks.py` | `causal_relationships` | Granger causality (macro ↔ stock) | Daily 19:15 WIB | `macro_correlation_analysis` |
+| WeeklyHrpRecompute | `src/market/scheduler_tasks.py` | — (in-memory + JSON) | HRP portfolio optimization | Weekly Sat 10:00 WIB | `weekly_hrp_recompute` |
+| StrategyAssignment | `src/market/scheduler_tasks.py` | `strategy_assignment` | Strategy selector | Weekly Sat 11:00 WIB | `strategy_assignment` |
+| DriftDetection | `src/market/scheduler_tasks.py` | — (in-memory) | PSI feature drift | Daily 18:45 WIB | `drift_detection` |
+| TrackKpi | `src/market/scheduler_tasks.py` | `kpi_history` | KPI computation vs targets | Weekly Sat 13:30 WIB | `track_kpi` |
+| ExportParquet | `src/market/data/sync_to_parquet.py` | `parquet_sync_state` | DB → Parquet sync | Daily 19:30 WIB | `export_parquet` |
+| BackupPostgresql | `src/market/scheduler_tasks.py` | — (filesystem) | pg_dump backup | Daily 19:35 WIB | `backup_postgresql` |
+| AblationReport | `src/market/ablation/ablation_report.py` | `ablation_runs`, `ablation_scorecards` | Engine ablation framework | Manual | — |
+
+### 2. VALIDASI KELENGKAPAN DATA
+
+#### 2.1 Tabel Inventaris Utama (88 tabel total, 70 non-partition)
+
+| Tabel | Rows | Tickers | Date Range | Last Update | Days Stale | Status |
+|-------|------|---------|------------|-------------|------------|--------|
+| **stock_prices** | 3,436,646 | 1,096 | 1927-12-31 s/d 2026-08-15 | 2026-08-15 | 2 | **OK** |
+| **stock_prices_default** | 3,152,122 | — | (partition parent) | — | — | — |
+| **ml_labels** | 9,873,724 | 962 | 2000-04-19 s/d 2026-08-13 | 2026-08-13 | 4 | **OK** |
+| **daily_risk_metrics** | 8,925,230 | 1,024 | 2000-06-21 s/d 2026-08-12 | 2026-08-12 | 5 | **OK** |
+| **technical_indicators_wide** | 3,055,232 | 1,024 | 2000-03-30 s/d 2026-08-16 | 2026-08-16 | 1 | **OK** |
+| **foreign_flow** | 1,253,802 | 983 | 2019-07-29 s/d 2026-08-03 | 2026-08-03 | 14 | **STALE** |
+| **daily_trading_stats** | 1,082,968 | 983 | 2019-07-29 s/d 2026-08-05 | 2026-08-05 | 12 | **STALE** |
+| **broker_transactions** | 347,344 | 523 | 2024-01-02 s/d 2026-08-08 | 2026-08-08 | 9 | **OK** |
+| **audit_log** | 84,344 | — | — | — | — | — |
+| **macro_data** | 72,242 | — | 1962-01-02 s/d 2026-08-14 | 2026-08-14 | 3 | **OK** |
+| **broker_flow** | 15,830 | 1 | 2020-01-02 s/d 2026-08-03 | 2026-08-03 | 14 | **STALE** |
+| **astronacci_cycles** | 14,242 | — | 1927-12-31 s/d 2027-12-29 | — | — | **OK** (pre-computed) |
+| **fear_greed** | 11,938 | — | 1990-05-14 s/d 2026-08-14 | 2026-08-14 | 3 | **OK** |
+| **satellite_observations** | 11,568 | 8 loc | 2025-08-15 s/d 2026-08-11 | 2026-08-11 | 6 | **OK** |
+| **seasonal_patterns** | 9,696 | — | computed 2026-08-15 | 2026-08-15 | 2 | **OK** |
+| **market_regimes** | 8,645 | — | 1991-02-05 s/d 2026-08-10 | 2026-08-10 | 7 | **STALE** |
+| **market_sessions** | 8,379 | — | 2024-01-01 s/d 2026-08-14 | 2026-08-14 | 3 | **OK** |
+| **exchange_holidays** | 7,451 | — | 1928-02-22 s/d 2027-12-31 | — | — | **OK** (pre-computed) |
+| **corporate_actions** | 5,974 | 624 | 1999-03-19 s/d 2026-08-03 | 2026-08-03 | 14 | **STALE** |
+| **dividends** | 5,974 | — | 1999-03-19 s/d 2026-08-03 | 2026-08-03 | 14 | **STALE** |
+| **fundamental_data** | 5,903 | 1,007 | 2024-12-31 s/d 2026-08-15 | 2026-08-15 | 2 | **OK** |
+| **technical_indicators** | 4,688 | 294 | 2026-08-16 s/d 2026-08-16 | 2026-08-16 | 1 | **OK** (snapshot) |
+| **macroeconomic_indicators** | 4,806 | — | 1947-01-01 s/d 2026-08-16 | 2026-08-16 | 1 | **OK** |
+| **earnings_calendar** | 4,120 | 1,030 | 2026-10-31 s/d 2027-07-31 | — | — | **OK** (forward-looking) |
+| **news** | 3,107 | — | — | — | — | — |
+| **news_sentiment** | 3,107 | 161 | 2024-07-15 s/d 2026-08-13 | 2026-08-13 | 4 | **OK** |
+| **style_recommendation_reasons** | 2,044 | — | — | — | — | — |
+| **valuation_cache** | 2,158 | 943 | 2026-07-14 s/d 2026-08-15 | 2026-08-15 | 2 | **OK** |
+| **pattern_analysis** | 1,243 | 716 | 2026-08-15 s/d 2026-08-15 | 2026-08-15 | 2 | **OK** (snapshot) |
+| **instruments** | 1,099 | — | — | — | — | **OK** (reference) |
+| **render_log** | 1,024 | 1,024 | — | 2026-08-10 | 7 | **STALE** |
+| **stock_prediction** | 1,020 | 1,020 | 2026-08-10 s/d 2026-08-12 | 2026-08-12 | 5 | **STALE** |
+| **data_watermark** | 979 | — | — | — | — | — |
+| **recompute_watermark** | 963 | 963 | 2018-10-05 s/d 2026-08-14 | 2026-08-14 | 3 | **OK** |
+| **trading_style_recommendations** | 511 | — | — | 2026-08-17 | 0 | **OK** |
+| **events** | 298 | — | 2005-01-01 s/d 2026-07-12 | 2026-07-12 | 36 | **STALE** |
+| **corporate_governance** | 294 | 48 | — | 2026-08-13 | 4 | **OK** |
+| **esg_scores** | 236 | 45 | — | 2026-08-13 | 4 | **OK** |
+| **ablation_scorecards** | 207 | — | — | — | — | — |
+| **causal_relationships** | 198 | — | 2026-08-15 | 2026-08-15 | 2 | **OK** |
+| **policy_events** | 179 | — | 2005-01-15 s/d 2025-07-10 | 2025-07-10 | 403 | **VERY STALE** |
+| **trade_journal** | 78 | — | — | — | — | — |
+| **trading_suspensions** | 64 | — | 2018-10-05 s/d 2025-07-21 | 2025-07-21 | 392 | **VERY STALE** |
+| **dcc_garch_results** | 60 | — | computed 2026-08-15 | 2026-08-15 | 2 | **OK** |
+| **external_events** | 44 | — | 2005-01-01 s/d 2026-07-11 | 2026-07-11 | 37 | **STALE** |
+| **system_state** | 40 | — | — | — | — | — |
+| **cross_market_coefficients** | 15 | — | — | 2026-08-17 | 0 | **OK** (today) |
+| **instrument_behavior_profiles** | 4 | 4 | — | 2026-08-17 | 0 | **OK** (today) |
+| **commodity_to_stock_map** | 28 | — | — | — | — | — |
+| **satellite_ticker_locations** | 35 | — | — | — | — | — |
+| **user_trading_profiles** | 4 | — | — | 2026-08-17 | 0 | **OK** (today) |
+| **stock_personality** | 1 | 1 | — | 2026-08-17 | 0 | **CRITICAL: 1 ticker only** |
+| **scores** | 0 | — | — | — | — | **EMPTY** |
+| **relationship_matrix** | 0 | — | — | — | — | **EMPTY** |
+| **strategy_assignment** | 0 | — | — | — | — | **EMPTY** |
+| **satellite_correlation_results** | 0 | — | — | — | — | **EMPTY** |
+| **causal_graphs** | 1 | — | — | — | — | — |
+| **ablation_runs** | 11 | — | — | — | — | — |
+| **ai_weights** | 50 | — | — | — | — | — |
+| **app_notifications** | 32 | — | — | — | — | — |
+| **brokers** | 20 | — | — | — | — | **OK** (reference) |
+| **exchanges** | 18 | — | — | — | — | **OK** (reference) |
+| **sector_master** | 11 | — | — | — | — | **OK** (reference) |
+| **watchlist** | 19 | — | — | — | — | **OK** (reference) |
+| **orders** | 7 | — | — | — | — | — |
+| **positions** | 7 | — | — | — | — | — |
+| **equity_snapshots** | 1 | — | — | — | — | — |
+| **kpi_history** | 19 | — | — | — | — | — |
+| **parquet_sync_state** | 24 | — | — | — | — | — |
+| **scheduler_state** | 2 | — | — | — | — | — |
+| **source_health** | 2 | — | — | — | — | — |
+
+#### 2.2 Tabel KOSONG / HAMIR KOSONG (Critical)
+
+| Tabel | Rows | Expected | Root Cause | Impact |
+|-------|------|----------|------------|--------|
+| **scores** | 0 | ~6,000 (6 engines × ~1,000 tickers) | `recompute_scores` di `run_all_recompute` gagal/rollback | MarketContext tidak ada composite scores → sinyal fundamental/technical tidak optimal |
+| **relationship_matrix** | 0 | ~469+ (cross-asset correlation) | `recompute_relationship_matrix` gagal/rollback | MarketContext tidak ada cross-market correlation → sinyal global tidak optimal |
+| **strategy_assignment** | 0 | ~20 (watchlist tickers) | `strategy_assignment` task belum berjalan atau gagal | Tidak ada strategy assignment per ticker |
+| **satellite_correlation_results** | 0 | ~10+ | Tidak ada scheduler task untuk korelasi satelit | Satellite correlation analysis tidak tersimpan |
+| **stock_personality** | 1 | ~1,000 | `recompute_stock_personality` hanya proses 1 ticker | Instrument profiling hampir kosong → TradingStyleAdvisor tidak optimal |
+| **instrument_behavior_profiles** | 4 | ~1,000 | Hanya 4 ticker di-profile | CrossMarketCoefficientEngine terbatas |
+| **cross_market_coefficients** | 15 | ~100+ | Hanya 15 pasangan dihitung | Cross-market signal terbatas |
+
+#### 2.3 Tabel STALE (>7 days, perlu refresh)
+
+| Tabel | Last Update | Days Stale | Expected Frequency | Rekomendasi |
+|-------|-------------|------------|-------------------|-------------|
+| **policy_events** | 2025-07-10 | 403 hari | Manual/event-driven | **CRITICAL**: Backfill policy events 2025-07 s/d 2026-08 |
+| **trading_suspensions** | 2025-07-21 | 392 hari | Manual/event-driven | Backfill dari IDX suspend announcements |
+| **events** | 2026-07-12 | 36 hari | Manual/event-driven | Backfill events 2026-07 s/d 2026-08 |
+| **external_events** | 2026-07-11 | 37 hari | Manual/event-driven | Backfill external events 2026-07 s/d 2026-08 |
+| **foreign_flow** | 2026-08-03 | 14 hari | EOD (should be daily) | **CRITICAL**: Cek pipeline foreign_flow fetcher |
+| **broker_flow** | 2026-08-03 | 14 hari | EOD | Cek broker_flow data source |
+| **corporate_actions** | 2026-08-03 | 14 hari | Manual/weekly | Backfill corporate actions (dividends) |
+| **dividends** | 2026-08-03 | 14 hari | Manual/weekly | Backfill dividends 2026-08 |
+| **daily_trading_stats** | 2026-08-05 | 12 hari | EOD | Cek daily_trading_stats computation |
+| **broker_transactions** | 2026-08-08 | 9 hari | Manual | Backfill broker_transactions 2026-08 |
+| **market_regimes** | 2026-08-10 | 7 hari | EOD (via recompute) | Cek recompute_market_regimes di pipeline |
+| **render_log** | 2026-08-10 | 7 hari | EOD | Cek render_log update di pipeline |
+| **stock_prediction** | 2026-08-12 | 5 hari | EOD (via signal generation) | Cek daily_signal_cron atau batch_compute_predictions |
+
+### 3. REKOMENDASI REFRESH
+
+#### 3.1 Prioritas TINGGI (Critical — pipeline broken)
+
+1. **`scores` table EMPTY** — Jalankan `recompute_scores` secara manual:
+   ```bash
+   ENV=paper uv run python -c "
+   from market.db.engine import get_sessionmaker
+   from market.analysis.recompute import recompute_scores
+   s = get_sessionmaker()()
+   recompute_scores(s)
+   s.close()
+   "
+   ```
+   Investigasi root cause: cek log error saat `run_all_recompute` untuk `scores` function.
+
+2. **`relationship_matrix` table EMPTY** — Jalankan `recompute_relationship_matrix` secara manual:
+   ```bash
+   ENV=paper uv run python -c "
+   from market.db.engine import get_sessionmaker
+   from market.analysis.recompute import recompute_relationship_matrix
+   s = get_sessionmaker()()
+   recompute_relationship_matrix(s)
+   s.close()
+   "
+   ```
+
+3. **`stock_personality` hanya 1 ticker** — Jalankan `recompute_stock_personality`:
+   ```bash
+   ENV=paper uv run python -c "
+   from market.db.engine import get_sessionmaker
+   from market.analysis.recompute import recompute_stock_personality
+   s = get_sessionmaker()()
+   recompute_stock_personality(s)
+   s.close()
+   "
+   ```
+
+4. **`foreign_flow` stale 14 hari** — Cek apakah ada data source yang putus. Foreign flow berasal dari IDX API (tidak ada yfinance equivalent). Kemungkinan: scraper berhenti atau API berubah.
+
+5. **`policy_events` stale 403 hari** — Backfill manual dari sumber berita/OJK:
+   ```bash
+   uv run python scripts/backfill_policy_events.py  # jika ada
+   ```
+
+6. **`stock_prediction` stale 5 hari** — Jalankan batch compute predictions:
+   ```bash
+   ENV=paper uv run python scripts/batch_compute_predictions.py
+   ```
+
+#### 3.2 Prioritas SEDANG (Data incomplete)
+
+7. **`instrument_behavior_profiles` hanya 4 tickers** — Jalankan `profile_all_instruments`:
+   ```bash
+   ENV=paper uv run python -c "
+   from market.db.engine import get_sessionmaker
+   from market.analysis.instrument_profiler import profile_all_instruments
+   s = get_sessionmaker()()
+   profile_all_instruments(s)
+   s.close()
+   "
+   ```
+
+8. **`strategy_assignment` EMPTY** — Jalankan strategy assignment task:
+   ```bash
+   ENV=paper uv run python -c "
+   from market.scheduler_tasks import _task_strategy_assignment
+   _task_strategy_assignment()
+   "
+   ```
+
+9. **`corporate_actions` / `dividends` stale 14 hari** — Backfill dari yfinance:
+   ```bash
+   uv run python scripts/backfill_data.py
+   ```
+
+10. **`events` / `external_events` stale 36+ hari** — Backfill manual dari sumber berita.
+
+11. **`trading_suspensions` stale 392 hari** — Backfill dari IDX suspend announcements.
+
+12. **`market_regimes` stale 7 hari** — Jalankan recompute:
+    ```bash
+    ENV=paper uv run python -c "
+    from market.db.engine import get_sessionmaker
+    from market.analysis.recompute import recompute_market_regimes
+    s = get_sessionmaker()()
+    recompute_market_regimes(s, incremental=True)
+    s.close()
+    "
+    ```
+
+#### 3.3 Prioritas RENDAH (Nice-to-have)
+
+13. **`satellite_correlation_results` EMPTY** — Jalankan satellite correlation analysis:
+    ```bash
+    uv run python scripts/satellite_stock_correlation.py
+    ```
+
+14. **`broker_flow` stale 14 hari** — Hanya 1 ticker (UNTR). Tidak ada automated fetcher untuk multi-ticker broker flow. Data source: IDX investor flow API (tidak tersedia gratis).
+
+15. **`daily_trading_stats` stale 12 hari** — Computed dari OHLCV + broker_transactions. Jalankan backfill:
+    ```bash
+    uv run python scripts/backfill_risk_metrics.py
+    ```
+
+16. **`render_log` stale 7 hari** — Cache tracking table. Akan auto-update saat `technical_indicators_wide` di-recompute.
+
+#### 3.4 Tabel Referensi (Tidak perlu refresh)
+
+Tabel berikut adalah data referensi/static yang tidak perlu di-refresh secara berkala:
+- `instruments` (1,099 tickers) — update hanya saat IPO/delisting baru
+- `exchanges` (18) — static reference
+- `sector_master` (11) — static reference
+- `brokers` (20) — static reference
+- `exchange_holidays` (7,451) — pre-computed sampai 2027
+- `astronacci_cycles` (14,242) — pre-computed sampai 2027
+- `earnings_calendar` (4,120) — forward-looking sampai 2027-07
+- `watchlist` (19) — user-managed
+- `ablation_runs/scorecards` — historical records
+
+### 4. RINGKASAN STATUS
+
+| Kategori | Jumlah Tabel | Status |
+|----------|-------------|--------|
+| **OK (fresh ≤3 days)** | 18 | ✅ Data up-to-date |
+| **OK (snapshot/pre-computed)** | 8 | ✅ Tidak perlu refresh |
+| **OK (reference/static)** | 7 | ✅ Tidak perlu refresh |
+| **Stale (4-7 days)** | 6 | ⚠️ Perlu refresh segera |
+| **Stale (8-14 days)** | 6 | 🔴 Perlu refresh |
+| **Very Stale (>14 days)** | 5 | 🔴 CRITICAL |
+| **EMPTY (0 rows)** | 4 | 🔴 CRITICAL — pipeline broken |
+| **Nearly empty (<5 rows)** | 3 | 🔴 CRITICAL — needs full recompute |
+| **Infrastructure/log** | 13 | ℹ️ Tidak data-driven |
+
+**Total tabel data-driven: 57** (dari 70 non-partition tables)
+- **OK**: 33 tabel (58%)
+- **Stale**: 17 tabel (30%)
+- **EMPTY/Critical**: 7 tabel (12%)
+
+===
+

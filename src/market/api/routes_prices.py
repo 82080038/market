@@ -15,6 +15,7 @@ from sqlalchemy import desc, select
 from sqlalchemy.orm import Session
 
 from market.api._shared import to_jakarta
+from market.api.cache import ttl_cache
 from market.core.events import broker
 from market.db.engine import get_session
 from market.db.models import OHLCV, StockPrice
@@ -23,6 +24,7 @@ router = APIRouter(prefix="/api/prices", tags=["prices"])
 
 
 @router.get("/latest")
+@ttl_cache(ttl_seconds=60, key_prefix="prices_latest")
 async def prices_latest(
     session: Annotated[Session, Depends(get_session)],
     ticker: str | None = None,
@@ -102,6 +104,7 @@ async def prices_latest(
 
 
 @router.get("/ihsg")
+@ttl_cache(ttl_seconds=60, key_prefix="prices_ihsg")
 async def ihsg_summary(
     session: Annotated[Session, Depends(get_session)],
 ) -> dict[str, Any]:
@@ -138,6 +141,7 @@ async def ihsg_summary(
 
 
 @router.get("/movers")
+@ttl_cache(ttl_seconds=60, key_prefix="prices_movers")
 async def prices_movers(
     session: Annotated[Session, Depends(get_session)],
     limit: int = 10,
@@ -233,6 +237,7 @@ async def intraday_trigger(
 
 
 @router.get("/compare/{ticker}")
+@ttl_cache(ttl_seconds=300, key_prefix="prices_compare")
 async def prices_compare(
     ticker: str,
     session: Annotated[Session, Depends(get_session)],

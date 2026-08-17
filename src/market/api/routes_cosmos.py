@@ -32,6 +32,7 @@ from market.analysis.astronacci import (
     _zodiac_sign,
 )
 from market.api._shared import to_jakarta
+from market.api.cache import ttl_cache
 from market.data.satellite_fetcher import SECTOR_FALLBACK_LOCATIONS, SIGNIFICANT_METRICS
 from market.db.engine import get_session
 from market.db.models import SatelliteObservation, SatelliteTickerLocation
@@ -106,6 +107,7 @@ def _is_retrograde(body_name: str, now: datetime) -> bool:
 
 
 @router.get("/astronacci")
+@ttl_cache(ttl_seconds=3600, key_prefix="cosmos_astronacci")
 async def cosmos_astronacci(
     days: int = Query(7, ge=1, le=90, description="Jangka lookahead siklus aktif (hari)"),
 ) -> dict[str, Any]:

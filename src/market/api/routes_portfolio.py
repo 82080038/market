@@ -25,22 +25,29 @@ async def portfolio(session: Annotated[Session, Depends(get_session)]) -> dict[s
     """
     engine = PortfolioEngine()
 
+    # Early exit: if no positions, skip price loading entirely
+    if not engine.positions:
+        summary = engine.get_summary({})
+        return dict(_dataclass_to_dict(summary))
+
+    # Only fetch prices for tickers we actually hold
+    needed_tickers = set(engine.positions.keys())
     prices: dict[str, float] = {}
 
-    # Try PG stock_prices first, fallback to SQLite ohlcv
     try:
-        tickers = session.execute(
-            select(StockPrice.ticker).distinct()
-            .where(StockPrice.timeframe == "1d")
-        ).scalars().all()
-
-        for ticker in tickers[:50]:
-            latest = session.execute(
-                select(StockPrice).where(StockPrice.ticker == ticker, StockPrice.timeframe == "1d")
-                .order_by(StockPrice.timestamp.desc()).limit(1)
-            ).scalar_one_or_none()
-            if latest:
-                prices[ticker] = float(latest.close)
+        # Single query: latest close per ticker using DISTINCT ON
+        from sqlalchemy import text
+        rows = session.execute(
+            text("""
+                SELECT DISTINCT ON (ticker) ticker, close
+                FROM stock_prices
+                WHERE timeframe = '1d' AND ticker = ANY(:tickers)
+                ORDER BY ticker, timestamp DESC
+            """),
+            {"tickers": list(needed_tickers)},
+        ).all()
+        for row in rows:
+            prices[row[0]] = float(row[1])
         if not prices:
             raise Exception("No PG stock_prices data")
     except Exception:
@@ -48,12 +55,8 @@ async def portfolio(session: Annotated[Session, Depends(get_session)]) -> dict[s
             session.rollback()
         except Exception:
             pass
-        tickers = session.execute(
-            select(OHLCV.ticker).distinct()
-            .where(OHLCV.timeframe == "1d")
-        ).scalars().all()
-
-        for ticker in tickers[:50]:
+        # Fallback: SQLite ohlcv
+        for ticker in needed_tickers:
             latest = session.execute(
                 select(OHLCV).where(OHLCV.ticker == ticker, OHLCV.timeframe == "1d")
                 .order_by(OHLCV.timestamp.desc()).limit(1)

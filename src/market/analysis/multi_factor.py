@@ -36,6 +36,10 @@ from dataclasses import dataclass, field
 import numpy as np
 import pandas as pd
 
+from market.compute.device import lgbm_device
+
+_lgbm_dev = lgbm_device()
+
 logger = logging.getLogger(__name__)
 
 
@@ -472,6 +476,7 @@ def select_features_by_importance(
         subsample=0.8,
         colsample_bytree=0.8,
         n_jobs=1,
+        device=_lgbm_dev,
     )
 
     model.fit(X, y)
@@ -897,6 +902,7 @@ class MultiFactorModel:
             colsample_bytree=self.colsample_bytree,
             min_gain_to_split=self.min_gain_to_split,
             verbose=-1,
+            device=_lgbm_dev,
             n_jobs=1,
             num_classes=3,
             objective="multiclass",

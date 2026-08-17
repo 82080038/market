@@ -113,6 +113,10 @@ _GPU_FRIENDLY_WORKLOADS: frozenset[str] = frozenset(
         "matrix_multiply",
         "walk_forward",
         "nlp_sentiment",
+        "relationship_matrix",
+        "technical_indicators",
+        "ml_labels",
+        "market_regimes",
     }
 )
 
@@ -128,6 +132,10 @@ _MIN_GPU_THRESHOLD: dict[str, int] = {
     "matrix_multiply": 2_000,
     "walk_forward": 10_000,
     "nlp_sentiment": 1_000,
+    "relationship_matrix": 5_000,
+    "technical_indicators": 10_000,
+    "ml_labels": 50_000,
+    "market_regimes": 5_000,
 }
 _DEFAULT_MIN_GPU_THRESHOLD = 1_000
 
@@ -142,6 +150,10 @@ _VRAM_MULTIPLIER: dict[str, float] = {
     "matrix_multiply": 2.0,  # inputs + output
     "walk_forward": 2.0,
     "nlp_sentiment": 3.0,  # model activations
+    "relationship_matrix": 2.0,  # NxN correlation
+    "technical_indicators": 1.5,  # per-ticker rolling windows
+    "ml_labels": 1.5,  # per-ticker barrier computation
+    "market_regimes": 2.0,  # regime classification matrix
 }
 
 

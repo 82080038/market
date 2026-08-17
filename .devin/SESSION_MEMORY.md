@@ -1,5 +1,35 @@
 # Session Memory — Pustaka Pasar Modal
 
+## Checkpoint Sesi 2026-08-17 — Config Sync & GitHub Push
+
+- **Alasan:** Update file konfigurasi yang tertinggal (AGENTS.md, skills, SESSION_MEMORY) lalu sync ke GitHub.
+- **Topik aktif:** Config sync setelah migrasi 0027-0036, modul baru, pustaka 103.
+
+### Yang Diupdate
+1. **AGENTS.md** — pustaka count 103→104, alembic head 0026→0036, tables 88→98, tambah referensi modul baru (`holiday_effect.py`, `recompute_graph.py`, `recompute_estimator.py`, `recompute_analyzer.py`, `weight_registry.py`, `market_influence_kb.py`, `api/cache.py`, `data/fetch_registry.py`, `data/idx_adapter.py`), tambah deskripsi migrasi 0027-0036, tambah referensi pustaka/103.
+2. **.devin/skills/context-checkpoint/SKILL.md** — pustaka count 103→104, doc range 00-102→00-103.
+3. **.devin/skills/knowledge-base-curator/SKILL.md** — pustaka count 103→104, doc range 01-102→01-103, new docs start from 104, tambah doc 103 ke outdated claims list.
+4. **.devin/skills/megaplan-executor/SKILL.md** — alembic head 0021→0036, pustaka count 103→104, doc range 00-102→00-103.
+5. **pustaka/00-README.md** — doc 103 sudah terindeks (tidak perlu update).
+
+### Status Git
+- 43 modified files + 28 untracked files (migrations 0027-0036, modul baru, tests, scripts, frontend components)
+- Commit & push ke GitHub setelah update ini.
+
+### Migrations 0027-0036 Summary
+- 0027: fetch metadata columns di `instruments`
+- 0028: data source + delisting/merger metadata di `instruments`
+- 0029: consolidate data source metadata (fetch routing)
+- 0030: `market_influence_kb` (central influence mapping, 4,038 records)
+- 0031: `scheduler_state` upgrade (next_run_at, stale detection)
+- 0032: `signal_weights` (DB-backed dynamic weight configuration)
+- 0033: `recompute_dependencies` (dependency graph tables)
+- 0034: recompute stats columns
+- 0035: `recompute_predictions` (pre-computed duration/row estimates)
+- 0036: tracking columns di `recompute_dependencies` + `data_watermark`
+
+---
+
 ## Checkpoint Sesi 2026-08-19 — Gap Closure COMPLETE (Phase 1 + 2 + 3)
 
 - **Status:** SEMUA gap terpilih telah diimplementasi dan diverifikasi.

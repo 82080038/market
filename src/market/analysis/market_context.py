@@ -84,6 +84,58 @@ class MarketContext:
     astronacci_volatility: float | None = None  # 0.0 to 1.0 (expected volatility)
     astronacci_active_cycles: list[str] | None = None
 
+    # Holiday effect (pustaka/36 — holiday effect on returns)
+    is_pre_holiday: bool | None = None       # True if tomorrow is holiday
+    is_post_holiday: bool | None = None      # True if yesterday was holiday
+    days_to_next_holiday: int | None = None  # days until next exchange holiday
+    pre_holiday_expected_return: float | None = None  # avg pre-holiday return %
+    post_holiday_expected_return: float | None = None  # avg post-holiday return %
+    spillover_expected_return: float | None = None  # global holiday spillover to IDX
+
+    # Alpha signals (4 engines: mean_reversion, reversal, ewma_momentum, regime_switch)
+    alpha_mean_reversion: float | None = None    # -1.0 to 1.0
+    alpha_reversal: float | None = None          # -1.0 to 1.0
+    alpha_ewma_momentum: float | None = None     # -1.0 to 1.0
+    alpha_regime_switch: float | None = None     # -1.0 to 1.0
+
+    # Policy event signal (from policy_events + external_events tables)
+    policy_event_signal: float | None = None     # -1.0 to 1.0
+    policy_event_count: int | None = None        # number of active events
+
+    # Sector rotation signal (from SectorRotationEngine)
+    sector_rotation_signal: float | None = None  # -1.0 to 1.0
+
+    # Pairs trading Z-score (from PairsTradingEngine)
+    pairs_trading_zscore: float | None = None    # Z-score, typically -3 to 3
+
+    # Meta-labeling probability (P(primary prediction correct))
+    meta_label_probability: float | None = None  # 0.0 to 1.0
+
+    # Volume features (OFI proxy, VWAP deviation, OBV divergence)
+    volume_ofi: float | None = None              # Order Flow Imbalance proxy
+    volume_vwap_deviation: float | None = None   # VWAP deviation %
+    volume_obv_divergence: float | None = None   # OBV divergence signal
+
+    # Seasonal pattern score (from seasonal_patterns table)
+    seasonal_score: float | None = None          # -1.0 to 1.0
+    seasonal_pattern_name: str | None = None     # e.g. "year_end_rally"
+
+    # Earnings calendar impact (from earnings_calendar table)
+    earnings_days_to_report: int | None = None   # days to next earnings
+    earnings_expected_surprise: float | None = None  # expected surprise %
+
+    # Instrument behavior profile (from instrument_behavior_profiles table)
+    profile_volatility_regime: str | None = None  # "low"/"medium"/"high"
+    profile_liquidity_score: float | None = None  # 0-10
+    profile_overnight_gap_pct: float | None = None  # avg overnight gap %
+
+    # DCC-GARCH correlation (from dcc_garch_results table)
+    dcc_garch_corr_global: float | None = None   # dynamic correlation with global
+
+    # Granger causality signal (from causal_relationships table)
+    granger_cause_count: int | None = None       # number of significant causes
+    granger_top_cause: str | None = None         # strongest cause ticker
+
     # Derived signals
     signals: dict[str, str] = field(default_factory=dict)
 
@@ -98,6 +150,12 @@ class MarketContext:
                 self.corr_us, self.corr_ihsg, self.ml_signal,
                 self.news_sentiment, self.esg_score, self.governance_score,
                 self.astronacci_signal,
+                self.alpha_mean_reversion, self.alpha_reversal,
+                self.alpha_ewma_momentum, self.alpha_regime_switch,
+                self.policy_event_signal, self.sector_rotation_signal,
+                self.pairs_trading_zscore, self.meta_label_probability,
+                self.volume_ofi, self.seasonal_score,
+                self.earnings_days_to_report, self.dcc_garch_corr_global,
             ]
         )
 
@@ -284,48 +342,18 @@ class MarketContext:
     def composite_signal(self) -> float:
         """Weighted composite of all context signals: -1.0 to 1.0.
 
+        Weights are loaded from DB (signal_weights table) via WeightRegistry,
+        with sector-specific overrides. No hardcoded fallback — raises
+        WeightRegistryError if DB weights are unavailable.
+
         Sector-specific weighting:
         - Basic Materials: commodity signal weighted higher
         - Financial Services: macro and flow weighted higher
         - Consumer Defensive: fundamental weighted higher
         """
-        # Base weights
-        weights = {
-            "fundamental": 0.14,
-            "macro": 0.11,
-            "sentiment": 0.07,
-            "flow": 0.09,
-            "cross_market": 0.06,
-            "ml": 0.14,
-            "news": 0.07,
-            "commodity": 0.07,
-            "global_sentiment": 0.11,
-            "governance": 0.05,
-            "astronacci": 0.03,
-        }
+        from market.analysis.weight_registry import WeightRegistry
 
-        # Sector-specific adjustments
-        if self.sector == "Basic Materials":
-            weights["commodity"] = 0.15
-            weights["macro"] = 0.08
-            weights["sentiment"] = 0.04
-        elif self.sector == "Financial Services":
-            weights["macro"] = 0.18
-            weights["flow"] = 0.12
-            weights["commodity"] = 0.0
-            weights["global_sentiment"] = 0.08
-            weights["governance"] = 0.07
-        elif self.sector == "Consumer Defensive":
-            weights["fundamental"] = 0.20
-            weights["commodity"] = 0.04
-            weights["global_sentiment"] = 0.10
-            weights["governance"] = 0.07
-        elif self.sector == "Communication Services":
-            weights["fundamental"] = 0.15
-            weights["commodity"] = 0.0
-            weights["global_sentiment"] = 0.10
-            weights["governance"] = 0.07
-            weights["astronacci"] = 0.04
+        weights = WeightRegistry.get_weights("market_context", sector=self.sector or "DEFAULT")
 
         return (
             self.fundamental_signal() * weights["fundamental"]
@@ -339,7 +367,148 @@ class MarketContext:
             + (self.global_sentiment or 0.0) * weights["global_sentiment"]
             + self.governance_signal() * weights["governance"]
             + (self.astronacci_signal or 0.0) * weights["astronacci"]
+            + self.holiday_signal() * weights["holiday"]
+            + self.alpha_composite_signal() * weights["alpha"]
+            + self.policy_event_signal_value() * weights["policy_event"]
+            + self.sector_rotation_signal_value() * weights["sector_rotation"]
+            + self.volume_signal() * weights["volume"]
+            + self.seasonal_signal() * weights["seasonal"]
+            + self.earnings_signal() * weights["earnings"]
+            + self.causal_signal() * weights["causal"]
+            + self.meta_label_signal() * weights["meta_label"]
         )
+
+    def holiday_signal(self) -> float:
+        """Holiday effect signal: -1.0 (bearish) to 1.0 (bullish).
+
+        Combines pre/post holiday expected returns and spillover.
+        Pre-holiday: often positive (window dressing)
+        Post-holiday: can be reversal or continuation
+        Spillover: global holiday → IDX next day
+        """
+        signal = 0.0
+        # Pre-holiday effect (expected return already in %)
+        if self.is_pre_holiday and self.pre_holiday_expected_return is not None:
+            signal += max(-1.0, min(1.0, self.pre_holiday_expected_return / 0.5))
+        # Post-holiday effect
+        if self.is_post_holiday and self.post_holiday_expected_return is not None:
+            signal += max(-1.0, min(1.0, self.post_holiday_expected_return / 0.5))
+        # Spillover from global holidays
+        if self.spillover_expected_return is not None:
+            signal += max(-1.0, min(1.0, self.spillover_expected_return / 0.5))
+        # Normalize: if only one component active, don't double-count
+        n_active = sum([
+            self.is_pre_holiday is True,
+            self.is_post_holiday is True,
+            self.spillover_expected_return is not None,
+        ])
+        if n_active > 1:
+            signal /= n_active
+        return max(-1.0, min(1.0, signal))
+
+    def alpha_composite_signal(self) -> float:
+        """Composite of 4 alpha engines: -1.0 to 1.0.
+
+        Equal-weight blend of mean_reversion, reversal, ewma_momentum, regime_switch.
+        Only includes engines with non-None values.
+        """
+        signals = [
+            self.alpha_mean_reversion,
+            self.alpha_reversal,
+            self.alpha_ewma_momentum,
+            self.alpha_regime_switch,
+        ]
+        active = [s for s in signals if s is not None]
+        if not active:
+            return 0.0
+        return max(-1.0, min(1.0, sum(active) / len(active)))
+
+    def policy_event_signal_value(self) -> float:
+        """Policy event signal: -1.0 (bearish event) to 1.0 (bullish event).
+
+        Scaled by event count: more events = stronger signal.
+        """
+        if self.policy_event_signal is None:
+            return 0.0
+        weight = min(1.0, (self.policy_event_count or 1) / 5.0)
+        return max(-1.0, min(1.0, self.policy_event_signal * weight))
+
+    def sector_rotation_signal_value(self) -> float:
+        """Sector rotation signal: -1.0 (sector out-of-favor) to 1.0 (sector in-favor)."""
+        return self.sector_rotation_signal or 0.0
+
+    def pairs_trading_signal_value(self) -> float:
+        """Pairs trading Z-score signal: -1.0 to 1.0.
+
+        Z-score > 2 → short (overextended), Z < -2 → long (oversold).
+        Scaled by 1/3 for ±3σ → ±1.0.
+        """
+        if self.pairs_trading_zscore is None:
+            return 0.0
+        return max(-1.0, min(1.0, -self.pairs_trading_zscore / 3.0))
+
+    def meta_label_signal(self) -> float:
+        """Meta-labeling signal: 0.0 to 1.0 → -1.0 to 1.0.
+
+        P(primary prediction correct) > 0.5 → bullish on prediction confidence.
+        """
+        if self.meta_label_probability is None:
+            return 0.0
+        return (self.meta_label_probability - 0.5) * 2.0
+
+    def volume_signal(self) -> float:
+        """Volume features composite signal: -1.0 to 1.0.
+
+        Combines OFI, VWAP deviation, OBV divergence.
+        """
+        score = 0.0
+        n = 0
+        if self.volume_ofi is not None:
+            score += max(-1.0, min(1.0, self.volume_ofi / 0.5))
+            n += 1
+        if self.volume_vwap_deviation is not None:
+            # Positive VWAP deviation = buying pressure
+            score += max(-1.0, min(1.0, self.volume_vwap_deviation / 2.0))
+            n += 1
+        if self.volume_obv_divergence is not None:
+            score += max(-1.0, min(1.0, self.volume_obv_divergence))
+            n += 1
+        return score / n if n > 0 else 0.0
+
+    def seasonal_signal(self) -> float:
+        """Seasonal pattern signal: -1.0 (bearish season) to 1.0 (bullish season)."""
+        return self.seasonal_score or 0.0
+
+    def earnings_signal(self) -> float:
+        """Earnings calendar impact signal: -1.0 to 1.0.
+
+        Pre-earnings (< 5 days): reduce confidence (uncertainty).
+        Post-earnings: drift based on expected surprise.
+        """
+        if self.earnings_days_to_report is None:
+            return 0.0
+        if self.earnings_days_to_report <= 0:
+            # Post-earnings drift
+            if self.earnings_expected_surprise is not None:
+                return max(-1.0, min(1.0, self.earnings_expected_surprise / 5.0))
+            return 0.0
+        elif self.earnings_days_to_report <= 5:
+            # Pre-earnings uncertainty → slight bearish bias
+            return -0.15
+        return 0.0
+
+    def causal_signal(self) -> float:
+        """Granger causality signal: -1.0 to 1.0.
+
+        If ticker has significant Granger causes from bullish global drivers,
+        signal is positive. Based on granger_cause_count and top cause direction.
+        """
+        if self.granger_cause_count is None or self.granger_cause_count == 0:
+            return 0.0
+        # More causes = more externally driven = higher uncertainty
+        # But we don't know direction without the cause ticker's momentum
+        # Use count as a confidence modifier (more causes → less idiosyncratic)
+        return 0.0  # neutral without cause direction data
 
 
 class MarketContextProvider:
@@ -399,6 +568,16 @@ class MarketContextProvider:
                 ("global_sentiment", lambda: self._fetch_global_sentiment(session, ctx, cutoff)),
                 ("esg_governance", lambda: self._fetch_esg_governance(session, ticker, ctx)),
                 ("astronacci", lambda: self._fetch_astronacci(ctx, as_of)),
+                ("holiday_effect", lambda: self._fetch_holiday_effect(ctx, ticker, cutoff)),
+                ("alpha_signals", lambda: self._fetch_alpha_signals(ctx, ticker, df, cutoff)),
+                ("policy_events", lambda: self._fetch_policy_events(session, ticker, ctx, cutoff)),
+                ("sector_rotation", lambda: self._fetch_sector_rotation(session, ticker, ctx, cutoff)),
+                ("volume_features", lambda: self._fetch_volume_features(ctx, ticker, df, cutoff)),
+                ("seasonal_patterns", lambda: self._fetch_seasonal_patterns(session, ticker, ctx, cutoff)),
+                ("earnings_calendar", lambda: self._fetch_earnings_calendar(session, ticker, ctx, cutoff)),
+                ("instrument_profile", lambda: self._fetch_instrument_profile(session, ticker, ctx)),
+                ("dcc_garch", lambda: self._fetch_dcc_garch(session, ticker, ctx, cutoff)),
+                ("causal_relationships", lambda: self._fetch_causal_relationships(session, ticker, ctx, cutoff)),
             ]
             for name, fetcher in fetchers:
                 try:
@@ -967,3 +1146,307 @@ class MarketContextProvider:
             ctx.astronacci_signal = result["time_signal"]
             ctx.astronacci_volatility = result["volatility_signal"]
             ctx.astronacci_active_cycles = result["active_cycles"]
+
+    def _fetch_holiday_effect(
+        self, ctx: MarketContext, ticker: str, cutoff: date,
+    ) -> None:
+        """Fetch holiday effect features for IDX tickers.
+
+        Populates is_pre_holiday, is_post_holiday, days_to_next_holiday,
+        pre/post_holiday_expected_return, and spillover_expected_return.
+        Only applies to IDX tickers (mic_code = XIDX).
+        """
+        if not ticker.endswith(".JK"):
+            return
+
+        from market.analysis.holiday_effect import HolidayEffectAnalyzer
+
+        try:
+            analyzer = HolidayEffectAnalyzer()
+            features = analyzer.get_holiday_features("XIDX", cutoff)
+            ctx.is_pre_holiday = features["is_pre_holiday"]
+            ctx.is_post_holiday = features["is_post_holiday"]
+            ctx.days_to_next_holiday = features["days_to_next_holiday"]
+            ctx.pre_holiday_expected_return = features["pre_holiday_expected_return"]
+            ctx.post_holiday_expected_return = features["post_holiday_expected_return"]
+
+            # Spillover from global holidays
+            spillover = analyzer.get_spillover_features(cutoff)
+            if spillover.get("spillover_active_count", 0) > 0:
+                ctx.spillover_expected_return = spillover["spillover_total_expected_return"]
+        except Exception as e:
+            logger.debug("Holiday effect fetch failed for %s: %s", ticker, e)
+
+    # ------------------------------------------------------------------
+    # New fetchers: alpha, policy, sector rotation, volume, seasonal,
+    # earnings, instrument profile, DCC-GARCH, causal relationships
+    # ------------------------------------------------------------------
+
+    def _fetch_alpha_signals(
+        self, ctx: MarketContext, ticker: str,
+        df: pd.DataFrame | None, cutoff: date,
+    ) -> None:
+        """Compute 4 alpha signals from OHLCV data."""
+        if df is None or df.empty or len(df) < 50:
+            return
+
+        try:
+            from market.analysis.alpha_signals import (
+                EWMAMomentumEngine,
+                MeanReversionEngine,
+                RegimeSwitchEngine,
+                ShortTermReversalEngine,
+            )
+
+            truncated = df[df.index <= pd.Timestamp(cutoff)] if cutoff else df
+            if len(truncated) < 50 or "close" not in truncated.columns:
+                return
+
+            close = truncated["close"]
+
+            mr = MeanReversionEngine().generate_signals(close)
+            ctx.alpha_mean_reversion = float(mr.signal.iloc[-1]) if len(mr.signal) else None
+
+            rev = ShortTermReversalEngine().generate_signals(close)
+            ctx.alpha_reversal = float(rev.signal.iloc[-1]) if len(rev.signal) else None
+
+            ewma = EWMAMomentumEngine().generate_signals(close)
+            ctx.alpha_ewma_momentum = float(ewma.signal.iloc[-1]) if len(ewma.signal) else None
+
+            rs = RegimeSwitchEngine().generate_signals(close)
+            ctx.alpha_regime_switch = float(rs.signal.iloc[-1]) if len(rs.signal) else None
+        except Exception as e:
+            logger.debug("Alpha signals fetch failed for %s: %s", ticker, e)
+
+    def _fetch_policy_events(
+        self, session: Session, ticker: str, ctx: MarketContext, cutoff: date,
+    ) -> None:
+        """Fetch policy/external event signal from DB."""
+        from sqlalchemy import text
+
+        try:
+            from datetime import timedelta
+
+            lookback = cutoff - timedelta(days=30)
+
+            # Policy events
+            rows = session.execute(text("""
+                SELECT event_type, direction, impact_score
+                FROM policy_events
+                WHERE event_date BETWEEN :lookback AND :cutoff
+                ORDER BY event_date DESC LIMIT 20
+            """), {"lookback": lookback, "cutoff": cutoff}).all()
+
+            # External events
+            rows2 = session.execute(text("""
+                SELECT kategori, dampak_market
+                FROM external_events
+                WHERE tanggal BETWEEN :lookback AND :cutoff
+                ORDER BY tanggal DESC LIMIT 20
+            """), {"lookback": lookback, "cutoff": cutoff}).all()
+
+            total_events = len(rows) + len(rows2)
+            if total_events == 0:
+                return
+
+            signal = 0.0
+            for row in rows:
+                direction = row[1] if row[1] else 0.0
+                signal += float(direction)
+            for row in rows2:
+                dampak = row[1] if row[1] else "Sedang"
+                signal += {"Tinggi": 0.5, "Sedang": 0.0, "Rendah": -0.3}.get(dampak, 0.0)
+
+            ctx.policy_event_signal = max(-1.0, min(1.0, signal / max(total_events, 1)))
+            ctx.policy_event_count = total_events
+        except Exception as e:
+            logger.debug("Policy events fetch failed for %s: %s", ticker, e)
+
+    def _fetch_sector_rotation(
+        self, session: Session, ticker: str, ctx: MarketContext, cutoff: date,
+    ) -> None:
+        """Compute sector rotation signal from sector index momentum."""
+        if ctx.sector is None:
+            return
+
+        try:
+            # Map sector to IDX sector index ticker
+            sector_map = {
+                "Basic Materials": "IDXBASIC",
+                "Financial Services": "IDXFINANCE",
+                "Energy": "IDXENERGY",
+                "Healthcare": "IDXHEALTH",
+                "Technology": "IDXTECHNO",
+                "Industrials": "IDXINDUST",
+                "Real Estate": "IDXPROPER",
+                "Transportation": "IDXTRANS",
+                "Infrastructure": "IDXINFRA",
+                "Consumer Defensive": "IDXNONCYC",
+                "Consumer Cyclical": "IDXCYCLIC",
+            }
+            sector_ticker = sector_map.get(ctx.sector)
+            if sector_ticker is None:
+                return
+
+            rows = self._load_close_prices(
+                session, sector_ticker, cutoff, limit=25, order_desc=True,
+            )
+            if len(rows) < 20:
+                return
+
+            closes = [r[0] for r in rows]
+            closes.reverse()
+            current = closes[-1]
+            ma_20 = sum(closes[-20:]) / 20.0
+
+            if ma_20 > 0:
+                momentum = (current - ma_20) / ma_20
+                ctx.sector_rotation_signal = max(-1.0, min(1.0, momentum / 0.05))
+        except Exception as e:
+            logger.debug("Sector rotation fetch failed for %s: %s", ticker, e)
+
+    def _fetch_volume_features(
+        self, ctx: MarketContext, ticker: str,
+        df: pd.DataFrame | None, cutoff: date,
+    ) -> None:
+        """Compute volume features (OFI, VWAP deviation, OBV divergence)."""
+        if df is None or df.empty or len(df) < 20:
+            return
+
+        try:
+            from market.analysis.volume_features import (
+                compute_ofi_proxy,
+                compute_vwap,
+                detect_obv_divergence,
+            )
+
+            truncated = df[df.index <= pd.Timestamp(cutoff)] if cutoff else df
+            if len(truncated) < 20:
+                return
+
+            # OFI proxy
+            ofi_result = compute_ofi_proxy(truncated)
+            ctx.volume_ofi = float(ofi_result.ofi.iloc[-1]) if len(ofi_result.ofi) else None
+
+            # VWAP deviation
+            vwap_result = compute_vwap(truncated)
+            if len(vwap_result.vwap) and "close" in truncated.columns:
+                last_close = float(truncated["close"].iloc[-1])
+                last_vwap = float(vwap_result.vwap.iloc[-1])
+                if last_vwap > 0:
+                    ctx.volume_vwap_deviation = (last_close - last_vwap) / last_vwap * 100
+
+            # OBV divergence
+            div_result = detect_obv_divergence(truncated)
+            ctx.volume_obv_divergence = float(div_result.signal.iloc[-1]) if len(div_result.signal) else None
+        except Exception as e:
+            logger.debug("Volume features fetch failed for %s: %s", ticker, e)
+
+    def _fetch_seasonal_patterns(
+        self, session: Session, ticker: str, ctx: MarketContext, cutoff: date,
+    ) -> None:
+        """Fetch seasonal pattern score from DB."""
+        from sqlalchemy import text
+
+        try:
+            month = cutoff.month
+            row = session.execute(text("""
+                SELECT pattern_type, seasonal_score
+                FROM seasonal_patterns
+                WHERE ticker = :ticker AND month = :month
+                ORDER BY seasonal_score DESC LIMIT 1
+            """), {"ticker": ticker, "month": month}).first()
+
+            if row:
+                ctx.seasonal_score = float(row[1]) if row[1] is not None else None
+                ctx.seasonal_pattern_name = row[0]
+        except Exception as e:
+            logger.debug("Seasonal patterns fetch failed for %s: %s", ticker, e)
+
+    def _fetch_earnings_calendar(
+        self, session: Session, ticker: str, ctx: MarketContext, cutoff: date,
+    ) -> None:
+        """Fetch earnings calendar impact from DB."""
+        from sqlalchemy import text
+
+        try:
+            row = session.execute(text("""
+                SELECT report_date, expected_surprise_pct
+                FROM earnings_calendar
+                WHERE ticker = :ticker AND report_date >= :cutoff
+                ORDER BY report_date LIMIT 1
+            """), {"ticker": ticker, "cutoff": cutoff}).first()
+
+            if row:
+                report_date = row[0]
+                if report_date:
+                    days_to = (report_date - cutoff).days if hasattr(report_date, 'days') else (
+                        pd.Timestamp(report_date).date() - cutoff
+                    ).days
+                    ctx.earnings_days_to_report = days_to
+                if row[1] is not None:
+                    ctx.earnings_expected_surprise = float(row[1])
+        except Exception as e:
+            logger.debug("Earnings calendar fetch failed for %s: %s", ticker, e)
+
+    def _fetch_instrument_profile(
+        self, session: Session, ticker: str, ctx: MarketContext,
+    ) -> None:
+        """Fetch instrument behavior profile from DB."""
+        from sqlalchemy import text
+
+        try:
+            row = session.execute(text("""
+                SELECT volatility_regime, liquidity_score, overnight_gap_pct
+                FROM instrument_behavior_profiles
+                WHERE ticker = :ticker
+                ORDER BY profiled_at DESC LIMIT 1
+            """), {"ticker": ticker}).first()
+
+            if row:
+                ctx.profile_volatility_regime = row[0]
+                ctx.profile_liquidity_score = float(row[1]) if row[1] is not None else None
+                ctx.profile_overnight_gap_pct = float(row[2]) if row[2] is not None else None
+        except Exception as e:
+            logger.debug("Instrument profile fetch failed for %s: %s", ticker, e)
+
+    def _fetch_dcc_garch(
+        self, session: Session, ticker: str, ctx: MarketContext, cutoff: date,
+    ) -> None:
+        """Fetch DCC-GARCH correlation from DB."""
+        from sqlalchemy import text
+
+        try:
+            row = session.execute(text("""
+                SELECT correlation_with_global
+                FROM dcc_garch_results
+                WHERE ticker = :ticker
+                ORDER BY estimated_at DESC LIMIT 1
+            """), {"ticker": ticker}).first()
+
+            if row and row[0] is not None:
+                ctx.dcc_garch_corr_global = float(row[0])
+        except Exception as e:
+            logger.debug("DCC-GARCH fetch failed for %s: %s", ticker, e)
+
+    def _fetch_causal_relationships(
+        self, session: Session, ticker: str, ctx: MarketContext, cutoff: date,
+    ) -> None:
+        """Fetch Granger causality signal from DB."""
+        from sqlalchemy import text
+
+        try:
+            row = session.execute(text("""
+                SELECT count(*) as n_causes,
+                       (SELECT cause_ticker FROM causal_relationships
+                        WHERE effect_ticker = :ticker AND p_value < 0.05
+                        ORDER BY p_value ASC LIMIT 1) as top_cause
+                FROM causal_relationships
+                WHERE effect_ticker = :ticker AND p_value < 0.05
+            """), {"ticker": ticker}).first()
+
+            if row:
+                ctx.granger_cause_count = int(row[0]) if row[0] else 0
+                ctx.granger_top_cause = row[1]
+        except Exception as e:
+            logger.debug("Causal relationships fetch failed for %s: %s", ticker, e)

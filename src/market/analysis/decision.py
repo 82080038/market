@@ -16,18 +16,25 @@ from __future__ import annotations
 
 import logging
 from dataclasses import dataclass, field
-from datetime import date, datetime
+from datetime import date, datetime, timedelta
 from typing import Any
 
 logger = logging.getLogger(__name__)
 
 DEFAULT_WEIGHTS: dict[str, float] = {
-    "technical": 0.20,
-    "fundamental": 0.25,
-    "macro": 0.10,
-    "global": 0.10,
-    "relationship": 0.10,
-    "sentiment": 0.25,
+    "technical": 0.14,
+    "fundamental": 0.16,
+    "macro": 0.08,
+    "global": 0.08,
+    "relationship": 0.06,
+    "sentiment": 0.16,
+    "holiday": 0.06,
+    "prediction": 0.10,
+    "alpha": 0.06,
+    "policy_event": 0.04,
+    "sector_rotation": 0.03,
+    "seasonal": 0.02,
+    "earnings": 0.01,
 }
 
 RECOMMENDATION_THRESHOLDS: dict[str, tuple[float, float]] = {
@@ -81,17 +88,32 @@ class DecisionEngine:
         weights: dict[str, float] | None = None,
         db_url: str | None = None,
         include_driver_narrative: bool = True,
+        use_db_weights: bool = True,
     ) -> None:
         """Initialize decision engine.
 
         Args:
-            weights: Factor weights dict. Uses DEFAULT_WEIGHTS if None.
+            weights: Factor weights dict. If None and use_db_weights=True,
+                loads from signal_weights table via WeightRegistry.
             db_url: PostgreSQL connection URL for market driver narrative.
                     If None, narrative features are disabled (graceful degradation).
             include_driver_narrative: Whether to fetch market driver context
                     (causal, seasonal, commodity, DCC-GARCH, satellite) from DB.
+            use_db_weights: Whether to load weights from DB (signal_weights table).
+
+        Raises:
+            WeightRegistryError: If use_db_weights=True and DB weights are unavailable.
         """
-        self.weights = weights or DEFAULT_WEIGHTS
+        if weights is not None:
+            self.weights = weights
+        elif use_db_weights:
+            from market.analysis.weight_registry import WeightRegistry
+            self.weights = WeightRegistry.get_weights("decision_engine")
+        else:
+            raise ValueError(
+                "DecisionEngine requires either explicit weights or use_db_weights=True. "
+                "No hardcoded fallback weights are available."
+            )
         self.db_url = db_url
         self.include_driver_narrative = include_driver_narrative
 
@@ -104,6 +126,13 @@ class DecisionEngine:
         global_market: float | None = None,
         relationship: float | None = None,
         sentiment: float | None = None,
+        holiday: float | None = None,
+        prediction: float | None = None,
+        alpha: float | None = None,
+        policy_event: float | None = None,
+        sector_rotation: float | None = None,
+        seasonal: float | None = None,
+        earnings: float | None = None,
     ) -> DecisionResult:
         """Combine factor scores into a composite recommendation.
 
@@ -117,6 +146,14 @@ class DecisionEngine:
             global_market: Global market score (0-100).
             relationship: Relationship score (0-100).
             sentiment: Sentiment score (0-100).
+            holiday: Holiday effect score (0-100).
+            prediction: PredictionEngine output score (0-100).
+                Derived from predicted direction + confidence + return%.
+            alpha: Alpha signals composite score (0-100).
+            policy_event: Policy/external event score (0-100).
+            sector_rotation: Sector rotation momentum score (0-100).
+            seasonal: Seasonal pattern score (0-100).
+            earnings: Earnings calendar impact score (0-100).
 
         Returns:
             DecisionResult with composite score, recommendation,
@@ -135,6 +172,20 @@ class DecisionEngine:
             factor_scores["relationship"] = relationship
         if sentiment is not None:
             factor_scores["sentiment"] = sentiment
+        if holiday is not None:
+            factor_scores["holiday"] = holiday
+        if prediction is not None:
+            factor_scores["prediction"] = prediction
+        if alpha is not None:
+            factor_scores["alpha"] = alpha
+        if policy_event is not None:
+            factor_scores["policy_event"] = policy_event
+        if sector_rotation is not None:
+            factor_scores["sector_rotation"] = sector_rotation
+        if seasonal is not None:
+            factor_scores["seasonal"] = seasonal
+        if earnings is not None:
+            factor_scores["earnings"] = earnings
 
         if not factor_scores:
             return DecisionResult(
@@ -281,6 +332,7 @@ class DecisionEngine:
             narratives.extend(self._narrative_commodity(conn, ticker))
             narratives.extend(self._narrative_dcc_garch(conn, ticker))
             narratives.extend(self._narrative_satellite(conn, ticker))
+            narratives.extend(self._narrative_holiday(conn))
         finally:
             conn.close()
 
@@ -458,3 +510,398 @@ class DecisionEngine:
                     f"  • {loc_name} ({sector}): {weather_str}"
                 )
         return narratives
+
+    def _narrative_holiday(self, conn) -> list[str]:
+        """Narrative dari holiday effect — pre/post holiday returns untuk IDX."""
+        cur = conn.cursor()
+        today = date.today()
+
+        # Cek apakah hari ini atau besok adalah holiday IDX
+        cur.execute("""
+            SELECT holiday_date, holiday_name
+            FROM exchange_holidays
+            WHERE mic_code = 'XIDX'
+              AND holiday_date BETWEEN %s AND %s
+            ORDER BY holiday_date
+        """, (today, today + timedelta(days=7)))
+        upcoming = cur.fetchall()
+        if not upcoming:
+            return []
+
+        narratives: list[str] = []
+        narratives.append("📅 Holiday Effect — upcoming IDX holidays:")
+
+        for h_date, h_name in upcoming[:3]:
+            days_until = (h_date - today).days
+            # Get pre/post holiday expected returns from analysis
+            cur.execute("""
+                SELECT pre_holiday_avg_return, post_holiday_avg_return,
+                       pre_holiday_win_rate, post_holiday_win_rate,
+                       is_significant, n_occurrences
+                FROM holiday_effects
+                WHERE mic_code = 'XIDX' AND holiday_name = %s
+            """, (h_name,))
+            row = cur.fetchone()
+            if row:
+                pre_ret, post_ret, pre_wr, post_wr, is_sig, n = row
+                sig_label = "★ significant" if is_sig else ""
+                if days_until == 0:
+                    narratives.append(
+                        f"  • {h_name} (HARI INI): "
+                        f"post-historical avg={post_ret:+.2f}% "
+                        f"(win rate {post_wr:.0f}%, n={n}) {sig_label}"
+                    )
+                elif days_until == 1:
+                    narratives.append(
+                        f"  • {h_name} (BESOK): "
+                        f"pre-historical avg={pre_ret:+.2f}% "
+                        f"(win rate {pre_wr:.0f}%, n={n}) {sig_label}"
+                    )
+                else:
+                    narratives.append(
+                        f"  • {h_name} ({days_until}h lagi): "
+                        f"pre={pre_ret:+.2f}% post={post_ret:+.2f}% "
+                        f"(n={n}) {sig_label}"
+                    )
+            else:
+                if days_until == 0:
+                    narratives.append(f"  • {h_name} (HARI INI)")
+                elif days_until == 1:
+                    narratives.append(f"  • {h_name} (BESOK)")
+                else:
+                    narratives.append(f"  • {h_name} ({days_until}h lagi)")
+
+        # Cek spillover: apakah ada bursa global libur hari ini?
+        cur.execute("""
+            SELECT eh.mic_code, eh.holiday_name,
+                   hs.idx_next_day_avg_return, hs.idx_next_day_win_rate,
+                   hs.is_significant, hs.n_occurrences
+            FROM exchange_holidays eh
+            LEFT JOIN holiday_spillover hs
+              ON hs.source_mic = eh.mic_code AND hs.source_holiday_name = eh.holiday_name
+            WHERE eh.holiday_date = %s
+              AND eh.mic_code != 'XIDX'
+        """, (today,))
+        spillovers = cur.fetchall()
+        if spillovers:
+            narratives.append("🌍 Spillover global → IDX (hari ini):")
+            for mic, hname, idx_ret, idx_wr, is_sig, n in spillovers:
+                if idx_ret is not None:
+                    sig_label = "★ significant" if is_sig else ""
+                    narratives.append(
+                        f"  • {mic} {hname}: IDX expected {idx_ret:+.2f}% "
+                        f"(win rate {idx_wr:.0f}%, n={n}) {sig_label}"
+                    )
+
+        return narratives
+
+    def compute_holiday_score(self, ticker: str) -> float | None:
+        """Compute holiday effect score (0-100) for a ticker.
+
+        Uses holiday_effects + holiday_spillover tables to derive a score.
+        Only applicable to IDX tickers (.JK).
+
+        Score logic:
+        - Base 50 (neutral)
+        + pre_holiday_expected_return * 10 (if pre-holiday)
+        + post_holiday_expected_return * 10 (if post-holiday)
+        + spillover_expected_return * 10 (if global holiday today)
+        - Clamped to [0, 100]
+
+        Returns None if no holiday data available or not IDX ticker.
+        """
+        if not ticker.endswith(".JK"):
+            return None
+
+        try:
+            from market.analysis.holiday_effect import HolidayEffectAnalyzer
+
+            analyzer = HolidayEffectAnalyzer()
+            features = analyzer.get_holiday_features("XIDX", date.today())
+            spillover = analyzer.get_spillover_features(date.today())
+
+            score = 50.0  # neutral base
+
+            if features["is_pre_holiday"] and features["pre_holiday_expected_return"]:
+                score += features["pre_holiday_expected_return"] * 10
+            if features["is_post_holiday"] and features["post_holiday_expected_return"]:
+                score += features["post_holiday_expected_return"] * 10
+            if spillover.get("spillover_active_count", 0) > 0:
+                score += spillover["spillover_total_expected_return"] * 10
+
+            # If no holiday nearby at all, return None (no signal)
+            if (not features["is_pre_holiday"]
+                    and not features["is_post_holiday"]
+                    and not features["is_holiday_today"]
+                    and spillover.get("spillover_active_count", 0) == 0):
+                return None
+
+            return max(0.0, min(100.0, score))
+        except Exception as e:
+            logger.debug("Holiday score computation failed for %s: %s", ticker, e)
+            return None
+
+    @staticmethod
+    def prediction_score_from_prediction(pred: object) -> float | None:
+        """Convert PredictionEngine output to a 0-100 score for DecisionEngine.
+
+        Args:
+            pred: Prediction dataclass with predicted_direction, confidence,
+                predicted_return_pct fields.
+
+        Returns:
+            Score 0-100, or None if prediction is not actionable.
+        """
+        try:
+            direction = getattr(pred, "predicted_direction", "flat")
+            confidence = getattr(pred, "confidence", 0.0)
+            return_pct = getattr(pred, "predicted_return_pct", 0.0)
+
+            if direction == "flat" or confidence < 0.1:
+                return 50.0  # neutral
+
+            # Base 50 + direction * confidence * return magnitude
+            dir_val = 1.0 if direction == "up" else -1.0 if direction == "down" else 0.0
+            score = 50.0 + dir_val * confidence * min(abs(return_pct), 10.0) * 5.0
+            return max(0.0, min(100.0, score))
+        except Exception:
+            return None
+
+    def compute_alpha_score(self, ticker: str) -> float | None:
+        """Compute alpha signals score (0-100) from 4 alpha engines.
+
+        Requires OHLCV data — delegates to MarketContextProvider if available.
+        Returns None if no data available.
+        """
+        try:
+            from sqlalchemy import text as sa_text
+
+            conn = self._get_db_connection()
+            cur = conn.cursor()
+            # Check if we have recent OHLCV data for this ticker
+            cur.execute("""
+                SELECT close, high, low, volume, open, timestamp
+                FROM stock_prices
+                WHERE ticker = %s AND timeframe = '1d'
+                ORDER BY timestamp DESC LIMIT 100
+            """, (ticker,))
+            rows = cur.fetchall()
+            conn.close()
+
+            if len(rows) < 50:
+                return None
+
+            import pandas as pd
+            rows.reverse()
+            df = pd.DataFrame(
+                [(r[5], r[4], r[1], r[2], r[0], r[3]) for r in rows],
+                columns=["timestamp", "open", "high", "low", "close", "volume"],
+            )
+            df = df.set_index("timestamp")
+
+            from market.analysis.alpha_signals import (
+                EWMAMomentumEngine,
+                MeanReversionEngine,
+                RegimeSwitchEngine,
+                ShortTermReversalEngine,
+            )
+
+            close = df["close"]
+
+            signals = []
+            for Engine in [MeanReversionEngine, ShortTermReversalEngine, EWMAMomentumEngine, RegimeSwitchEngine]:
+                result = Engine().generate_signals(close)
+                if len(result.signal):
+                    signals.append(float(result.signal.iloc[-1]))
+
+            if not signals:
+                return None
+
+            avg = sum(signals) / len(signals)
+            # Convert [-1, 1] → [0, 100]
+            return max(0.0, min(100.0, 50.0 + avg * 50.0))
+        except Exception as e:
+            logger.debug("Alpha score computation failed for %s: %s", ticker, e)
+            return None
+
+    def compute_policy_event_score(self, ticker: str) -> float | None:
+        """Compute policy event score (0-100) from policy_events + external_events."""
+        try:
+            conn = self._get_db_connection()
+            cur = conn.cursor()
+            today = date.today()
+
+            cur.execute("""
+                SELECT direction, impact_score
+                FROM policy_events
+                WHERE event_date >= %s
+                ORDER BY event_date DESC LIMIT 20
+            """, (today - timedelta(days=30),))
+            policy_rows = cur.fetchall()
+
+            cur.execute("""
+                SELECT dampak_market
+                FROM external_events
+                WHERE tanggal >= %s
+                ORDER BY tanggal DESC LIMIT 20
+            """, (today - timedelta(days=30),))
+            ext_rows = cur.fetchall()
+            conn.close()
+
+            total = len(policy_rows) + len(ext_rows)
+            if total == 0:
+                return None
+
+            signal = 0.0
+            for row in policy_rows:
+                direction = float(row[0]) if row[0] else 0.0
+                signal += direction
+            for row in ext_rows:
+                dampak = row[0] if row[0] else "Sedang"
+                signal += {"Tinggi": 0.5, "Sedang": 0.0, "Rendah": -0.3}.get(dampak, 0.0)
+
+            avg_signal = signal / max(total, 1)
+            return max(0.0, min(100.0, 50.0 + avg_signal * 50.0))
+        except Exception as e:
+            logger.debug("Policy event score computation failed for %s: %s", ticker, e)
+            return None
+
+    def compute_seasonal_score(self, ticker: str) -> float | None:
+        """Compute seasonal pattern score (0-100) from seasonal_patterns table."""
+        try:
+            conn = self._get_db_connection()
+            cur = conn.cursor()
+            month = date.today().month
+
+            cur.execute("""
+                SELECT seasonal_score, pattern_type
+                FROM seasonal_patterns
+                WHERE ticker = %s AND month = %s
+                ORDER BY seasonal_score DESC LIMIT 1
+            """, (ticker, month))
+            row = cur.fetchone()
+            conn.close()
+
+            if row and row[0] is not None:
+                # seasonal_score is -1.0 to 1.0 → convert to 0-100
+                return max(0.0, min(100.0, 50.0 + float(row[0]) * 50.0))
+            return None
+        except Exception as e:
+            logger.debug("Seasonal score computation failed for %s: %s", ticker, e)
+            return None
+
+    def compute_earnings_score(self, ticker: str) -> float | None:
+        """Compute earnings calendar impact score (0-100)."""
+        try:
+            conn = self._get_db_connection()
+            cur = conn.cursor()
+            today = date.today()
+
+            cur.execute("""
+                SELECT report_date, expected_surprise_pct
+                FROM earnings_calendar
+                WHERE ticker = %s AND report_date >= %s
+                ORDER BY report_date LIMIT 1
+            """, (ticker, today))
+            row = cur.fetchone()
+            conn.close()
+
+            if not row:
+                return None
+
+            report_date = row[0]
+            days_to = (report_date - today).days if report_date else 999
+
+            if days_to <= 0:
+                # Post-earnings drift
+                surprise = float(row[1]) if row[1] is not None else 0.0
+                return max(0.0, min(100.0, 50.0 + surprise * 5.0))
+            elif days_to <= 5:
+                # Pre-earnings uncertainty → slight bearish
+                return 42.0  # below neutral
+            elif days_to <= 30:
+                return 48.0  # mild uncertainty
+            return None
+        except Exception as e:
+            logger.debug("Earnings score computation failed for %s: %s", ticker, e)
+            return None
+
+    def fetch_scores_from_db(self, ticker: str) -> dict[str, float]:
+        """Auto-fetch all available factor scores from DB for a ticker.
+
+        Returns dict with any available scores: technical, fundamental, macro,
+        global, relationship, sentiment, holiday, alpha, policy_event,
+        seasonal, earnings.
+        """
+        scores: dict[str, float] = {}
+
+        try:
+            conn = self._get_db_connection()
+            cur = conn.cursor()
+
+            # 6 standard scores from scores table
+            cur.execute("""
+                SELECT engine, score
+                FROM scores
+                WHERE ticker = %s
+                ORDER BY as_of DESC LIMIT 6
+            """, (ticker,))
+            for engine, score in cur.fetchall():
+                if score is not None:
+                    if engine == "global_market":
+                        engine = "global"
+                    scores[engine] = float(score)
+
+            conn.close()
+        except Exception as e:
+            logger.debug("Score fetch failed for %s: %s", ticker, e)
+
+        # Holiday score
+        holiday = self.compute_holiday_score(ticker)
+        if holiday is not None:
+            scores["holiday"] = holiday
+
+        # Alpha score
+        alpha = self.compute_alpha_score(ticker)
+        if alpha is not None:
+            scores["alpha"] = alpha
+
+        # Policy event score
+        policy = self.compute_policy_event_score(ticker)
+        if policy is not None:
+            scores["policy_event"] = policy
+
+        # Seasonal score
+        seasonal = self.compute_seasonal_score(ticker)
+        if seasonal is not None:
+            scores["seasonal"] = seasonal
+
+        # Earnings score
+        earnings = self.compute_earnings_score(ticker)
+        if earnings is not None:
+            scores["earnings"] = earnings
+
+        return scores
+
+    def decide_with_db(self, ticker: str, prediction: object | None = None) -> DecisionResult:
+        """Full auto-decision: fetch all scores from DB + prediction → decide.
+
+        This is the bridge method that connects PredictionEngine output
+        to DecisionEngine without manual parameter passing.
+
+        Args:
+            ticker: Stock ticker (e.g. 'BBCA.JK').
+            prediction: Optional Prediction dataclass from PredictionEngine.
+
+        Returns:
+            DecisionResult with all available factor scores.
+        """
+        scores = self.fetch_scores_from_db(ticker)
+
+        # Add prediction score if provided
+        if prediction is not None:
+            pred_score = self.prediction_score_from_prediction(prediction)
+            if pred_score is not None:
+                scores["prediction"] = pred_score
+
+        return self.decide(ticker=ticker, **scores)
