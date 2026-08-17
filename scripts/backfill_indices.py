@@ -275,6 +275,7 @@ def save_ohlcv_records(session, records: list[NormalizedOHLCV]) -> int:
         else:
             session.add(OHLCV(
                 ticker=r.ticker,
+                exchange_mic=r.market_mic,
                 timestamp=r.timestamp,
                 timeframe=tf,
                 open=r.open,
