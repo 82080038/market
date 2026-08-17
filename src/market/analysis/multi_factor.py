@@ -595,6 +595,7 @@ class MultiFactorFeaturePipeline:
         select_features: bool = False,
         macro_data: pd.DataFrame | None = None,
         fundamental_data: dict[str, float] | None = None,
+        broker_liquidity: pd.DataFrame | None = None,
     ) -> FeatureMatrix:
         """Build unified feature matrix.
 
@@ -605,6 +606,9 @@ class MultiFactorFeaturePipeline:
             select_features: If True, run feature selection.
             macro_data: Optional macro DataFrame (BI rate, inflation, etc.).
             fundamental_data: Optional dict of fundamental metrics for this ticker.
+            broker_liquidity: Optional DataFrame with columns ['date', 'total_value',
+                'total_volume', 'total_frequency', 'n_brokers', 'top10_conc'] from
+                broker_daily_summary aggregate. Used for liquidity regime features.
 
         Returns:
             FeatureMatrix with all components.
@@ -677,6 +681,34 @@ class MultiFactorFeaturePipeline:
                     fund_names.append(col_name)
 
         all_features = all_features + macro_names + fund_names
+
+        # Step 5d: Add broker liquidity regime features (Layer 5 causality)
+        liq_names: list[str] = []
+        if broker_liquidity is not None and not broker_liquidity.empty:
+            liq_aligned = broker_liquidity.set_index("date").reindex(df.index, method="ffill")
+            if "total_value" in liq_aligned.columns:
+                # Log-transform total value (highly skewed)
+                combined["liq_total_value_log"] = np.log1p(liq_aligned["total_value"].fillna(0.0))
+                liq_names.append("liq_total_value_log")
+            if "total_volume" in liq_aligned.columns:
+                combined["liq_total_volume_log"] = np.log1p(liq_aligned["total_volume"].fillna(0.0))
+                liq_names.append("liq_total_volume_log")
+            if "total_frequency" in liq_aligned.columns:
+                combined["liq_freq_log"] = np.log1p(liq_aligned["total_frequency"].fillna(0.0))
+                liq_names.append("liq_freq_log")
+            if "n_brokers" in liq_aligned.columns:
+                combined["liq_n_brokers"] = liq_aligned["n_brokers"].fillna(0.0)
+                liq_names.append("liq_n_brokers")
+            if "top10_conc" in liq_aligned.columns:
+                combined["liq_top10_conc"] = liq_aligned["top10_conc"].fillna(0.5)
+                liq_names.append("liq_top10_conc")
+            # Value momentum (3-day rolling)
+            if "total_value" in liq_aligned.columns:
+                val_series = liq_aligned["total_value"].ffill()
+                combined["liq_val_mom_3d"] = val_series.pct_change(3).fillna(0.0).clip(-2, 2)
+                liq_names.append("liq_val_mom_3d")
+
+        all_features = all_features + liq_names
 
         # Step 6: Optional PCA on exogenous block
         pca_result = None
@@ -987,3 +1019,89 @@ class MultiFactorModel:
             n_train_samples=n_samples,
             model_available=model_available,
         )
+
+
+def load_broker_liquidity(
+    cutoff_date: pd.Timestamp | str | None = None,
+    lookback_days: int = 60,
+) -> pd.DataFrame | None:
+    """Load aggregate broker liquidity data from broker_daily_summary.
+
+    Returns a DataFrame with columns:
+        date, total_value, total_volume, total_frequency, n_brokers, top10_conc
+
+    Args:
+        cutoff_date: Latest date to include (default: latest available).
+        lookback_days: Number of days to look back from cutoff.
+
+    Returns:
+        DataFrame or None if table is empty/unavailable.
+    """
+    from sqlalchemy import text
+
+    from market.db.engine import get_engine
+
+    try:
+        with get_engine().connect() as conn:
+            if cutoff_date is not None:
+                cutoff = pd.Timestamp(cutoff_date).date()
+            else:
+                row = conn.execute(
+                    text("SELECT MAX(date) FROM broker_daily_summary")
+                ).scalar()
+                if row is None:
+                    return None
+                cutoff = row
+
+            rows = conn.execute(
+                text(
+                    "SELECT date, "
+                    "SUM(value) as total_value, "
+                    "SUM(volume) as total_volume, "
+                    "SUM(frequency) as total_frequency, "
+                    "COUNT(*) as n_brokers "
+                    "FROM broker_daily_summary "
+                    "WHERE date <= :cutoff "
+                    "GROUP BY date ORDER BY date"
+                ),
+                {"cutoff": cutoff},
+            ).all()
+
+            if not rows:
+                return None
+
+            records = []
+            for r in rows:
+                d = r[0]
+                tv = float(r[1] or 0)
+                tvol = float(r[2] or 0)
+                tf = float(r[3] or 0)
+                nb = int(r[4] or 0)
+
+                # Top-10 concentration for this date
+                top_rows = conn.execute(
+                    text(
+                        "SELECT value FROM broker_daily_summary "
+                        "WHERE date = :d ORDER BY value DESC LIMIT 10"
+                    ),
+                    {"d": d},
+                ).all()
+                top10 = sum(float(r2[0] or 0) for r2 in top_rows)
+                conc = top10 / tv if tv > 0 else 0.5
+
+                records.append({
+                    "date": d,
+                    "total_value": tv,
+                    "total_volume": tvol,
+                    "total_frequency": tf,
+                    "n_brokers": nb,
+                    "top10_conc": conc,
+                })
+
+            df = pd.DataFrame(records)
+            df["date"] = pd.to_datetime(df["date"]).dt.date
+            return df
+
+    except Exception as e:
+        logger.debug("load_broker_liquidity failed: %s", e)
+        return None

@@ -318,14 +318,16 @@ class RecomputeGraph:
                     elif fn_name == "recompute_instrument_profiles":
                         from market.analysis.instrument_profiler import InstrumentBehaviorProfiler
                         profiler = InstrumentBehaviorProfiler()
-                        count = profiler.profile_all_instruments(session)
+                        result = profiler.profile_all_instruments()
+                        count = sum(result.values()) if isinstance(result, dict) else 0
                         results[fn_name] = count
                         total_rows += count
                         continue
                     elif fn_name == "recompute_cross_market_coefficients":
                         from market.analysis.cross_market_coefficients import CrossMarketCoefficientEngine
                         engine = CrossMarketCoefficientEngine()
-                        count = engine.compute_all(session)
+                        result = engine.update_all()
+                        count = sum(result.values()) if isinstance(result, dict) else 0
                         results[fn_name] = count
                         total_rows += count
                         continue
@@ -334,20 +336,30 @@ class RecomputeGraph:
                         results[fn_name] = 0
                         continue
                     elif fn_name == "recompute_seasonal_patterns":
-                        from market.analysis.seasonal import compute_seasonal_patterns
-                        count = compute_seasonal_patterns(session)
-                        results[fn_name] = count
-                        total_rows += count
+                        logger.info("Seasonal patterns module not yet implemented")
+                        results[fn_name] = 0
                         continue
                     elif fn_name == "recompute_macro_correlation":
                         from market.analysis.macro_correlation import full_analysis
-                        count = full_analysis(session)
-                        results[fn_name] = count
-                        total_rows += count
+                        macro_session = get_sessionmaker()()
+                        try:
+                            indicators = macro_session.execute(
+                                text("SELECT DISTINCT indicator_code FROM macroeconomic_indicators WHERE indicator_code IS NOT NULL")
+                            ).scalars().all()
+                            count = 0
+                            for ind_code in indicators[:5]:
+                                result = full_analysis(ind_code, "^JKSE")
+                                count += 1
+                            results[fn_name] = count
+                            total_rows += count
+                        finally:
+                            macro_session.close()
                         continue
                     elif fn_name == "recompute_causal_relationships":
-                        from market.analysis.cross_market_coefficients import compute_causal_relationships
-                        count = compute_causal_relationships(session)
+                        from market.analysis.cross_market_coefficients import CrossMarketCoefficientEngine
+                        engine = CrossMarketCoefficientEngine()
+                        result = engine.update_all()
+                        count = sum(result.values()) if isinstance(result, dict) else 0
                         results[fn_name] = count
                         total_rows += count
                         continue
@@ -356,10 +368,14 @@ class RecomputeGraph:
                         results[fn_name] = 0
                         continue
                     elif fn_name == "recompute_astronacci_cycles":
-                        from market.analysis.astronacci import compute_astronacci_cycles
-                        count = compute_astronacci_cycles(session)
-                        results[fn_name] = count
-                        total_rows += count
+                        from market.analysis.astronacci import AstronacciEngine
+                        from datetime import datetime as _dt, UTC as _utc, timedelta as _td
+                        engine = AstronacciEngine()
+                        end_dt = _dt.now(_utc)
+                        start_dt = end_dt - _td(days=365)
+                        cycles = engine.compute(start_dt, end_dt)
+                        results[fn_name] = len(cycles)
+                        total_rows += len(cycles)
                         continue
                     elif fn_name == "recompute_cross_market":
                         logger.info("Cross-market recompute not yet implemented as standalone function")

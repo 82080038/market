@@ -50,6 +50,9 @@ IDX_BASE = "https://www.idx.co.id"
 IDX_STOCK_SUMMARY = f"{IDX_BASE}/primary/TradingSummary/GetStockSummary"
 IDX_INDEX_SUMMARY = f"{IDX_BASE}/primary/TradingSummary/GetIndexSummary"
 IDX_TRADING_DAILY = f"{IDX_BASE}/primary/TradingSummary/GetTradingDaily"
+IDX_BROKER_SUMMARY = f"{IDX_BASE}/primary/TradingSummary/GetBrokerSummary"
+IDX_COMPANY_CALENDAR = f"{IDX_BASE}/primary/Home/GetCalendar"
+IDX_EARNINGS_WEEK = f"{IDX_BASE}/primary/Calendar/GetEarningsThisWeek"
 
 # Browser-like headers to bypass Cloudflare
 _BROWSER_HEADERS = {
@@ -126,7 +129,7 @@ class IDXOfficialAdapter:
             # idx.co.id returns DataTables format: {"data": [...], "recordsTotal": N}
             # or plain array [...]
             if isinstance(data, dict):
-                for key in ("data", "Items", "items", "result"):
+                for key in ("data", "Items", "items", "result", "Results"):
                     if key in data:
                         return data[key]
                 # Empty response
@@ -321,3 +324,149 @@ class IDXOfficialAdapter:
             logger.info("IDX all stocks for %s: %d records", target_date, len(results))
             return results
         return []
+
+    def fetch_foreign_flow_for_date(self, target_date: str | date) -> list[dict]:
+        """Fetch foreign flow data (ForeignBuy/ForeignSell) for all stocks on a date.
+
+        Uses the same GetStockSummary endpoint which returns ForeignBuy and
+        ForeignSell fields per stock. This method extracts only the foreign
+        flow fields and computes domestic flow from totals.
+
+        Args:
+            target_date: Date to fetch (string YYYY-MM-DD or date object).
+
+        Returns:
+            List of dicts with keys: ticker, date, foreign_buy, foreign_sell,
+            foreign_net, domestic_buy, domestic_sell, domestic_net, source.
+        """
+        if isinstance(target_date, str):
+            target_date = date.fromisoformat(target_date)
+
+        date_str = target_date.strftime("%Y%m%d")
+        params = {"date": date_str, "length": 9999, "start": 0}
+        data = self._fetch_json(IDX_STOCK_SUMMARY, params)
+
+        if not data:
+            return []
+
+        results = []
+        for item in data:
+            stock_code = item.get("StockCode", "")
+            if not stock_code:
+                continue
+
+            fb = float(item.get("ForeignBuy", 0) or 0)
+            fs = float(item.get("ForeignSell", 0) or 0)
+            fn = fb - fs
+
+            total_value = float(item.get("Value", 0) or 0)
+            db = total_value - fb
+            ds = total_value - fs
+            dn = db - ds
+
+            results.append({
+                "ticker": f"{stock_code}.JK",
+                "date": target_date.isoformat(),
+                "foreign_buy": fb,
+                "foreign_sell": fs,
+                "foreign_net": fn,
+                "domestic_buy": db,
+                "domestic_sell": ds,
+                "domestic_net": dn,
+                "source": "idx_co_id",
+            })
+
+        logger.info("IDX foreign flow for %s: %d records", target_date, len(results))
+        return results
+
+    def fetch_broker_summary_for_date(self, target_date: str | date) -> list[dict]:
+        """Fetch broker summary (aggregate per broker firm) for a date.
+
+        Args:
+            target_date: Date to fetch (string YYYY-MM-DD or date object).
+
+        Returns:
+            List of dicts with keys: broker_code, broker_name, volume,
+            value, frequency, date.
+        """
+        if isinstance(target_date, str):
+            target_date = date.fromisoformat(target_date)
+
+        date_str = target_date.strftime("%Y%m%d")
+        params = {"date": date_str, "length": 9999, "start": 0}
+        data = self._fetch_json(IDX_BROKER_SUMMARY, params)
+
+        if not data:
+            return []
+
+        # Response is {draw, recordsTotal, data: [...]} — extract data list
+        if isinstance(data, dict):
+            data = data.get("data", [])
+
+        results = []
+        for item in data:
+            results.append({
+                "broker_code": item.get("IDFirm", item.get("BrokerCode", "")),
+                "broker_name": item.get("FirmName", item.get("BrokerName", "")),
+                "date": target_date.isoformat(),
+                "volume": float(item.get("Volume", 0) or 0),
+                "value": float(item.get("Value", 0) or 0),
+                "frequency": int(item.get("Frequency", 0) or 0),
+            })
+
+        logger.info("IDX broker summary for %s: %d records", target_date, len(results))
+        return results
+
+    def fetch_company_calendar(self, target_date: str | date, date_range: str = "m") -> list[dict]:
+        """Fetch corporate event calendar (RUPS, dividends, splits) from idx.co.id.
+
+        Uses /primary/Home/GetCalendar endpoint. Response format:
+            {request: {...}, ResultCount: N, Results: [...]}
+
+        Each result item has fields:
+            title (ticker code), Jenis (event type: Rencana/RUPS/PE),
+            description, start (ISO date), TglWaktuRups, location,
+            AgendaTahun, Step, MonthName, MonthNumber, Year
+
+        Args:
+            target_date: Date to fetch (string YYYY-MM-DD or date object).
+            date_range: 'm' for month, 'd' for day.
+
+        Returns:
+            List of dicts with calendar events.
+        """
+        if isinstance(target_date, str):
+            target_date = date.fromisoformat(target_date)
+
+        date_str = target_date.strftime("%Y%m%d")
+        params = {"date": date_str, "range": date_range, "indexfrom": 0, "pagesize": 9999}
+        data = self._fetch_json(IDX_COMPANY_CALENDAR, params)
+
+        if not data:
+            return []
+
+        # _fetch_json already extracts Results list from dict response
+        if isinstance(data, list):
+            items = data
+        else:
+            return []
+
+        results = []
+        for item in items:
+            ticker_code = item.get("title", "") or item.get("KodeEmiten", "")
+            if not ticker_code:
+                continue
+            results.append({
+                "ticker": f"{ticker_code}.JK",
+                "event_date": item.get("start", item.get("TglWaktuRups", "")),
+                "event_type": item.get("Jenis", ""),
+                "description": item.get("description", ""),
+                "agenda": item.get("AgendaTahun", ""),
+                "location": item.get("location", ""),
+                "step": item.get("Step", ""),
+                "tgl_rups": item.get("TglWaktuRups", ""),
+                "tgl_pe": item.get("TglWaktuPE", ""),
+            })
+
+        logger.info("IDX company calendar for %s (%s): %d records", target_date, date_range, len(results))
+        return results

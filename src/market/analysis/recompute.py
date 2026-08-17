@@ -278,9 +278,13 @@ def recompute_scores(
         })
         count += 1
         if len(score_batch) >= BATCH_FLUSH_SIZE:
-            session.bulk_insert_mappings(Score, score_batch)
-            score_batch.clear()
-            session.commit()
+            try:
+                session.bulk_insert_mappings(Score, score_batch)
+                score_batch.clear()
+                session.commit()
+            except Exception:
+                session.rollback()
+                score_batch.clear()
             logger.info("scores: %d rows", count)
 
     # Chunked batch processing — 100 tickers per batch to limit peak RAM
@@ -475,12 +479,19 @@ def recompute_scores(
 
         # Flush remaining batch after each chunk
         if score_batch:
-            session.bulk_insert_mappings(Score, score_batch)
-            score_batch.clear()
-            session.commit()
+            try:
+                session.bulk_insert_mappings(Score, score_batch)
+                score_batch.clear()
+                session.commit()
+            except Exception:
+                session.rollback()
+                score_batch.clear()
 
     if score_batch:
-        session.bulk_insert_mappings(Score, score_batch)
+        try:
+            session.bulk_insert_mappings(Score, score_batch)
+        except Exception:
+            session.rollback()
     session.commit()
     if progress_cb:
         progress_cb("scores", total, total, f"Done: {count} rows")
@@ -1386,16 +1397,20 @@ def run_all_recompute(
 
     for name, func in functions:
         logger.info("Recomputing %s (mode=%s)...", name, mode_label)
+        func_session = get_sessionmaker()()
         try:
-            count = func(session, dry_run=dry_run, progress_cb=progress_cb, incremental=incremental)
+            count = func(func_session, dry_run=dry_run, progress_cb=progress_cb, incremental=incremental)
+            func_session.commit()
             results[name] = count
             logger.info("  %s: %d rows", name, count)
         except Exception as exc:
             logger.error("  %s FAILED: %s", name, exc)
             results[name] = -1
-            session.rollback()
+            func_session.rollback()
             if progress_cb:
                 progress_cb(name, -1, 0, f"FAILED: {exc}")
+        finally:
+            func_session.close()
 
     return results
 

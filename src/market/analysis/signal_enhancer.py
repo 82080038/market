@@ -20,6 +20,9 @@ it with non-trend-following signals from:
 9. **Market Influence KB** (``market_influence_kb.py``) — consolidated
    influence mapping from sector-global links, commodity sensitivity,
    Granger causality, and macro policy. Adds a net influence signal.
+10. **Broker Momentum** (``broker_daily_summary`` table) — market-wide
+    broker activity momentum (total value/volume trend, top broker
+    concentration). Adds a smart-money liquidity signal.
 
 The enhancer is **additive and optional**: if any module's input data is
 unavailable, it silently skips that signal (graceful degradation). The
@@ -133,6 +136,7 @@ class SignalEnhancer:
         cross_market_weight: float = 0.12,
         astronacci_weight: float = 0.06,
         influence_kb_weight: float = 0.08,
+        broker_momentum_weight: float = 0.10,
         signal_threshold: float = 0.15,
         smart_money_streak_threshold: int = 3,
         mid_cap_relax_factor: float = 0.15,
@@ -170,6 +174,7 @@ class SignalEnhancer:
         self.cross_market_weight = cross_market_weight
         self.astronacci_weight = astronacci_weight
         self.influence_kb_weight = influence_kb_weight
+        self.broker_momentum_weight = broker_momentum_weight
         self.signal_threshold = signal_threshold
         self.smart_money_streak_threshold = smart_money_streak_threshold
         self.mid_cap_relax_factor = mid_cap_relax_factor
@@ -245,6 +250,10 @@ class SignalEnhancer:
         influence_sig = self._compute_influence_kb_signal(ticker, df_trunc)
         signals.append(influence_sig)
 
+        # 10. Broker momentum signal (from broker_daily_summary table).
+        broker_sig = self._compute_broker_momentum_signal(as_of)
+        signals.append(broker_sig)
+
         # 7. Meta-labeler bet sizing (with optional threshold relaxation).
         # If Smart Money Score shows accumulation for >=3 consecutive days,
         # relax the meta-labeler prob_threshold for Mid-Cap stocks.
@@ -292,6 +301,8 @@ class SignalEnhancer:
                 total_adj += sig.signal * self.astronacci_weight
             elif sig.source == "influence_kb":
                 total_adj += sig.signal * self.influence_kb_weight
+            elif sig.source == "broker_momentum":
+                total_adj += sig.signal * self.broker_momentum_weight
             elif sig.source == "meta":
                 bet_size = sig.signal  # meta-labeler returns bet size directly
             conf_mult *= sig.confidence_adjustment
@@ -431,26 +442,32 @@ class SignalEnhancer:
             if self.policy_scorer is None:
                 return EnhancementSignal(source="event")
 
+            # Convert to UTC-aware datetime for comparison
+            as_of_dt = pd.Timestamp(as_of)
+            if as_of_dt.tzinfo is None:
+                as_of_dt = as_of_dt.tz_localize("UTC")
+            as_of_dt = as_of_dt.to_pydatetime()
+
             event_signal = self.policy_scorer.compute_event_signal(
                 ticker=ticker,
-                as_of_date=pd.Timestamp(as_of),
+                as_of_date=as_of_dt,
             )
 
             if event_signal is None:
                 return EnhancementSignal(source="event")
 
-            # Normalize: event_signal.composite_score is [-100, +100].
-            normalized = float(event_signal.composite_score) / 100.0
-            normalized = np.clip(normalized, -1, 1)
+            # Normalize: event_signal.score is unbounded, clip to [-100, +100].
+            raw_score = float(event_signal.score)
+            normalized = np.clip(raw_score / 100.0, -1, 1)
 
             # Confidence adjustment: strong events boost or reduce confidence.
             conf_adj = 1.0 + abs(normalized) * 0.10
 
             return EnhancementSignal(
                 source="event",
-                signal=normalized,
+                signal=float(normalized),
                 confidence_adjustment=conf_adj,
-                rationale=f"score={event_signal.composite_score:.1f}, n_events={event_signal.n_events}",
+                rationale=f"score={raw_score:.1f}, n_events={len(event_signal.active_events)}",
                 available=True,
             )
         except Exception as e:
@@ -911,3 +928,112 @@ class SignalEnhancer:
         except Exception as e:
             logger.debug("Meta signal failed: %s", e)
             return EnhancementSignal(source="meta")
+
+    def _compute_broker_momentum_signal(
+        self,
+        as_of: str | pd.Timestamp,
+    ) -> EnhancementSignal:
+        """Compute market-wide broker momentum signal from broker_daily_summary.
+
+        Reads aggregate broker activity (total value, volume, frequency) and
+        computes a momentum signal based on:
+        - Total market value trend (3-day vs prior 2-day)
+        - Top broker concentration (HHI) — high concentration = smart money
+        - Frequency trend — rising frequency = broad participation (bullish)
+
+        Signal range: [-1, +1]. Positive = bullish liquidity regime.
+        """
+        try:
+            from datetime import timedelta
+
+            from sqlalchemy import text
+
+            from market.db.engine import get_engine
+
+            cutoff = pd.Timestamp(as_of)
+            if cutoff.tzinfo is not None:
+                cutoff_date = cutoff.tz_convert("UTC").date()
+            else:
+                cutoff_date = cutoff.date()
+
+            with get_engine().connect() as conn:
+                # Get last 5 trading days of aggregate broker data
+                rows = conn.execute(
+                    text(
+                        "SELECT date, SUM(value) as total_val, SUM(volume) as total_vol, "
+                        "SUM(frequency) as total_freq, COUNT(*) as n_brokers "
+                        "FROM broker_daily_summary "
+                        "WHERE date <= :cutoff "
+                        "GROUP BY date ORDER BY date DESC LIMIT 5"
+                    ),
+                    {"cutoff": cutoff_date},
+                ).all()
+
+                if len(rows) < 3:
+                    return EnhancementSignal(source="broker_momentum")
+
+                # Recent 3 days vs prior 2 days
+                recent_val = float(sum(float(r[1] or 0) for r in rows[:3])) / 3
+                prior_val = float(sum(float(r[1] or 0) for r in rows[3:5])) / max(1, len(rows[3:5]))
+
+                if prior_val > 0:
+                    val_momentum = (recent_val - prior_val) / prior_val
+                else:
+                    val_momentum = 0.0
+
+                # Frequency trend (rising = bullish)
+                recent_freq = float(sum(float(r[3] or 0) for r in rows[:3])) / 3
+                prior_freq = float(sum(float(r[3] or 0) for r in rows[3:5])) / max(1, len(rows[3:5]))
+                if prior_freq > 0:
+                    freq_momentum = (recent_freq - prior_freq) / prior_freq
+                else:
+                    freq_momentum = 0.0
+
+                # Top broker concentration (latest day)
+                latest_date = rows[0][0]
+                broker_rows = conn.execute(
+                    text(
+                        "SELECT value FROM broker_daily_summary "
+                        "WHERE date = :d ORDER BY value DESC LIMIT 10"
+                    ),
+                    {"d": latest_date},
+                ).all()
+
+                if broker_rows:
+                    top_10_val = float(sum(float(r[0] or 0) for r in broker_rows))
+                    total_val = float(sum(float(r[1] or 0) for r in rows[:1]))
+                    if total_val and total_val > 0:
+                        concentration = top_10_val / total_val
+                    else:
+                        concentration = 0.5
+                else:
+                    concentration = 0.5
+
+                # Signal: weighted combination
+                # Value momentum (50%) + frequency momentum (30%) + concentration (20%)
+                # High concentration (>0.6) = smart money dominant = mildly bullish
+                concentration_signal = (concentration - 0.5) * 0.4  # [-0.2, +0.2]
+
+                raw_signal = (
+                    np.tanh(val_momentum) * 0.50
+                    + np.tanh(freq_momentum) * 0.30
+                    + concentration_signal
+                )
+                signal = float(np.clip(raw_signal, -1.0, 1.0))
+
+                conf_adj = 1.0 + abs(signal) * 0.08
+
+                return EnhancementSignal(
+                    source="broker_momentum",
+                    signal=signal,
+                    confidence_adjustment=conf_adj,
+                    rationale=(
+                        f"val_mom={val_momentum:+.3f}, freq_mom={freq_momentum:+.3f}, "
+                        f"top10_conc={concentration:.2f}"
+                    ),
+                    available=True,
+                )
+
+        except Exception as e:
+            logger.debug("Broker momentum signal failed: %s", e)
+            return EnhancementSignal(source="broker_momentum")

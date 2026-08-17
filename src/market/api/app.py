@@ -75,6 +75,7 @@ from market.api.routes_backtest import router as backtest_router
 from market.api.routes_cosmos import router as cosmos_router
 from market.api.routes_data import router as data_router
 from market.api.routes_delisting import router as delisting_router
+from market.api.routes_foreign_flow import router as foreign_flow_router
 from market.api.routes_instruments import router as instruments_router
 from market.api.routes_multi_asset import router as multi_asset_router
 from market.api.routes_notifications import router as notifications_router
@@ -218,6 +219,7 @@ def create_app() -> FastAPI:
     app.include_router(reports_router)
     app.include_router(security_router)
     app.include_router(settings_router)
+    app.include_router(foreign_flow_router)
 
     # Register global error handlers (Gap #29)
     register_error_handlers(app)

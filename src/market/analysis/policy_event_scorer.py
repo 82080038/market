@@ -22,7 +22,7 @@ from __future__ import annotations
 
 import logging
 from dataclasses import dataclass, field
-from datetime import date, datetime, timedelta
+from datetime import UTC, date, datetime, timedelta
 from enum import Enum
 from pathlib import Path
 
@@ -355,12 +355,12 @@ _EXT_DAMPAK_TO_IMPACT: dict[str, float] = {
 
 
 def _parse_date(val: str | date | datetime) -> datetime:
-    """Parse a date value (str, date, or datetime) into a datetime."""
+    """Parse a date value (str, date, or datetime) into a UTC-aware datetime."""
     if isinstance(val, datetime):
-        return val
+        return val if val.tzinfo else val.replace(tzinfo=UTC)
     if isinstance(val, date):
-        return datetime(val.year, val.month, val.day)
-    return datetime.strptime(str(val)[:10], "%Y-%m-%d")
+        return datetime(val.year, val.month, val.day, tzinfo=UTC)
+    return datetime.strptime(str(val)[:10], "%Y-%m-%d").replace(tzinfo=UTC)
 
 
 class PolicyEventScorer:
@@ -449,10 +449,100 @@ class PolicyEventScorer:
                 description=f"{judul or ''} ({lokasi or ''})",
             ))
 
+        # Load corporate calendar events from idx.co.id (corporate_calendar table)
+        cc_rows = self._load_corporate_calendar(conn)
+        events.extend(cc_rows)
+
         self._events = events
-        logger.info("PolicyEventScorer: loaded %d events (%d policy, %d external)",
-                    len(events), len(rows), len(ext_rows))
+        logger.info("PolicyEventScorer: loaded %d events (%d policy, %d external, %d corporate_calendar)",
+                    len(events), len(rows), len(ext_rows), len(cc_rows))
         return len(events)
+
+    @staticmethod
+    def _load_corporate_calendar(conn: object) -> list[EventImpact]:
+        """Load ticker-specific corporate events from corporate_calendar table.
+
+        Maps IDX calendar event types to EventType with TICKER_SPECIFIC scope:
+        - Buyback → BUYBACK (bullish, +50)
+        - Dividen → DIVIDEND (bullish, +10)
+        - RUPS Tahunan/Luar Biasa → OTHER (neutral, +5)
+        - RUPS Rencana → OTHER (neutral, +3)
+        - obligasiJatuhTempo → OTHER (neutral, 0)
+        - pencatatanAwal → OTHER (neutral, +10)
+        - Rights issue → RIGHTS_ISSUE (bearish, -45)
+        - Stock split → STOCK_SPLIT (bullish, +15)
+        """
+        # Check if corporate_calendar table exists
+        try:
+            cc_rows = conn.execute(
+                "SELECT ticker, event_date, event_type, description "
+                "FROM corporate_calendar ORDER BY event_date"
+            ).fetchall()
+        except Exception:
+            return []
+
+        events: list[EventImpact] = []
+        for row in cc_rows:
+            ticker, event_date, event_type_raw, description = row
+            if not ticker or not event_date:
+                continue
+
+            desc_lower = (description or "").lower()
+            etype_raw_lower = (event_type_raw or "").lower()
+
+            # Classify based on description + event_type
+            if "buyback" in desc_lower or "pembelian kembali" in desc_lower:
+                etype = EventType.BUYBACK
+                direction = EventDirection.BULLISH
+                base_impact = 50.0
+            elif "dividen" in desc_lower:
+                etype = EventType.DIVIDEND
+                direction = EventDirection.BULLISH
+                base_impact = 10.0
+            elif "right issue" in desc_lower or "right" in desc_lower:
+                etype = EventType.RIGHTS_ISSUE
+                direction = EventDirection.BEARISH
+                base_impact = -45.0
+            elif "split" in desc_lower or "pemecahan" in desc_lower:
+                etype = EventType.STOCK_SPLIT
+                direction = EventDirection.BULLISH
+                base_impact = 15.0
+            elif "merger" in desc_lower or "penggabungan" in desc_lower:
+                etype = EventType.MERGER
+                direction = EventDirection.NEUTRAL
+                base_impact = 20.0
+            elif "obligasi" in desc_lower or "sukuk" in desc_lower:
+                etype = EventType.OTHER
+                direction = EventDirection.NEUTRAL
+                base_impact = 0.0
+            elif "pencatatan" in etype_raw_lower or "pencatatan" in desc_lower:
+                etype = EventType.OTHER
+                direction = EventDirection.BULLISH
+                base_impact = 10.0
+            elif "rencana" in etype_raw_lower:
+                etype = EventType.OTHER
+                direction = EventDirection.NEUTRAL
+                base_impact = 3.0
+            elif "tahunan" in etype_raw_lower or "luar biasa" in etype_raw_lower:
+                etype = EventType.OTHER
+                direction = EventDirection.NEUTRAL
+                base_impact = 5.0
+            else:
+                etype = EventType.OTHER
+                direction = EventDirection.NEUTRAL
+                base_impact = 0.0
+
+            events.append(EventImpact(
+                event_type=etype,
+                direction=direction,
+                scope=EventScope.TICKER_SPECIFIC,
+                base_impact=base_impact,
+                event_date=_parse_date(event_date),
+                ticker=ticker,
+                description=description or "",
+            ))
+
+        return events
 
     def compute_event_signal(
         self,
