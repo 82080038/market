@@ -1,4 +1,4 @@
-"""Comprehensive data quality cleanup for market_paper.db.
+"""Comprehensive data quality cleanup for PostgreSQL database.
 
 Addresses 8 audit findings (2026-08-06):
   #1 Ticker suffix inconsistency (instrument_master & foreign_flow missing .JK)

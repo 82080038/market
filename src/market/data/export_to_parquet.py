@@ -1,4 +1,4 @@
-"""Export cleaned data from market_paper.db to parquet archive.
+"""Export cleaned data from PostgreSQL to parquet archive.
 
 Creates a portable parquet backup of all database tables at the configured
 parquet archive path (OS-aware default: Linux /media/petrick/Parquet/pustaka_data/,
@@ -34,10 +34,10 @@ EXPORT_DIR = Path(settings.parquet_archive_path) / "archive" / "tables"
 # Tables to export with their column selection / transformation
 # Format: (table_name, output_filename, optional_column_rename_map)
 TABLES_TO_EXPORT: list[tuple[str, str, dict[str, str] | None]] = [
-    ("ohlcv", "ohlcv.parquet", None),
-    ("instrument_master", "instrument_master.parquet", None),
-    ("market_registry", "market_registry.parquet", None),
-    ("market_calendar", "market_calendar.parquet", None),
+    ("stock_prices", "stock_prices.parquet", None),
+    ("instruments", "instruments.parquet", None),
+    ("exchanges", "exchanges.parquet", None),
+    ("exchange_holidays", "exchange_holidays.parquet", None),
     ("sector_master", "sector_master.parquet", None),
     ("corporate_actions", "corporate_actions.parquet", None),
     ("dividends", "dividends.parquet", None),
@@ -51,7 +51,6 @@ TABLES_TO_EXPORT: list[tuple[str, str, dict[str, str] | None]] = [
     }),
     ("macro_data", "macro_data.parquet", None),
     ("foreign_flow", "foreign_flow.parquet", None),
-    ("fx_rates", "fx_rates.parquet", None),
     ("technical_indicators", "technical_indicators.parquet", None),
     ("scores", "scores.parquet", None),
     ("relationship_matrix", "relationship_matrix.parquet", None),

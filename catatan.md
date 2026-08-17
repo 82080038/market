@@ -1441,3 +1441,211 @@ Tabel berikut adalah data referensi/static yang tidak perlu di-refresh secara be
 
 ===
 
+### PROMPT UNTUK AI: Analisis Data Dependency & Pengaruh Pasar Modal (Batch Execution)
+
+**INSTRUKSI UTAMA:** Lakukan analisis sistematis dan batch execution untuk memetakan seluruh data yang mempengaruhi pasar modal global dan Indonesia, dengan tujuan akhir **menghasilkan sinyal trading yang profitable dan terukur**.
+
+---
+
+## TUJUAN APLIKASI
+
+**Objective:** Membangun sistem trading intelligence yang:
+1. **Mengidentifikasi** semua faktor yang mempengaruhi pergerakan harga saham IDX
+2. **Memprediksi** arah pergerakan dengan akurasi >60% (edge minimal)
+3. **Mengeksekusi** sinyal dengan risk-adjusted return optimal (Sharpe >1.5)
+4. **Mengadaptasi** strategi berdasarkan regime pasar (bull/bear/sideways)
+5. **Meminimalkan** drawdown dan false signals
+
+---
+
+#### FASE 1: RISET & INVENTARISASI DATA PENGARUH (Batch 1)
+
+**1.1 Data Makro Global → Impact ke IDX:**
+
+| Kategori | Data Point | Leading Indicator? | Lag (days) | Impact Sectors |
+|----------|-----------|-------------------|------------|----------------|
+| **Monetary Policy** | Fed Rate, BI Rate, ECB Rate | ✅ | 1-30 | Banking, Property, Consumer |
+| **Inflation** | US CPI, Indo CPI, PPI | ✅ | 7-14 | Consumer, Retail, FMCG |
+| **Employment** | NFP, Unemployment Rate | ✅ | 1-7 | Consumer, Retail |
+| **Manufacturing** | PMI (US, China, Indo) | ✅ | 1-3 | Manufacturing, Export |
+| **Growth** | GDP (US, China, Indo) | ⚠️ Lagging | 30-90 | All sectors |
+
+**1.2 Data Komoditas → Impact ke Sektor IDX:**
+
+| Commodity | Ticker Proxy | Affected IDX Tickers | Correlation Type |
+|-----------|-------------|---------------------|------------------|
+| **Crude Oil (WTI/Brent)** | CL=F, BZ=F | PGAS, MEDC, ELSA, AKRA | Positive |
+| **Gold** | GC=F | ANTM, MDKA, UNTR | Positive |
+| **Nickel (LME)** | ^DJUSNI | INCO, ANTM, VALE | Strong Positive |
+| **CPO (MDEX)** | FCPO | AALI, LSIP, SIMP, SGRO | Strong Positive |
+| **Coal (Newcastle)** | MTF=F | ADRO, ITMG, PTBA, BYAN | Strong Positive |
+| **Copper** | HG=F | TINS, ANTM | Positive |
+| **Tin** | SNNN.L | TINS | Strong Positive |
+
+**1.3 Data Mata Uang → Impact ke Sektor:**
+
+| Currency Pair | Impact Direction | Affected Sectors |
+|---------------|-----------------|------------------|
+| **USD/IDR ↑** | Negative | Import-heavy (Pharma, Consumer), Positive: Export (Mining, CPO) |
+| **DXY ↑** | Negative | Emerging market sentiment → capital outflow |
+| **CNY/USD ↓** | Negative | Export competitiveness Indonesia turun |
+| **JPY Carry Trade** | Complex | Risk-on/risk-off sentiment |
+
+**1.4 Data Sentimen & Volatility:**
+
+| Indicator | Source | Threshold | Signal |
+|-----------|--------|-----------|--------|
+| **VIX** | CBOE | <15: Complacent, >25: Fear, >35: Panic | Risk-off trigger |
+| **Fear & Greed Index** | CNN | <25: Extreme Fear (Buy), >75: Extreme Greed (Sell) | Contrarian |
+| **Put/Call Ratio** | CBOE | >1.2: Bearish, <0.7: Bullish | Sentiment |
+| **Fund Flows (EM)** | EPFR | Outflow >$1B/week: Bearish | Capital flow |
+| **Foreign Flow IDX** | IDX | Net sell >500B/day: Bearish | Local sentiment |
+
+**1.5 Audit Database Existing:**
+```bash
+ENV=paper uv run python -c "
+from market.db.engine import get_sessionmaker
+from sqlalchemy import text
+import pandas as pd
+
+s = get_sessionmaker()()
+
+# Get all tables with row counts and date ranges
+query = '''
+SELECT 
+    table_name,
+    (SELECT COUNT(*) FROM information_schema.columns WHERE table_name = t.table_name) as columns,
+    pg_total_relation_size(quote_ident(table_name)) as size_bytes
+FROM information_schema.tables t
+WHERE table_schema = 'public'
+ORDER BY table_name
+'''
+tables = s.execute(text(query)).fetchall()
+
+print('=== DATABASE AUDIT ===')
+for t in tables:
+    try:
+        count = s.execute(text(f'SELECT COUNT(*) FROM \"{t[0]}\"')).scalar()
+        # Try to get date range
+        try:
+            date_range = s.execute(text(f'''
+                SELECT MIN(date)::text, MAX(date)::text 
+                FROM \"{t[0]}\" 
+                WHERE date IS NOT NULL
+            ''')).fetchone()
+            date_info = f'{date_range[0]} to {date_range[1]}' if date_range[0] else 'N/A'
+        except:
+            date_info = 'N/A'
+        print(f'{t[0]}: {count:,} rows | {t[2]/1024:.1f} KB | {date_info}')
+    except Exception as e:
+        print(f'{t[0]}: ERROR - {e}')
+s.close()
+"
+```
+
+---
+
+#### FASE 2: GAP ANALYSIS & SOURCE MAPPING (Batch 2)
+
+**2.1 Identifikasi Gap Data untuk Profit Generation:**
+
+| Data Needed | Ada di DB? | Source | API | Priority | Profit Impact |
+|-------------|------------|--------|-----|----------|---------------|
+| **VIX** | ❓ | Yahoo (^VIX) | ✅ Free | CRITICAL | Risk-off signal → avoid losses |
+| **US 10Y Yield** | ❓ | FRED (DGS10) | ✅ Free | CRITICAL | Rate sensitivity → bank stocks |
+| **DXY** | ❓ | Yahoo (DX-Y.NYB) | ✅ Free | HIGH | IDR impact → export/import |
+| **Fed Rate** | ❓ | FRED (FEDFUNDS) | ✅ Free | HIGH | Global liquidity signal |
+| **Crude Oil** | ❓ | Yahoo (CL=F) | ✅ Free | HIGH | Energy sector driver |
+| **Nickel LME** | ❓ | Yahoo/LME | ⚠️ Delayed | HIGH | INCO, ANTM driver |
+| **CPO MDEX** | ❓ | MDEX/Yahoo | ⚠️ Delayed | HIGH | Plantation sector |
+| **China PMI** | ❓ | Investing.com | ⚠️ Scrape | MEDIUM | Export demand signal |
+| **Foreign Flow IDX** | ✅ | IDX API | ⚠️ Manual | CRITICAL | Local sentiment |
+| **Broker Summary** | ✅ | IDX API | ⚠️ Manual | HIGH | Smart money tracking |
+| **Fear & Greed** | ❓ | CNN API | ✅ Free | MEDIUM | Contrarian signal |
+| **Fund Flows EM** | ❌ | EPFR | ❌ Paid $$$| LOW | Capital flow |
+
+**2.2 Data Source Registry Schema:**
+```bash
+ENV=paper uv run python -c "
+from market.db.engine import get_sessionmaker
+from sqlalchemy import text
+s = get_sessionmaker()()
+
+# Drop if exists and recreate
+s.execute(text('DROP TABLE IF EXISTS data_source_registry CASCADE'))
+s.execute(text('''
+CREATE TABLE data_source_registry (
+    id SERIAL PRIMARY KEY,
+    data_name VARCHAR(100) NOT NULL UNIQUE,
+    data_category VARCHAR(50),              -- 'macro','commodity','currency','sentiment','flow'
+    source_name VARCHAR(100),
+    api_type VARCHAR(20),                   -- 'rest','websocket','scrape','manual'
+    api_endpoint TEXT,
+    api_key_required BOOLEAN DEFAULT FALSE,
+    frequency VARCHAR(20),                  -- 'realtime','hourly','daily','weekly','monthly'
+    update_time VARCHAR(20),                -- e.g., '08:30 ET' for NFP
+    lag_hours INT DEFAULT 0,                -- data availability lag
+    is_free BOOLEAN DEFAULT TRUE,
+    is_active BOOLEAN DEFAULT TRUE,
+    db_table_target VARCHAR(100),           -- where data is stored
+    db_column_target VARCHAR(100),
+    last_fetched TIMESTAMP,
+    fetch_status VARCHAR(20),               -- 'ok','error','stale'
+    error_message TEXT,
+    priority VARCHAR(10),                   -- 'critical','high','medium','low'
+    profit_impact TEXT,                     -- description of how this affects trading
+    created_at TIMESTAMP DEFAULT NOW(),
+    updated_at TIMESTAMP DEFAULT NOW()
+)
+'''))
+s.commit()
+
+# Insert known sources
+sources = [
+    ('VIX', 'sentiment', 'Yahoo Finance', 'rest', 'yfinance ^VIX', False, 'daily', '16:15 ET', 0, True, True, 'macroeconomic_indicators', 'vix', 'critical', 'Risk-off trigger for position sizing'),
+    ('US_10Y_YIELD', 'macro', 'FRED', 'rest', 'FRED DGS10', False, 'daily', '18:00 ET', 1, True, True, 'macroeconomic_indicators', 'us_10y_yield', 'critical', 'Bank sector sensitivity, IDR pressure'),
+    ('DXY', 'currency', 'Yahoo Finance', 'rest', 'yfinance DX-Y.NYB', False, 'daily', '17:00 ET', 0, True, True, 'macroeconomic_indicators', 'dxy', 'high', 'USD strength → IDR weakness → export/import'),
+    ('FED_RATE', 'macro', 'FRED', 'rest', 'FRED FEDFUNDS', False, 'monthly', 'FOMC meeting', 0, True, True, 'macroeconomic_indicators', 'fed_rate', 'high', 'Global liquidity, BI rate follower'),
+    ('CRUDE_OIL_WTI', 'commodity', 'Yahoo Finance', 'rest', 'yfinance CL=F', False, 'daily', '14:30 ET', 0, True, True, 'macroeconomic_indicators', 'crude_oil', 'high', 'Energy sector driver (PGAS, MEDC, ELSA)'),
+    ('GOLD', 'commodity', 'Yahoo Finance', 'rest', 'yfinance GC=F', False, 'daily', '13:30 ET', 0, True, True, 'macroeconomic_indicators', 'gold', 'medium', 'Safe haven, ANTM correlation'),
+    ('NICKEL_LME', 'commodity', 'Yahoo Finance', 'rest', 'yfinance ^DJUSNI', False, 'daily', '17:00 LDN', 0, True, True, 'macroeconomic_indicators', 'nickel', 'high', 'INCO, ANTM, VALE driver'),
+    ('CPO_MDEX', 'commodity', 'MDEX', 'scrape', 'MDEX FCPO', False, 'daily', '17:30 MYT', 1, True, True, 'macroeconomic_indicators', 'cpo', 'high', 'AALI, LSIP, SIMP driver'),
+    ('COAL_NEWCASTLE', 'commodity', 'Yahoo Finance', 'rest', 'yfinance MTF=F', False, 'daily', '16:00 SYD', 0, True, True, 'macroeconomic_indicators', 'coal', 'high', 'ADRO, ITMG, PTBA, BYAN driver'),
+    ('FEAR_GREED', 'sentiment', 'CNN', 'rest', 'CNN Fear Greed API', False, 'daily', '16:00 ET', 0, True, True, 'fear_greed', 'value', 'medium', 'Contrarian signal for entry/exit'),
+    ('USD_IDR', 'currency', 'Yahoo Finance', 'rest', 'yfinance IDR=X', False, 'daily', '17:00 WIB', 0, True, True, 'macroeconomic_indicators', 'usd_idr', 'critical', 'Import cost, foreign flow driver'),
+    ('CHINA_PMI', 'macro', 'Investing.com', 'scrape', 'Investing.com CN PMI', False, 'monthly', '1st of month', 0, True, True, 'macroeconomic_indicators', 'china_pmi', 'medium', 'Export demand signal'),
+    ('FOREIGN_FLOW_IDX', 'flow', 'IDX', 'rest', 'IDX API', False, 'daily', '17:00 WIB', 0, True, True, 'foreign_flow', 'net_value', 'critical', 'Local sentiment, smart money'),
+    ('BROKER_FLOW', 'flow', 'IDX', 'rest', 'IDX Broker Summary', False, 'daily', '17:00 WIB', 0, True, True, 'broker_flow', 'net_value', 'high', 'Institutional activity tracking'),
+]
+
+for src in sources:
+    s.execute(text('''
+        INSERT INTO data_source_registry 
+        (data_name, data_category, source_name, api_type, api_endpoint, api_key_required, 
+         frequency, update_time, lag_hours, is_free, is_active, db_table_target, 
+         db_column_target, priority, profit_impact)
+        VALUES (:name, :cat, :src, :api_type, :endpoint, :key_req, :freq, :update, :lag, 
+                :free, :active, :table, :col, :priority, :impact)
+        ON CONFLICT (data_name) DO UPDATE SET
+            source_name = EXCLUDED.source_name,
+            api_endpoint = EXCLUDED.api_endpoint,
+            updated_at = NOW()
+    '''), {
+        'name': src[0], 'cat': src[1], 'src': src[2], 'api_type': src[3], 
+        'endpoint': src[4], 'key_req': src[5], 'freq': src[6], 'update': src[7],
+        'lag': src[8], 'free': src[9], 'active': src[10], 'table': src[11],
+        'col': src[12], 'priority': src[13], 'impact': src[14]
+    })
+
+s.commit()
+print('data_source_registry created and populated')
+s.close()
+"
+```
+
+---
+
+#### FASE 3: DEPENDENCY MAPPING & CAUSAL ANALYSIS (Batch 3)
+
+**3.1 Data Dependency Map Schema (Enhanced):** ✅ SELESAI
+

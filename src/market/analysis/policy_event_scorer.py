@@ -372,7 +372,7 @@ class PolicyEventScorer:
 
     Usage::
 
-        scorer = PolicyEventScorer(db_path="data/market_research.db")
+        scorer = PolicyEventScorer(db_path=None)  # uses PostgreSQL from settings
         scorer.load()
         signal = scorer.compute_event_signal(ticker="BBCA.JK", as_of_date=...)
     """

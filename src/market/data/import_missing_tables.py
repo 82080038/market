@@ -2,7 +2,7 @@
 
 Reads from project global's parquet archive (read-only) at the OS-aware
 trading_data path (Linux: /media/petrick/Parquet/trading_data/,
-Windows: E:\\trading_data\\) and imports into market_paper.db.
+Windows: E:\\trading_data\\) and imports into PostgreSQL database.
 
 Tables imported:
   - 15 new tables: news, broker_flow, policy_events, external_events,

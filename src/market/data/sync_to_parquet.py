@@ -56,11 +56,10 @@ EXPORT_DIR = Path(settings.parquet_archive_path) / "archive" / "tables"
 # Time-series tables: (table_name, partition_col, optional_rename_map)
 # partition_col is the SQL column used to derive year/month Hive partitions.
 PARTITIONED_TABLES: list[tuple[str, str, dict[str, str] | None]] = [
-    ("ohlcv", "timestamp", None),
+    ("stock_prices", "timestamp", None),
     ("corporate_actions", "ex_date", None),
     ("dividends", "ex_date", None),
-    ("market_calendar", "date", None),
-    ("fx_rates", "date", None),
+    ("exchange_holidays", "holiday_date", None),
     ("fundamental_data", "date", {
         # DB columns → parquet-friendly names (matches export_to_parquet.py)
         "pe": "pe_ratio",
@@ -78,9 +77,19 @@ PARTITIONED_TABLES: list[tuple[str, str, dict[str, str] | None]] = [
     ("valuation_cache", "date", None),
     ("ml_labels", "date", None),
     ("market_regimes", "date", None),
-    ("policy_events", "date", None),
-    ("external_events", "date", None),
+    ("policy_events", "created_at", None),
+    ("external_events", "created_at", None),
     ("fear_greed", "date", None),
+    ("astronacci_cycles", "cycle_date", None),
+    ("satellite_observations", "date", None),
+    ("seasonal_patterns", "date", None),
+    ("market_sessions", "session_date", None),
+    ("broker_transactions", "timestamp", None),
+    ("technical_indicators_wide", "date", None),
+    ("daily_risk_metrics", "date", None),
+    ("news_sentiment", "date", None),
+    ("broker_daily_summary", "date", None),
+    ("corporate_calendar", "created_at", None),
     # audit_log uses created_at as its time axis; do NOT drop it.
     ("audit_log", "created_at", None),
 ]
@@ -88,9 +97,10 @@ PARTITIONED_TABLES: list[tuple[str, str, dict[str, str] | None]] = [
 # Reference tables: small and/or mutable — full rewrite each run.
 # (table_name, optional_rename_map)
 REFERENCE_TABLES: list[tuple[str, dict[str, str] | None]] = [
-    ("market_registry", None),
-    ("instrument_master", None),
+    ("exchanges", None),
+    ("instruments", None),
     ("sector_master", None),
+    ("brokers", None),
     ("scores", None),
     ("relationship_matrix", None),
     ("stock_personality", None),
@@ -98,8 +108,31 @@ REFERENCE_TABLES: list[tuple[str, dict[str, str] | None]] = [
     ("corporate_governance", None),
     ("source_health", None),
     ("news", None),
+    ("news_sentiment", None),
     ("trading_suspensions", None),
     ("data_watermark", None),
+    ("market_influence_kb", None),
+    ("instrument_behavior_profiles", None),
+    ("cross_market_coefficients", None),
+    ("causal_relationships", None),
+    ("holiday_effects", None),
+    ("holiday_spillover", None),
+    ("commodity_to_stock_map", None),
+    ("satellite_ticker_locations", None),
+    ("signal_weights", None),
+    ("engine_registry", None),
+    ("recompute_dependencies", None),
+    ("recompute_triggers", None),
+    ("recompute_predictions", None),
+    ("recompute_run_stats", None),
+    ("recompute_watermark", None),
+    ("earnings_calendar", None),
+    ("corporate_calendar", None),
+    ("stock_prediction", None),
+    ("user_trading_profiles", None),
+    ("trading_style_recommendations", None),
+    ("style_recommendation_reasons", None),
+    ("valuation_cache", None),
 ]
 
 # Runtime tables: skipped when empty, full rewrite when non-empty.
@@ -108,13 +141,22 @@ RUNTIME_TABLES: list[tuple[str, dict[str, str] | None]] = [
     ("positions", None),
     ("orders", None),
     ("equity_snapshots", None),
-    ("daily_risk_metrics", None),
     ("trade_journal", None),
     ("ai_weights", None),
     ("render_log", None),
     ("watchlist", None),
     ("system_state", None),
     ("scheduler_state", None),
+    ("app_notifications", None),
+    ("kpi_history", None),
+    ("ablation_runs", None),
+    ("ablation_scorecards", None),
+    ("alert_log", None),
+    ("broker_daily_summary", None),
+    ("dcc_garch_results", None),
+    ("events", None),
+    ("policy_events", None),
+    ("external_events", None),
 ]
 
 # Tables that must never be synced.
@@ -147,12 +189,12 @@ def _apply_rename(df: pd.DataFrame, rename_map: dict[str, str] | None) -> pd.Dat
 
 
 def _table_row_count(session: Session, table: str) -> int:
-    return int(session.execute(text(f"SELECT COUNT(*) FROM [{table}]")).scalar() or 0)
+    return int(session.execute(text(f'SELECT COUNT(*) FROM "{table}"')).scalar() or 0)
 
 
 def _max_partition_value(session: Session, table: str, col: str) -> date | None:
     """Return MAX(partition_col) as a python date, or None if table empty."""
-    row = session.execute(text(f"SELECT MAX([{col}]) FROM [{table}]")).scalar()
+    row = session.execute(text(f'SELECT MAX("{col}") FROM "{table}"')).scalar()
     if row is None:
         return None
     if isinstance(row, datetime):
@@ -297,9 +339,9 @@ def sync_partitioned_table(
     #   (catch-up for partitions that were never written).
     all_db_pairs_query = (
         f"SELECT DISTINCT "
-        f"CAST(strftime('%Y', [{partition_col}]) AS INTEGER) AS y, "
-        f"CAST(strftime('%m', [{partition_col}]) AS INTEGER) AS m "
-        f"FROM [{table}] ORDER BY y, m"
+        f'EXTRACT(YEAR FROM "{partition_col}"::timestamp)::INT AS y, '
+        f'EXTRACT(MONTH FROM "{partition_col}"::timestamp)::INT AS m '
+        f'FROM "{table}" ORDER BY y, m'
     )
     all_db_pairs: set[tuple[int, int]] = set()
     for r in session.execute(text(all_db_pairs_query)).all():
@@ -312,13 +354,13 @@ def sync_partitioned_table(
     else:
         cutoff_date = last_synced - timedelta(days=safety_days)
         where_clause = (
-            f"WHERE date([{partition_col}]) >= date('{cutoff_date.isoformat()}')"
+            f'WHERE "{partition_col}"::date >= \'{cutoff_date.isoformat()}\'::date'
         )
         recent_query = (
             f"SELECT DISTINCT "
-            f"CAST(strftime('%Y', [{partition_col}]) AS INTEGER) AS y, "
-            f"CAST(strftime('%m', [{partition_col}]) AS INTEGER) AS m "
-            f"FROM [{table}] {where_clause} ORDER BY y, m"
+            f'EXTRACT(YEAR FROM "{partition_col}"::timestamp)::INT AS y, '
+            f'EXTRACT(MONTH FROM "{partition_col}"::timestamp)::INT AS m '
+            f'FROM "{table}" {where_clause} ORDER BY y, m'
         )
         recent_pairs: set[tuple[int, int]] = set()
         for r in session.execute(text(recent_query)).all():
@@ -341,9 +383,9 @@ def sync_partitioned_table(
     for year, month in targets:
         # Read this month's rows from DB.
         month_query = (
-            f"SELECT * FROM [{table}] "
-            f"WHERE strftime('%Y', [{partition_col}]) = '{year:04d}' "
-            f"AND strftime('%m', [{partition_col}]) = '{month:02d}'"
+            f'SELECT * FROM "{table}" '
+            f'WHERE EXTRACT(YEAR FROM "{partition_col}"::timestamp) = {year} '
+            f'AND EXTRACT(MONTH FROM "{partition_col}"::timestamp) = {month}'
         )
         df = pd.read_sql_query(month_query, session.bind)
         if df.empty:

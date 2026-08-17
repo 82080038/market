@@ -5,7 +5,7 @@ from internal pipelines. Excludes suspended/delisted instruments.
 
 Usage:
     from market.data.refresh_stale import refresh_stale_data, detect_stale_tables
-    report = refresh_stale_data(db_path="data/market_research.db")
+    report = refresh_stale_data(db_path=None)  # uses PostgreSQL from settings
 
     # CLI:
     python -m market.data.refresh_stale_data --dry-run
@@ -304,7 +304,7 @@ def _refresh_technical_indicators(
 
 
 def refresh_stale_data(
-    db_path: str = "data/market_research.db",
+    db_path: str | None = None,  # None → use PostgreSQL from settings
     threshold_hours: int = STALE_THRESHOLD_HOURS,
     dry_run: bool = False,
 ) -> RefreshReport:
@@ -418,7 +418,7 @@ if __name__ == "__main__":
     import sys
 
     parser = argparse.ArgumentParser(description="Detect and refresh stale data")
-    parser.add_argument("--db", default="data/market_research.db")
+    parser.add_argument("--db", default=None, help="DB path (default: PostgreSQL from settings)")
     parser.add_argument("--dry-run", action="store_true", help="Only detect, don't refresh")
     parser.add_argument("--threshold", type=int, default=24, help="Stale threshold (hours)")
     args = parser.parse_args()
