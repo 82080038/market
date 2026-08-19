@@ -23,8 +23,19 @@ mkdir -p "$LOG_DIR"
 echo "============================================" >> "$LOG_FILE"
 echo "[$(date)] Daily scheduler starting" >> "$LOG_FILE"
 
+# Start PostgreSQL if not running (memory-efficient: stop when done)
+source "$PROJECT_DIR/scripts/pg_control.sh"
+pg_ensure_running || {
+    echo "[$(date)] ERROR: PostgreSQL not available, aborting" >> "$LOG_FILE"
+    echo "============================================" >> "$LOG_FILE"
+    exit 1
+}
+
 cd "$PROJECT_DIR"
 $PYTHON -m market.cli.main scheduler run >> "$LOG_FILE" 2>&1
 
 echo "[$(date)] Daily scheduler complete" >> "$LOG_FILE"
 echo "============================================" >> "$LOG_FILE"
+
+# Stop PG if we started it (free memory)
+pg_stop_if_started
