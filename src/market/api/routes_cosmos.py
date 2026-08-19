@@ -118,8 +118,9 @@ async def cosmos_astronacci(
       - zodiac sign tempat planet berada
       - status retrograde (bandingkan lon hari ini vs besok)
       - fase & iluminasi bulan
-      - siklus aktif dalam ``days`` hari ke depan (moon phase, retrograde, ingress)
-      - sinyal Astronacci (time_signal, volatility_signal, confidence)
+      - siklus aktif dalam ``days`` hari ke depan (moon phase, retrograde, ingress,
+        Fibonacci price retracement dari swing highs/lows ^JKSE)
+      - sinyal Astronacci dengan Fibonacci price confluence (time_signal, volatility_signal, confidence, confluence)
     """
     now = datetime.now(UTC)
     now_naive = now.replace(tzinfo=None)
@@ -193,8 +194,38 @@ async def cosmos_astronacci(
     # ── Active cycles (lookahead) ──
     start = now - timedelta(days=1)
     end = now + timedelta(days=days)
-    engine = AstronacciEngine(include_fibonacci=False)
-    cycles = engine.compute(start, end)
+
+    # Load ^JKSE prices from DB for Fibonacci retracement computation.
+    import pandas as pd
+    from sqlalchemy import text as sa_text
+
+    prices_df = None
+    current_price = None
+    try:
+        from market.db.engine import get_session
+        db_session = get_session()
+        try:
+            rows = db_session.execute(sa_text("""
+                SELECT timestamp, close
+                FROM stock_prices
+                WHERE ticker = '^JKSE' AND timeframe = '1d'
+                  AND timestamp <= :cutoff
+                ORDER BY timestamp DESC
+                LIMIT 300
+            """), {"cutoff": now}).all()
+            if rows:
+                prices_df = pd.DataFrame(
+                    [(r[1], r[0]) for r in rows],
+                    columns=["close", "timestamp"],
+                )
+                current_price = float(rows[0][1])  # latest close
+        finally:
+            db_session.close()
+    except Exception:
+        pass  # Fibonacci will be skipped if no prices available
+
+    engine = AstronacciEngine(include_fibonacci=True)
+    cycles = engine.compute(start, end, prices=prices_df)
     active_cycles = [
         {
             "cycle_type": c.cycle_type,
@@ -208,8 +239,10 @@ async def cosmos_astronacci(
         for c in cycles
     ]
 
-    # ── Signal ──
-    signal = engine.compute_signal(now, window_days=days)
+    # ── Signal with Fibonacci price confluence ──
+    signal = engine.compute_signal(
+        now, window_days=days, prices=prices_df, current_price=current_price,
+    )
 
     return {
         "as_of": to_jakarta(now),

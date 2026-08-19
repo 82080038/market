@@ -243,7 +243,7 @@ class SignalEnhancer:
         signals.append(domino_sig)
 
         # 8. Astronacci time-cycle signal.
-        astro_sig = self._compute_astronacci_signal(as_of)
+        astro_sig = self._compute_astronacci_signal(as_of, df_trunc)
         signals.append(astro_sig)
 
         # 9. Market Influence KB signal.
@@ -736,16 +736,22 @@ class SignalEnhancer:
     def _compute_astronacci_signal(
         self,
         as_of: str | pd.Timestamp,
+        df: pd.DataFrame | None = None,
     ) -> EnhancementSignal:
-        """Compute Astronacci time-cycle signal.
+        """Compute Astronacci signal with Fibonacci price confluence.
 
         Uses the AstronacciEngine to check for active astrological time
-        cycles (Moon Phases, Planetary Retrogrades, Ingresses) within
-        a 3-day forward window from as_of.
+        cycles (Moon Phases, Planetary Retrogrades, Ingresses) within a
+        3-day forward window from as_of, AND checks if current price is
+        near a Fibonacci retracement level (38.2%, 50%, 61.8%, 78.6%).
+
+        When both astrology event AND Fibonacci price level align
+        (confluence), the signal is boosted 1.5-2x. This is the core
+        Astronacci methodology: WHEN (astrology) + WHERE (Fibonacci price).
 
         Returns a directional signal in [-1, +1] based on the expected
-        reversal type of active cycles, plus a volatility-based confidence
-        adjustment.
+        reversal type of active cycles and Fibonacci confluence, plus a
+        volatility-based confidence adjustment.
         """
         try:
             from market.analysis.astronacci import compute_astronacci_signal
@@ -755,29 +761,48 @@ class SignalEnhancer:
                 cutoff = cutoff.tz_localize("UTC")
             as_of_dt = cutoff.to_pydatetime()
 
-            result = compute_astronacci_signal(as_of_dt, window_days=3)
+            # Prepare prices DataFrame for Fibonacci retracement computation.
+            prices_df = None
+            current_price = None
+            if df is not None and not df.empty and "close" in df.columns:
+                prices_df = df.reset_index().rename(columns={df.index.name or "index": "timestamp"})
+                if "timestamp" not in prices_df.columns:
+                    prices_df = df.reset_index(names=["timestamp"])
+                # Current price = latest close
+                current_price = float(df["close"].iloc[-1])
 
-            if result["cycle_count"] == 0:
+            result = compute_astronacci_signal(
+                as_of_dt, window_days=3, prices=prices_df, current_price=current_price,
+            )
+
+            if result["cycle_count"] == 0 and result.get("confluence") is None:
                 return EnhancementSignal(source="astronacci")
 
             time_sig = result["time_signal"]
             vol_sig = result["volatility_signal"]
             confidence = result["confidence"]
             active = result["active_cycles"]
+            confluence = result.get("confluence")
 
-            # Confidence adjustment: active cycles boost or reduce confidence
-            # High volatility signal → increase confidence (bigger moves expected)
-            # but also add uncertainty
+            # Confidence adjustment: active cycles + confluence boost confidence
             conf_adj = 1.0 + (vol_sig * 0.15) + (confidence * 0.05)
-            conf_adj = max(0.85, min(1.25, conf_adj))
+            if confluence and confluence["matched"]:
+                conf_adj += 0.10  # confluence adds extra confidence
+            conf_adj = max(0.85, min(1.30, conf_adj))
 
             # Build rationale
             cycle_summary = ", ".join(active[:5])
             if len(active) > 5:
                 cycle_summary += f" (+{len(active) - 5} more)"
+            confluence_str = ""
+            if confluence and confluence["matched"]:
+                confluence_str = (
+                    f", CONFLUENCE: Fib {confluence['ratio']:.1%} @ {confluence['fib_price']:.2f}"
+                    f" ({confluence['direction']}, dist={confluence['distance_pct']:.2f}%)"
+                )
             rationale = (
                 f"cycles={result['cycle_count']}, time_signal={time_sig:.3f}, "
-                f"vol_signal={vol_sig:.3f}, active=[{cycle_summary}]"
+                f"vol_signal={vol_sig:.3f}, active=[{cycle_summary}]{confluence_str}"
             )
 
             return EnhancementSignal(

@@ -1375,14 +1375,16 @@ def _task_macro_correlation_analysis() -> None:
 
 
 def _task_compute_astronacci_cycles() -> None:
-    """Compute Astronacci time cycles and persist to astronacci_cycles table.
+    """Compute Astronacci cycles and persist to astronacci_cycles table.
 
     Generates upcoming time-cycle events (Mercury retrograde, Moon phases,
-    Fibonacci time windows) for the next 90 days and stores them in the
-    astronacci_cycles table for integration with v_domino_timeline.
+    planetary ingresses, Fibonacci price retracement levels) for the next
+    90 days and stores them in the astronacci_cycles table for integration
+    with v_domino_timeline.
     """
     from datetime import UTC, datetime, timedelta
 
+    import pandas as pd
     from sqlalchemy import text
 
     from market.analysis.astronacci import AstronacciEngine
@@ -1390,12 +1392,35 @@ def _task_compute_astronacci_cycles() -> None:
 
     logger.info("Astronacci cycles computation: starting...")
 
-    engine = AstronacciEngine()
+    engine = AstronacciEngine(include_fibonacci=True)
     now = datetime.now(UTC)
     end = now + timedelta(days=90)
 
+    # Load ^JKSE prices from DB for Fibonacci retracement computation.
+    prices_df = None
     try:
-        cycles = engine.compute_cycles(start=now, end=end)
+        session = get_sessionmaker()()
+        try:
+            rows = session.execute(text("""
+                SELECT timestamp, close
+                FROM stock_prices
+                WHERE ticker = '^JKSE' AND timeframe = '1d'
+                  AND timestamp <= :cutoff
+                ORDER BY timestamp DESC
+                LIMIT 300
+            """), {"cutoff": now}).all()
+            if rows:
+                prices_df = pd.DataFrame(
+                    [(r[1], r[0]) for r in rows],
+                    columns=["close", "timestamp"],
+                )
+        finally:
+            session.close()
+    except Exception as exc:
+        logger.debug("Could not load ^JKSE prices for Fibonacci: %s", exc)
+
+    try:
+        cycles = engine.compute_cycles(start=now, end=end, prices=prices_df)
     except Exception as exc:
         logger.warning("Astronacci cycle computation failed: %s", exc)
         return
@@ -1579,7 +1604,7 @@ def register_default_tasks(scheduler: DailyScheduler) -> None:
     )
     scheduler.register_task(
         task_id="compute_astronacci_cycles",
-        name="Weekly Astronacci time cycle computation (next 90 days)",
+        name="Weekly Astronacci cycle computation (next 90 days)",
         func=_task_compute_astronacci_cycles,
         schedule="weekly",
         time_of_day="14:00",

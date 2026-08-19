@@ -51,6 +51,16 @@ interface AstronacciResponse {
     volatility_signal: number;
     confidence: number;
     cycle_count: number;
+    confluence: {
+      matched: boolean;
+      ratio: number;
+      fib_price: number;
+      current_price: number;
+      distance_pct: number;
+      direction: string;
+      swing_high: number;
+      swing_low: number;
+    } | null;
   };
 }
 
@@ -1110,6 +1120,20 @@ function formatLocalTime(iso: string, timezone: string): string {
                   </div>
                   <Bar label="Volatilitas" value={signal.volatility_signal} color="#FFD23F" />
                   <Bar label="Confidence" value={signal.confidence} color="#6CB4EE" />
+                  {signal.confluence && signal.confluence.matched && (
+                    <div className="rounded bg-emerald-500/10 border border-emerald-500/20 px-1.5 py-1 mt-1">
+                      <div className="flex items-center justify-between">
+                        <span className="text-emerald-300/80 text-[9px]">Confluence</span>
+                        <span className="text-emerald-300 text-[9px] font-mono">
+                          Fib {(signal.confluence.ratio * 100).toFixed(1)}% @ {signal.confluence.fib_price.toFixed(0)}
+                        </span>
+                      </div>
+                      <div className="flex items-center justify-between mt-0.5">
+                        <span className="text-white/40 text-[9px]">{signal.confluence.direction}</span>
+                        <span className="text-white/40 text-[9px]">dist {signal.confluence.distance_pct.toFixed(2)}%</span>
+                      </div>
+                    </div>
+                  )}
                 </>
               ) : <p className="text-white/40 text-[10px]">memuat…</p>}
             </div>

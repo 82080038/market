@@ -1,9 +1,9 @@
 #!/usr/bin/env python3
-"""Backfill astronacci_cycles table with computed Astronacci time cycles.
+"""Backfill astronacci_cycles table with computed Astronacci cycles.
 
 Computes all Astronacci cycle events (Moon Phases, Planetary Retrogrades,
-Planetary Ingresses, Fibonacci Time Windows) for the full date range
-covered by the stock_prices table, and inserts them into PostgreSQL.
+Planetary Ingresses, Fibonacci Price Retracement levels) for the full date
+range covered by the stock_prices table, and inserts them into PostgreSQL.
 
 Usage:
     python scripts/backfill_astronacci.py [--dry-run] [--fibonacci]
@@ -115,7 +115,7 @@ def insert_cycles(conn, cycles: list[AstronacciCycle]) -> int:
 def main():
     parser = argparse.ArgumentParser(description="Backfill astronacci_cycles table")
     parser.add_argument("--dry-run", action="store_true", help="Compute but don't insert")
-    parser.add_argument("--fibonacci", action="store_true", help="Include Fibonacci time windows")
+    parser.add_argument("--fibonacci", action="store_true", help="Include Fibonacci price retracement levels")
     parser.add_argument("--start", type=str, help="Start date (YYYY-MM-DD)")
     parser.add_argument("--end", type=str, help="End date (YYYY-MM-DD)")
     parser.add_argument("--fib-ticker", type=str, default="^JKSE", help="Ticker for Fibonacci swing detection")

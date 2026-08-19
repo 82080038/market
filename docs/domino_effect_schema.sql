@@ -739,18 +739,19 @@ CREATE INDEX ix_sattickerloc_ticker ON satellite_ticker_locations(ticker);
 CREATE INDEX ix_sattickerloc_sector ON satellite_ticker_locations(sector);
 
 -- ════════════════════════════════════════════════════════════════════════════
--- ASTRONACCI CYCLES — Financial Astrology & Time Cycle (pustaka/97-strategi)
+-- ASTRONACCI CYCLES — Financial Astrology + Fibonacci Price Confluence (pustaka/100)
 -- ════════════════════════════════════════════════════════════════════════════
--- Stores time-cycle events based on Astronacci methodology:
---   Mercury Retrograde, Moon Phases (New/Full Moon), Fibonacci Time Windows
--- Acts as "WHEN" indicator — when price reversals are potentially expected.
+-- Stores cycle events based on Astronacci methodology:
+--   Mercury Retrograde, Moon Phases (New/Full Moon), Planetary Ingresses,
+--   Fibonacci Price Retracement levels (38.2%, 50%, 61.8%, 78.6%)
+-- Acts as "WHEN + WHERE" indicator — when and at what price level reversals are expected.
 -- Integrated into v_domino_timeline via UNION ALL.
 -- ════════════════════════════════════════════════════════════════════════════
 
 CREATE TABLE astronacci_cycles (
     id                  BIGSERIAL     PRIMARY KEY,
     cycle_uuid          UUID          UNIQUE DEFAULT gen_random_uuid(),
-    cycle_type          VARCHAR(50)   NOT NULL,          -- MERCURY_RETROGRADE, MOON_PHASE, FIBONACCI_TIME
+    cycle_type          VARCHAR(50)   NOT NULL,          -- MERCURY_RETROGRADE, MOON_PHASE, FIBONACCI_PRICE
     title               VARCHAR(200)  NOT NULL,          -- 'Mercury Retrograde Peak', 'New Moon Window'
     start_at            TIMESTAMPTZ   NOT NULL,          -- cycle start (UTC anchor)
     end_at              TIMESTAMPTZ   NOT NULL,          -- cycle end (UTC)

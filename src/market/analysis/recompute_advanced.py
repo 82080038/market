@@ -291,13 +291,35 @@ def recompute_astronacci_cycles(
     session: Session, dry_run: bool = False, progress_cb: ProgressCb = None,
     incremental: bool = False,
 ) -> int:
-    """Recompute astronacci time cycles for the past year."""
+    """Recompute Astronacci cycles (astrology + Fibonacci price retracement) for the past year."""
+    import pandas as pd
+    from sqlalchemy import text as sa_text
     from market.analysis.astronacci import AstronacciEngine
 
-    engine = AstronacciEngine()
+    engine = AstronacciEngine(include_fibonacci=True)
     end_dt = datetime.now(UTC)
     start_dt = end_dt - timedelta(days=365)
-    cycles = engine.compute(start_dt, end_dt)
+
+    # Load ^JKSE prices for Fibonacci retracement computation
+    prices_df = None
+    try:
+        rows = session.execute(sa_text("""
+            SELECT timestamp, close
+            FROM stock_prices
+            WHERE ticker = '^JKSE' AND timeframe = '1d'
+              AND timestamp <= :cutoff
+            ORDER BY timestamp DESC
+            LIMIT 300
+        """), {"cutoff": end_dt}).all()
+        if rows:
+            prices_df = pd.DataFrame(
+                [(r[1], r[0]) for r in rows],
+                columns=["close", "timestamp"],
+            )
+    except Exception as exc:
+        logger.debug("Could not load ^JKSE prices for Fibonacci: %s", exc)
+
+    cycles = engine.compute(start_dt, end_dt, prices=prices_df)
     count = len(cycles)
-    logger.info("astronacci_cycles: %d cycles", count)
+    logger.info("astronacci_cycles: %d cycles (with Fibonacci price retracement)", count)
     return count
