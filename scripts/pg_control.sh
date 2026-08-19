@@ -2,6 +2,10 @@
 # PostgreSQL start/stop helper for cron scripts.
 #
 # Memory-efficient pattern: start PG only when needed, stop when done.
+# Uses sudo (passwordless via /etc/sudoers.d/postgresql-cron) because
+# cron has no TTY/polkit agent — systemctl requires authentication
+# in cron context without sudoers entry.
+#
 # Usage:
 #   source pg_control.sh
 #   pg_ensure_running   # starts PG if not running, sets _PG_STARTED_BY_US=1
@@ -17,7 +21,7 @@ pg_ensure_running() {
     fi
 
     echo "[pg_control] Starting PostgreSQL..."
-    systemctl start postgresql 2>/dev/null
+    sudo -n systemctl start postgresql 2>/dev/null
     if [ $? -ne 0 ]; then
         echo "[pg_control] ERROR: Failed to start PostgreSQL" >&2
         return 1
@@ -40,7 +44,7 @@ pg_ensure_running() {
 pg_stop_if_started() {
     if [ "$_PG_STARTED_BY_US" = "1" ]; then
         echo "[pg_control] Stopping PostgreSQL (was started by us)..."
-        systemctl stop postgresql 2>/dev/null
+        sudo -n systemctl stop postgresql 2>/dev/null
         echo "[pg_control] PostgreSQL stopped"
     fi
 }
