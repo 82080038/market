@@ -149,19 +149,25 @@ def ensure_instrument_master(session) -> int:
     return count
 
 
+DEFAULT_START_DATE = date(1990, 1, 1)
+
+
 def fetch_index_ohlcv(
     ticker: str,
     market_mic: str,
     currency: str,
     start_date: date | None = None,
 ) -> list[NormalizedOHLCV]:
-    """Fetch full historical OHLCV for an index from yfinance.
+    """Fetch historical OHLCV for an index from yfinance.
+
+    Uses start/end date parameters (never period="max") to avoid Yahoo API
+    validRanges limitation that rejects 'max' for some IDX sector indices.
 
     Args:
         ticker: yfinance ticker (e.g. ^JKSE).
         market_mic: Market MIC code.
         currency: Native currency.
-        start_date: Optional start date. If None, fetches max history.
+        start_date: Start date for fetch. If None, uses DEFAULT_START_DATE (1990-01-01).
 
     Returns:
         List of NormalizedOHLCV records.
@@ -180,26 +186,20 @@ def fetch_index_ohlcv(
         )
         return []
 
-    logger.info("  Fetching %s (start=%s, end=%s)...", ticker, start_date or "max", end_date)
+    if start_date is None:
+        start_date = DEFAULT_START_DATE
+
+    logger.info("  Fetching %s (start=%s, end=%s)...", ticker, start_date, end_date)
 
     try:
-        if start_date:
-            df = yf.download(
-                ticker,
-                start=start_date,
-                end=end_date,
-                auto_adjust=True,
-                progress=False,
-                interval="1d",
-            )
-        else:
-            df = yf.download(
-                ticker,
-                period="max",
-                auto_adjust=True,
-                progress=False,
-                interval="1d",
-            )
+        df = yf.download(
+            ticker,
+            start=start_date.isoformat(),
+            end=(end_date + timedelta(days=1)).isoformat(),
+            auto_adjust=True,
+            progress=False,
+            interval="1d",
+        )
     except Exception as exc:
         logger.error("  yfinance download failed for %s: %s", ticker, exc)
         return []
@@ -359,8 +359,21 @@ def main() -> None:
                 total_skipped += 1
                 continue
 
+            # Determine start date for incremental fetch
+            end_date_today = date.today() - timedelta(days=1)
+            if count > 0 and max_ts:
+                # Incremental: fetch from last known date + 1 day
+                fetch_start = max_ts.date() + timedelta(days=1)
+                if fetch_start >= end_date_today:
+                    logger.info("  %s: already up to date, skipping", ticker)
+                    total_skipped += 1
+                    continue
+            else:
+                # New ticker: fetch from default start date
+                fetch_start = None  # will use DEFAULT_START_DATE
+
             # Fetch data
-            records = fetch_index_ohlcv(ticker, mic, currency)
+            records = fetch_index_ohlcv(ticker, mic, currency, start_date=fetch_start)
 
             if not records:
                 logger.warning("  %s: no data fetched (may not be available on yfinance)", ticker)
