@@ -45,26 +45,28 @@ Pipeline 4 modul:
 
 Usage:
     # Jalankan manual (dry-run, tanpa insert DB):
-    DATABASE_URL=postgresql://petrick:market_dev@localhost:5433/market python scripts/daily_signal_cron.py --dry-run
+    DATABASE_URL=postgresql://petrick:market_dev@localhost:5432/market python scripts/daily_signal_cron.py --dry-run
 
     # Jalankan dengan notifikasi DB:
-    DATABASE_URL=postgresql://petrick:market_dev@localhost:5433/market python scripts/daily_signal_cron.py
+    DATABASE_URL=postgresql://petrick:market_dev@localhost:5432/market python scripts/daily_signal_cron.py
 
     # Override config & modal:
-    DATABASE_URL=postgresql://petrick:market_dev@localhost:5433/market \\
+    DATABASE_URL=postgresql://petrick:market_dev@localhost:5432/market \\
     PORTFOLIO_CAPITAL=100000000 \\
     python scripts/daily_signal_cron.py \\
         --config best_ticker_quant_config.json \\
         --verdict final_portfolio_verdict.json
 
-Crontab (crontab -e):
-    # Jalankan setiap hari Senin-Jumat pukul 16:15 WIB (09:15 UTC)
-    # IDX close 16:00 WIB, beri 15 menit untuk EOD data settlement
-    15 9 * * 1-5 DATABASE_URL=postgresql://petrick:market_dev@localhost:5433/market \\
-        PORTFOLIO_CAPITAL=100000000 \\
-        /home/petrick/projects/market/.venv/bin/python3 \\
-        /home/petrick/projects/market/scripts/daily_signal_cron.py \\
-        >> /home/petrick/projects/market/logs/daily_signal.log 2>&1
+Scheduling:
+    Script ini dijalankan oleh scheduler (run_daily_scheduler.sh) pada 18:15 WIB
+    via SignalPipeline (src/market/pipelines/signal.py) SETELAH fetch_eod (17:30)
+    dan recompute (18:00) selesai. Menggunakan data EOD hari ini.
+
+    Sebelumnya ada cron standalone di 16:15 WIB, tapi dihapus karena menjalankan
+    script dengan data stale (EOD belum di-fetch sampai 17:30).
+
+    Cron 17:00 WIB Senin-Jumat:
+        0 17 * * 1-5 /home/petrick/projects/market/scripts/run_daily_scheduler.sh
 
 Requires: pandas, numpy, lightgbm
 """
