@@ -270,17 +270,41 @@ class RecomputeGraph:
             recompute_technical_indicators,
             recompute_weights,
         )
+        from market.multi_asset.cross_market import recompute_cross_market
+        from market.analysis.recompute_advanced import (
+            recompute_holiday_effects,
+            recompute_instrument_profiles,
+            recompute_cross_market_coefficients,
+            recompute_dcc_garch,
+            recompute_seasonal_patterns,
+            recompute_macro_correlation,
+            recompute_causal_relationships,
+            recompute_satellite_correlation,
+            recompute_astronacci_cycles,
+        )
 
-        # Map function names to callables
+        # Map function names to callables (9 core + 9 advanced = 18)
         FUNCTION_MAP = {
+            # Core (from recompute.py + cross_market.py)
             "recompute_technical_indicators": recompute_technical_indicators,
             "recompute_scores": recompute_scores,
             "recompute_relationship_matrix": recompute_relationship_matrix,
+            "recompute_cross_market": recompute_cross_market,
             "recompute_fear_greed": recompute_fear_greed,
             "recompute_stock_personality": recompute_stock_personality,
             "recompute_ml_labels": recompute_ml_labels,
             "recompute_market_regimes": recompute_market_regimes,
             "recompute_weights": recompute_weights,
+            # Advanced (from recompute_advanced.py)
+            "recompute_holiday_effects": recompute_holiday_effects,
+            "recompute_instrument_profiles": recompute_instrument_profiles,
+            "recompute_cross_market_coefficients": recompute_cross_market_coefficients,
+            "recompute_dcc_garch": recompute_dcc_garch,
+            "recompute_seasonal_patterns": recompute_seasonal_patterns,
+            "recompute_macro_correlation": recompute_macro_correlation,
+            "recompute_causal_relationships": recompute_causal_relationships,
+            "recompute_satellite_correlation": recompute_satellite_correlation,
+            "recompute_astronacci_cycles": recompute_astronacci_cycles,
         }
 
         results: dict[str, int] = {}
@@ -306,211 +330,9 @@ class RecomputeGraph:
 
             fn = FUNCTION_MAP.get(fn_name)
             if fn is None:
-                # Try lazy import for functions not in recompute.py
-                try:
-                    if fn_name == "recompute_holiday_effects":
-                        from market.analysis.holiday_effect import HolidayEffectAnalyzer
-                        analyzer = HolidayEffectAnalyzer(lookback_years=10)
-                        summary = analyzer.analyze_all()
-                        results[fn_name] = summary.get("holiday_effects", 0)
-                        total_rows += results[fn_name]
-                        continue
-                    elif fn_name == "recompute_instrument_profiles":
-                        from market.analysis.instrument_profiler import InstrumentBehaviorProfiler
-                        profiler = InstrumentBehaviorProfiler()
-                        result = profiler.profile_all_instruments()
-                        count = sum(result.values()) if isinstance(result, dict) else 0
-                        results[fn_name] = count
-                        total_rows += count
-                        continue
-                    elif fn_name == "recompute_cross_market_coefficients":
-                        from market.analysis.cross_market_coefficients import CrossMarketCoefficientEngine
-                        engine = CrossMarketCoefficientEngine()
-                        result = engine.update_all()
-                        count = sum(result.values()) if isinstance(result, dict) else 0
-                        results[fn_name] = count
-                        total_rows += count
-                        continue
-                    elif fn_name == "recompute_dcc_garch":
-                        from market.analysis.dcc_garch import DCCGarchEngine
-                        dcc_session = get_sessionmaker()()
-                        try:
-                            from sqlalchemy import text as _text
-                            import pandas as _pd
-                            # Get top tickers by volume
-                            tickers = dcc_session.execute(
-                                _text(
-                                    "SELECT ticker FROM stock_prices "
-                                    "WHERE timeframe = '1d' AND ticker LIKE '%.JK' "
-                                    "GROUP BY ticker ORDER BY SUM(volume) DESC LIMIT 15"
-                                )
-                            ).scalars().all()
-                            if len(tickers) < 3:
-                                logger.info("DCC-GARCH: need >=3 tickers, got %d", len(tickers))
-                                results[fn_name] = 0
-                                continue
-                            # Load returns
-                            returns_dict = {}
-                            for tk in tickers:
-                                rows = dcc_session.execute(
-                                    _text(
-                                        "SELECT timestamp, close FROM stock_prices "
-                                        "WHERE ticker = :t AND timeframe = '1d' "
-                                        "ORDER BY timestamp"
-                                    ),
-                                    {"t": tk},
-                                ).all()
-                                if len(rows) < 60:
-                                    continue
-                                s = _pd.Series(
-                                    [float(r[1]) for r in rows],
-                                    index=_pd.to_datetime([r[0] for r in rows]),
-                                )
-                                returns_dict[tk] = s.pct_change().dropna()
-                            if len(returns_dict) < 3:
-                                results[fn_name] = 0
-                                continue
-                            returns_df = _pd.DataFrame(returns_dict).dropna()
-                            engine = DCCGarchEngine(use_gpu=True, max_assets=len(returns_df.columns))
-                            result = engine.compute(returns=returns_df, n_ahead=5)
-                            # Store to dcc_garch_results
-                            count = 0
-                            for i, t1 in enumerate(returns_df.columns):
-                                for j, t2 in enumerate(returns_df.columns):
-                                    if i >= j:
-                                        continue
-                                    corr = float(result.correlation_matrix.iloc[i, j]) if result.correlation_matrix is not None else 0.0
-                                    dcc_session.execute(
-                                        _text(
-                                            "INSERT INTO dcc_garch_results "
-                                            "(ticker_a, ticker_b, correlation, forecast_horizon, computed_at) "
-                                            "VALUES (:a, :b, :c, :h, NOW()) "
-                                            "ON CONFLICT (ticker_a, ticker_b, forecast_horizon) DO UPDATE SET "
-                                            "correlation=EXCLUDED.correlation, computed_at=NOW()"
-                                        ),
-                                        {"a": t1, "b": t2, "c": corr, "h": 5},
-                                    )
-                                    count += 1
-                            dcc_session.commit()
-                            results[fn_name] = count
-                            total_rows += count
-                        except Exception as exc:
-                            logger.warning("DCC-GARCH recompute failed: %s", exc)
-                            dcc_session.rollback()
-                            results[fn_name] = 0
-                        finally:
-                            dcc_session.close()
-                        continue
-                    elif fn_name == "recompute_seasonal_patterns":
-                        # Seasonal patterns recompute from stock_prices monthly returns
-                        from sqlalchemy import text as _text
-                        seas_session = get_sessionmaker()()
-                        try:
-                            tickers = seas_session.execute(
-                                _text("SELECT DISTINCT ticker FROM stock_prices ORDER BY ticker")
-                            ).scalars().all()
-                            count = 0
-                            for tk in tickers[:200]:  # limit to avoid long runtime
-                                rows = seas_session.execute(
-                                    _text(
-                                        "SELECT date_trunc('month', timestamp)::date as month, "
-                                        "AVG(close) as avg_close "
-                                        "FROM stock_prices WHERE ticker = :t "
-                                        "GROUP BY 1 ORDER BY 1"
-                                    ),
-                                    {"t": tk},
-                                ).all()
-                                if len(rows) < 24:
-                                    continue
-                                import pandas as _pd
-                                monthly = _pd.DataFrame(rows, columns=["month", "avg_close"])
-                                monthly["ret"] = monthly["avg_close"].pct_change()
-                                for month in range(1, 13):
-                                    month_data = monthly[monthly["month"].dt.month == month]["ret"].dropna()
-                                    if len(month_data) < 3:
-                                        continue
-                                    avg_ret = float(month_data.mean())
-                                    std_ret = float(month_data.std())
-                                    win_rate = float((month_data > 0).mean())
-                                    score = max(0.0, min(100.0, 50.0 + avg_ret * 100))
-                                    seas_session.execute(
-                                        _text(
-                                            "INSERT INTO seasonal_patterns "
-                                            "(ticker, month, avg_return, std_return, win_rate, n_years, seasonal_score, pattern_type, computed_at) "
-                                            "VALUES (:t, :m, :ar, :sr, :wr, :n, :sc, :pt, NOW()) "
-                                            "ON CONFLICT (ticker, month) DO UPDATE SET "
-                                            "avg_return=EXCLUDED.avg_return, std_return=EXCLUDED.std_return, "
-                                            "win_rate=EXCLUDED.win_rate, seasonal_score=EXCLUDED.seasonal_score, "
-                                            "computed_at=NOW()"
-                                        ),
-                                        {
-                                            "t": tk, "m": month, "ar": avg_ret, "sr": std_ret,
-                                            "wr": win_rate, "n": len(month_data),
-                                            "sc": score, "pt": "bullish" if avg_ret > 0 else "bearish",
-                                        },
-                                    )
-                                    count += 1
-                            seas_session.commit()
-                            results[fn_name] = count
-                            total_rows += count
-                        except Exception as exc:
-                            logger.warning("Seasonal patterns recompute failed: %s", exc)
-                            seas_session.rollback()
-                            results[fn_name] = 0
-                        finally:
-                            seas_session.close()
-                        continue
-                    elif fn_name == "recompute_macro_correlation":
-                        from market.analysis.macro_correlation import full_analysis
-                        macro_session = get_sessionmaker()()
-                        try:
-                            indicators = macro_session.execute(
-                                text("SELECT DISTINCT indicator_code FROM macroeconomic_indicators WHERE indicator_code IS NOT NULL")
-                            ).scalars().all()
-                            count = 0
-                            for ind_code in indicators[:5]:
-                                result = full_analysis(ind_code, "^JKSE")
-                                count += 1
-                            results[fn_name] = count
-                            total_rows += count
-                        finally:
-                            macro_session.close()
-                        continue
-                    elif fn_name == "recompute_causal_relationships":
-                        from market.analysis.cross_market_coefficients import CrossMarketCoefficientEngine
-                        engine = CrossMarketCoefficientEngine()
-                        result = engine.update_all()
-                        count = sum(result.values()) if isinstance(result, dict) else 0
-                        results[fn_name] = count
-                        total_rows += count
-                        continue
-                    elif fn_name == "recompute_satellite_correlation":
-                        logger.info("Satellite correlation recompute not yet implemented as function")
-                        results[fn_name] = 0
-                        continue
-                    elif fn_name == "recompute_astronacci_cycles":
-                        from market.analysis.astronacci import AstronacciEngine
-                        from datetime import datetime as _dt, UTC as _utc, timedelta as _td
-                        engine = AstronacciEngine()
-                        end_dt = _dt.now(_utc)
-                        start_dt = end_dt - _td(days=365)
-                        cycles = engine.compute(start_dt, end_dt)
-                        results[fn_name] = len(cycles)
-                        total_rows += len(cycles)
-                        continue
-                    elif fn_name == "recompute_cross_market":
-                        logger.info("Cross-market recompute not yet implemented as standalone function")
-                        results[fn_name] = 0
-                        continue
-                    else:
-                        logger.warning("Unknown recompute function: %s", fn_name)
-                        results[fn_name] = -1
-                        continue
-                except Exception as e:
-                    logger.error("  %s FAILED: %s", fn_name, e)
-                    results[fn_name] = -1
-                    errors.append(f"{fn_name}: {e}")
-                    continue
+                logger.warning("Unknown recompute function: %s", fn_name)
+                results[fn_name] = -1
+                continue
 
             fn_start = datetime.now(UTC)
             # Mark the prediction as used (for feedback loop accuracy tracking)

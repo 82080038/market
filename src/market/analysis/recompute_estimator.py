@@ -62,7 +62,7 @@ _RECOMPUTE_INTERVALS: dict[str, float] = {
     "recompute_seasonal_patterns": 720.0,
     "recompute_macro_correlation": 168.0,
     "recompute_causal_relationships": 168.0,
-    "recompute_satellite_correlation": 720.0,
+    # recompute_satellite_correlation: not yet implemented (phantom function)
     "recompute_astronacci_cycles": 24.0,
     "recompute_cross_market": 48.0,
 }

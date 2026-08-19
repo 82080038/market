@@ -1,5 +1,81 @@
 # Session Memory — Pustaka Pasar Modal
 
+## Checkpoint Sesi 2026-08-19 — Recompute Audit & Perbaikan (P0-1, P1-4, P1-3 Opsi A)
+
+- **Alasan:** Audit mendalam ekosistem Recompute + perbaikan bug dan dead code.
+- **Topik aktif:** Recompute dependency graph, dead code audit, regime-aware decision engine.
+
+### Audit Temuan (Lengkap)
+- **Dead code audit**: 8 dari 10 tabel output recompute LIVE, 1 NEAR-DEAD (`market_regimes` — hanya 1 konsumen `feature_drift_remediation.py` dengan fallback), 0 DEAD.
+- **Dependency graph audit**: 5 MISSING dependencies (`recompute_watermark` 3x, `instruments` 2x), 3 PHANTOM dependencies (`fundamental_quarterly`, `macro_data` di recompute_scores; `technical_indicators_wide` di recompute_stock_personality).
+- **Bug**: `recompute_cross_market` tidak ada di FUNCTION_MAP selective recompute → silently no-op saat selective recompute.
+- **Phantom function**: `recompute_satellite_correlation` terdaftar di dependency graph + estimator intervals tapi tidak ada implementasi.
+- **Architectural smell**: 9 advanced recompute functions diimplementasikan sebagai inline if-elif blocks di `trigger_recompute()`, bukan standalone functions.
+- **Dual regime system**: `market_regimes` tabel (dipakai feature_drift_remediation) vs `MarketRegime` enum di `attribution.py` (dipakai decision.py) — tidak terintegrasi.
+
+### Perbaikan Selesai (3 item)
+
+#### P0-1: Fix Bug FUNCTION_MAP recompute_cross_market
+- **File**: `src/market/analysis/recompute_graph.py`
+- Tambah `from market.multi_asset.cross_market import recompute_cross_market` + entry di FUNCTION_MAP
+- Update lazy-import fallback: "not yet implemented" → warning "should be in FUNCTION_MAP"
+- **Dampak**: Selective recompute untuk `stock_prices` sekarang akan jalankan cross_market (sebelumnya silent no-op)
+
+#### P1-4: Hapus Phantom recompute_satellite_correlation dari Intervals
+- **File**: `src/market/analysis/recompute_estimator.py`
+- Hapus `"recompute_satellite_correlation": 720.0` dari `_RECOMPUTE_INTERVALS`
+- Ganti dengan komentar phantom function
+
+#### P1-3 Opsi A: Wire market_regimes ke decision.py (single source of truth regime)
+- **File**: `src/market/analysis/decision.py`
+- `DecisionResult`: tambah field `regime: str = ""`
+- `DecisionEngine.__init__`: tambah param `use_regime_adjustment: bool = True`
+- `_get_current_regime()`: baca regime terbaru dari `market_regimes` tabel, fallback `"sideways"` jika kosong/stale(>7d)/db_url=None
+- `_adjust_weights_for_regime()`: pakai `RegimeWeightAdjuster` dari `attribution.py`
+- `decide()`: regime-adjusted weights sebelum composite score; set `regime` di result; tambah regime info ke explanation
+- **Dampak**: `market_regimes` tabel sekarang langsung memengaruhi keputusan beli/jual (sebelumnya near-dead)
+
+### Verifikasi
+- 90 tests passed (test_decision, test_gaps, test_recompute_graph, test_recompute_estimator, test_recompute_analyzer, test_recompute_internal)
+- 4 smoke test scenarios DecisionEngine regime adjustment: all pass
+- Import check: FUNCTION_MAP 9 entries dengan recompute_cross_market
+- Proses running (batch_compute_predictions, backfill_historical_news) tidak terdampak
+
+### Queue (pending)
+- **P0-2**: Migration 0040 — fix `recompute_dependencies` (hapus 3 phantom, tambah 5 missing). AMAN dijalankan sekarang (data-only, tidak schema break).
+- **P2-5**: Extract 9 advanced recompute functions dari inline if-elif blocks di `trigger_recompute()` menjadi standalone functions. RISK: cron 17:00 pakai recompute_graph.py — perlu test menyeluruh.
+
+### Queue Selesai (dikerjakan 09:45-10:00 WIB)
+
+#### P0-2: Migration 0040 — fix recompute_dependencies
+- **File BARU**: `alembic/versions/0040_fix_recompute_dependencies.py`
+- Hapus 3 phantom: `fundamental_quarterly` + `macro_data` dari recompute_scores, `technical_indicators_wide` dari recompute_stock_personality
+- Tambah 5 missing: `recompute_watermark` untuk fear_greed/ml_labels/market_regimes, `instruments` untuk stock_personality/weights
+- Alembic head: 0039 → 0040
+- Total dependencies: 41 → 46 (setelah fix)
+- **Dampak**: Cron 17:00 selective recompute sekarang punya dependency graph yang benar
+
+#### P2-5: Extract 9 advanced recompute functions
+- **File BARU**: `src/market/analysis/recompute_advanced.py` (303 lines, 9 standalone functions)
+- **File MODIFIED**: `src/market/analysis/recompute_graph.py` (734 → 556 lines, -209 lines inline if-elif)
+- 9 functions: recompute_holiday_effects, recompute_instrument_profiles, recompute_cross_market_coefficients, recompute_dcc_garch, recompute_seasonal_patterns, recompute_macro_correlation, recompute_causal_relationships, recompute_satellite_correlation (phantom), recompute_astronacci_cycles
+- FUNCTION_MAP sekarang 18 entries (9 core + 9 advanced)
+- `trigger_recompute()` cleanup: 209 baris if-elif → 5 baris lookup map
+- **Dampak**: Advanced functions sekarang dapat di-test independen, maintenance lebih mudah
+
+### Verifikasi Final
+- 78 tests passed (test_recompute_graph, test_recompute_estimator, test_recompute_analyzer, test_decision, test_gaps)
+- Import check: 9 advanced functions + 18 FUNCTION_MAP entries
+- DB check: 0 phantom deps, 5 missing deps added, alembic head 0040
+
+### Proses Berjalan (saat checkpoint 09:45 WIB)
+- `batch_compute_predictions.py` (PID 11938, 95% CPU) — tidak import modul recompute/decision
+- `backfill_historical_news.py` (PID 22153, baru mulai) — tidak import modul recompute/decision
+- `backfill_fundamentals.py` — SUDAH SELESAI
+- Cron berikutnya: `run_daily_scheduler.sh` 17:00 WIB (~7 jam lagi)
+
+---
+
 ## Checkpoint Sesi 2026-08-17 — Config Sync & GitHub Push
 
 - **Alasan:** Update file konfigurasi yang tertinggal (AGENTS.md, skills, SESSION_MEMORY) lalu sync ke GitHub.

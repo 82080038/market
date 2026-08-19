@@ -78,6 +78,8 @@ class DecisionResult:
     explanation: list[str] = field(default_factory=list)
     # Market driver context (causal, seasonal, commodity, DCC-GARCH, satellite)
     market_driver_context: list[str] = field(default_factory=list)
+    # Current market regime (from market_regimes table, pustaka/23 §5)
+    regime: str = ""
 
 
 class DecisionEngine:
@@ -89,17 +91,22 @@ class DecisionEngine:
         db_url: str | None = None,
         include_driver_narrative: bool = True,
         use_db_weights: bool = True,
+        use_regime_adjustment: bool = True,
     ) -> None:
         """Initialize decision engine.
 
         Args:
             weights: Factor weights dict. If None and use_db_weights=True,
                 loads from signal_weights table via WeightRegistry.
-            db_url: PostgreSQL connection URL for market driver narrative.
-                    If None, narrative features are disabled (graceful degradation).
+            db_url: PostgreSQL connection URL for market driver narrative
+                    and regime lookup. If None, both are disabled (graceful
+                    degradation).
             include_driver_narrative: Whether to fetch market driver context
                     (causal, seasonal, commodity, DCC-GARCH, satellite) from DB.
             use_db_weights: Whether to load weights from DB (signal_weights table).
+            use_regime_adjustment: Whether to adjust factor weights based on
+                    current market regime from market_regimes table. Falls back
+                    to SIDEWAYS if table is empty or db_url is None.
 
         Raises:
             WeightRegistryError: If use_db_weights=True and DB weights are unavailable.
@@ -116,6 +123,7 @@ class DecisionEngine:
             )
         self.db_url = db_url
         self.include_driver_narrative = include_driver_narrative
+        self.use_regime_adjustment = use_regime_adjustment
 
     def decide(
         self,
@@ -196,11 +204,26 @@ class DecisionEngine:
                 factor_scores={},
                 contribution={},
                 explanation=["No factor scores available."],
+                regime="",
             )
+
+        # Regime-aware weight adjustment (pustaka/23 §5)
+        # Reads latest regime from market_regimes table; falls back to
+        # sideways if table is empty or db_url is None.
+        regime = ""
+        effective_weights = self.weights
+        if self.use_regime_adjustment:
+            try:
+                regime = self._get_current_regime()
+                effective_weights = self._adjust_weights_for_regime(self.weights, regime)
+            except Exception as e:
+                logger.debug("Regime adjustment skipped: %s", e)
+                regime = "sideways"
+                effective_weights = self.weights
 
         # Renormalize weights for available factors
         total_weight = sum(
-            self.weights.get(f, 0) for f in factor_scores
+            effective_weights.get(f, 0) for f in factor_scores
         )
         if total_weight == 0:
             total_weight = 1.0
@@ -208,7 +231,7 @@ class DecisionEngine:
         composite = 0.0
         contribution: dict[str, float] = {}
         for factor, score in factor_scores.items():
-            w = self.weights.get(factor, 0) / total_weight
+            w = effective_weights.get(factor, 0) / total_weight
             contrib = score * w
             composite += contrib
             contribution[factor] = round(contrib, 2)
@@ -227,6 +250,12 @@ class DecisionEngine:
             factor_scores, contribution, composite, recommendation,
         )
 
+        # Add regime context to explanation
+        if self.use_regime_adjustment and regime and regime != "sideways":
+            explanation.append(
+                f"Market regime: {regime.upper()} — weights adjusted accordingly.",
+            )
+
         # Generate market driver context (causal, seasonal, commodity, etc.)
         market_driver_context: list[str] = []
         if self.include_driver_narrative and self.db_url:
@@ -239,11 +268,12 @@ class DecisionEngine:
             ticker=ticker,
             composite_score=round(composite, 2),
             recommendation=recommendation,
-            weights=self.weights,
+            weights=effective_weights,
             factor_scores=factor_scores,
             contribution=contribution,
             explanation=explanation,
             market_driver_context=market_driver_context,
+            regime=regime,
         )
 
     def _generate_explanation(
@@ -301,6 +331,95 @@ class DecisionEngine:
         # or use as-is for psycopg2
         conn = psycopg2.connect(self.db_url)
         return conn
+
+    # ------------------------------------------------------------------
+    # Regime-aware weight adjustment (pustaka/23 §5, pustaka/35 §2)
+    # ------------------------------------------------------------------
+
+    _REGIME_STRING_MAP = {
+        "bull": "bull",
+        "bear": "bear",
+        "sideways": "sideways",
+        "crisis": "crisis",
+        "recovery": "recovery",
+    }
+
+    def _get_current_regime(self) -> str:
+        """Get current market regime from market_regimes table.
+
+        Reads the latest regime label from the ``market_regimes`` table
+        (populated by ``recompute_market_regimes``). Falls back to
+        ``"sideways"`` if the table is empty, stale (>7 days), or db_url
+        is not configured.
+
+        Returns:
+            Regime string: 'bull', 'bear', 'sideways', 'crisis', or 'recovery'.
+        """
+        if not self.db_url:
+            return "sideways"
+
+        try:
+            conn = self._get_db_connection()
+            cur = conn.cursor()
+            cur.execute("""
+                SELECT regime, date FROM market_regimes
+                ORDER BY date DESC LIMIT 1
+            """)
+            row = cur.fetchone()
+            cur.close()
+            conn.close()
+
+            if row and row[0]:
+                regime_str = str(row[0]).lower().strip()
+                # Validate against known regimes
+                if regime_str in self._REGIME_STRING_MAP:
+                    # Check freshness — skip if older than 7 days
+                    if row[1] is not None:
+                        from datetime import date as _date, timedelta as _td
+                        regime_date = row[1]
+                        if isinstance(regime_date, str):
+                            regime_date = _date.fromisoformat(regime_date)
+                        if isinstance(regime_date, _date):
+                            if (_date.today() - regime_date) > _td(days=7):
+                                logger.warning(
+                                    "market_regimes table stale (latest=%s), "
+                                    "using sideways fallback", regime_date,
+                                )
+                                return "sideways"
+                    return self._REGIME_STRING_MAP[regime_str]
+        except Exception as e:
+            logger.debug("Regime lookup failed: %s", e)
+
+        return "sideways"
+
+    def _adjust_weights_for_regime(
+        self, base_weights: dict[str, float], regime: str,
+    ) -> dict[str, float]:
+        """Adjust factor weights based on market regime.
+
+        Uses ``RegimeWeightAdjuster`` from ``attribution.py`` to blend
+        base weights with regime-specific weights. Factors not covered
+        by regime weights retain their base weight.
+
+        Args:
+            base_weights: Original factor weights.
+            regime: Regime string ('bull', 'bear', 'sideways', 'crisis', 'recovery').
+
+        Returns:
+            Adjusted and normalized weights dict.
+        """
+        from market.analysis.attribution import MarketRegime, RegimeWeightAdjuster
+
+        regime_enum = {
+            "bull": MarketRegime.BULL,
+            "bear": MarketRegime.BEAR,
+            "sideways": MarketRegime.SIDEWAYS,
+            "crisis": MarketRegime.CRISIS,
+            "recovery": MarketRegime.RECOVERY,
+        }.get(regime, MarketRegime.SIDEWAYS)
+
+        adjuster = RegimeWeightAdjuster()
+        return adjuster.adjust_weights(base_weights, regime_enum)
 
     def generate_market_driver_narrative(self, ticker: str) -> list[str]:
         """Generate market driver context narrative for a ticker.
